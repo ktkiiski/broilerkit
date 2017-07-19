@@ -1,0 +1,28 @@
+{
+  "name": "broiling",
+  "version": "0.0.1",
+  "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ktkiiski/broiling.git"
+  },
+  "keywords": [
+    "broilerplate",
+    "boilerplate",
+    "aws"
+  ],
+  "author": {
+    "name": "Kimmo Kiiski",
+    "email": "kimmo@kii.ski",
+    "url": "https://kii.ski"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ktkiiski/broiling/issues"
+  },
+  "homepage": "https://github.com/ktkiiski/broiling#readme"
+}
