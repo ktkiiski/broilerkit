@@ -1,0 +1,5 @@
+# Exclude code editor preference configuration
+/.editorconfig
+
+# Exclude Visual Studio Code setting files
+/.vscode
