@@ -1,0 +1,11 @@
+// Place your settings in this file to overwrite default and user settings.
+{
+    "eslint.autoFixOnSave": true,
+    "files.associations": {
+        "*.tmpl": "html"
+    },
+    "html.format.endWithNewline": true,
+    "tslint.autoFixOnSave": true,
+    "tslint.jsEnable": false,
+    "typescript.tsdk": "./node_modules/typescript/lib"
+}
