@@ -24,5 +24,8 @@
   "bugs": {
     "url": "https://github.com/ktkiiski/broiling/issues"
   },
-  "homepage": "https://github.com/ktkiiski/broiling#readme"
+  "homepage": "https://github.com/ktkiiski/broiling#readme",
+  "devDependencies": {
+    "eslint": "4.2.0"
+  }
 }

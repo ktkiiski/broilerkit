@@ -3,3 +3,6 @@
 
 # Exclude Visual Studio Code setting files
 /.vscode
+
+# Exclude eslint preferences
+/.eslintrc.json
