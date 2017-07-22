@@ -6,6 +6,7 @@
     },
     "html.format.endWithNewline": true,
     "tslint.autoFixOnSave": true,
+    "tslint.exclude": "./dist",
     "tslint.jsEnable": false,
     "typescript.tsdk": "./node_modules/typescript/lib"
 }
