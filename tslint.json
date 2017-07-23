@@ -1,0 +1,21 @@
+{
+    "extends": "tslint:recommended",
+    "rules": {
+        "max-line-length": [
+            false
+        ],
+        "triple-equals": [
+            true,
+            "allow-null-check"
+        ],
+        "quotemark": [
+            true,
+            "single"
+        ],
+        "no-bitwise": false,
+        "no-require-imports": false,
+        "no-var-requires": false,
+        "object-literal-sort-keys": false
+    },
+    "rulesDirectory": []
+}

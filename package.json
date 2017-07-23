@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/ktkiiski/broiling#readme",
   "devDependencies": {
-    "eslint": "4.2.0"
+    "eslint": "4.2.0",
+    "tslint": "^5.5.0"
   }
 }
