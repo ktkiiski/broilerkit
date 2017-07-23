@@ -1,3 +1,6 @@
+# Ignore compiled scripts
+/dist
+
 # Ignore npm installed packages
 /node_modules
 
