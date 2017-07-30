@@ -51,7 +51,6 @@ yargs
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
                 .switchMap((config) => {
-                    console.log(`Deploying the app for the stage ${config.stage} to region ${config.region}...`);
                     const aws = new AWS(config);
                     return aws.deployStack$(
                         {
@@ -70,7 +69,6 @@ yargs
                     )
                     .do({
                         next: (resource) => console.log(`Resource ${resource.LogicalResourceId} => ${resource.ResourceStatus} ${resource.ResourceStatusReason || ''}`),
-                        complete: () => console.log(`Successfully deployed CloudFormation stack ${config.stackName}`),
                     })
                     .last()
                     .combineLatest(
@@ -148,12 +146,9 @@ yargs
 function uploadFilesToS3Bucket$(aws: AWS, bucketName: string, file$: Observable<File>, cacheDuration: number) {
     return file$
         .filter((file) => !file.isDirectory())
-        .mergeMap((file) => {
-            console.log(`Uploading file ${file.relative}...`);
-            return aws.uploadFileToS3Bucket$(
-                bucketName, file, 'public-read', cacheDuration,
-            ).do(() => console.log(`Successfully uploaded ${file.relative}`));
-        }, 3)
+        .mergeMap((file) => aws.uploadFileToS3Bucket$(
+            bucketName, file, 'public-read', cacheDuration,
+        ), 3)
     ;
 }
 /* tslint:enable:no-console */

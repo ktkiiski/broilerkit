@@ -1,4 +1,5 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
+import { bold, green } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { IAppConfig } from './config';
@@ -111,6 +112,7 @@ export class AWS {
                     Parameters: convertStackParameters(parameters),
                 }),
             ))
+            .do(() => this.log('Stack creation has started.'))
         ;
     }
 
@@ -136,10 +138,12 @@ export class AWS {
             ).catch<CloudFormation.UpdateStackOutput, CloudFormation.UpdateStackOutput>((error: Error) => {
                 if (error.message && error.message.indexOf('No updates are to be performed') >= 0) {
                     // Let's not consider this an error. Just do not emit anything.
+                    this.log('Stack is up-to-date! No updates are to be performed.');
                     return Observable.empty();
                 }
                 return Observable.throw(error);
             }))
+            .do(() => this.log('Stack update has started.'))
         ;
     }
 
@@ -150,15 +154,24 @@ export class AWS {
      * @param parameters Parameters for the CloudFormation template
      */
     public deployStack$(parameters: object): Observable<IStackWithResources> {
+        this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
         return this.checkStackExists$().first()
             // Either create or update the stack
-            .switchMap((stackExists) => stackExists
-                ? this.startUpdateStack$(parameters)
-                : this.startCreateStack$(parameters),
-            )
+            .switchMap((stackExists) => {
+                if (stackExists) {
+                    this.log(`Updating existing stack...`);
+                    return this.startUpdateStack$(parameters);
+                } else {
+                    this.log(`Creating a new stack...`);
+                    return this.startCreateStack$(parameters);
+                }
+            })
             // Start polling the stack state after creation/update has started successfully
             .defaultIfEmpty(null)
             .switchMapTo(this.waitForDeployment$(2000))
+            .do({
+                complete: () => this.log('Stack was deployed successfully!'),
+            })
         ;
     }
     /**
@@ -209,7 +222,7 @@ export class AWS {
                 ContentType: mime.lookup(file.relative),
                 ContentLength: file.isStream() && file.stat ? file.stat.size : undefined,
             }),
-        );
+        ).do(() => this.log('Uploaded', bold(file.relative), 'to bucket', bucketName, green('✔︎')));
     }
 
     /**
@@ -229,11 +242,16 @@ export class AWS {
                     },
                 },
             }),
-        );
+        ).do(() => this.log(`Invalidated CloudFront distribution ${distributionId} items:`, items));
     }
 
     private readTemplate$() {
         return readFile$(this.options.templatePath);
+    }
+
+    private log(message: any, ...params: any[]) {
+        // tslint:disable-next-line:no-console
+        console.log(message, ...params);
     }
 }
 
