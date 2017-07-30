@@ -1,6 +1,8 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
+import { IAppConfig } from './config';
+import { readFile$ } from './utils';
 
 import * as mime from 'mime';
 import * as path from 'path';
@@ -8,10 +10,6 @@ import * as File from 'vinyl';
 
 export interface IStackOutput {
     [key: string]: string;
-}
-
-export interface IBroilerOptions {
-    region: string;
 }
 
 export interface IStackWithResources extends CloudFormation.Stack {
@@ -37,39 +35,36 @@ export class AWS {
      * Creates a new Broiler utility with the given options.
      * @param options An object of options
      */
-    constructor(private options: IBroilerOptions) { }
+    constructor(private options: IAppConfig) { }
 
     /**
-     * Describes a CloudFormation stack, or fails if does not exist.
-     * @param stackName Name of the CloudFormation stack
+     * Describes the CloudFormation stack, or fails if does not exist.
      * @returns Observable for the stack description
      */
-    public describeStack$(stackName: string): Observable<CloudFormation.Stack> {
+    public describeStack$(): Observable<CloudFormation.Stack> {
         return sendRequest$(
-            this.cloudFormation.describeStacks({ StackName: stackName }),
+            this.cloudFormation.describeStacks({ StackName: this.options.stackName }),
         ).map((stack) => (stack.Stacks || [])[0]);
     }
 
     /**
-     * Describes all the resources in the given CloudFormation stack.
-     * @param stackName Name of the CloudFormation stack
+     * Describes all the resources in the CloudFormation stack.
      * @returns Observable for a list of stack resources
      */
-    public describeStackResources$(stackName: string): Observable<CloudFormation.StackResource[]> {
+    public describeStackResources$(): Observable<CloudFormation.StackResource[]> {
         return sendRequest$(
-            this.cloudFormation.describeStackResources({ StackName: stackName }),
+            this.cloudFormation.describeStackResources({ StackName: this.options.stackName }),
         ).map((data) => data.StackResources || []);
     }
 
     /**
-     * Retrieves the outputs of the given CloudFormation stack.
+     * Retrieves the outputs of the CloudFormation stack.
      * The outputs are represented as an object, where keys are the
      * output keys, and values are the output values.
-     * @param stackName Name of the CloudFormation stack
      * @returns Observable for the stack output object
      */
-    public getStackOutput$(stackName: string): Observable<IStackOutput> {
-        return this.describeStack$(stackName)
+    public getStackOutput$(): Observable<IStackOutput> {
+        return this.describeStack$()
             .map((stack) => fromPairs(map(
                 stack.Outputs,
                 ({OutputKey, OutputValue}) => [OutputKey, OutputValue]),
@@ -78,13 +73,12 @@ export class AWS {
     }
 
     /**
-     * Checks whether or not a CloudFormation stack with the given name
-     * exists, resulting to a boolean value.
-     * @param stackName Name of the CloudFormation stack to check
+     * Checks whether or not the CloudFormation stack exists,
+     * resulting to a boolean value.
      * @returns Observable for a boolean value
      */
-    public checkStackExists$(stackName: string): Observable<boolean> {
-        return this.describeStack$(stackName)
+    public checkStackExists$(): Observable<boolean> {
+        return this.describeStack$()
             .mapTo(true)
             .catch<boolean, boolean>((error: Error) => {
                 // Check if the message indicates that the stack was not found
@@ -98,99 +92,86 @@ export class AWS {
     }
 
     /**
-     * Starts creating a new CloudFormation stack using the given template.
+     * Starts creating a new CloudFormation stack using the template.
      * This will fail if the stack already exists.
-     * @param stackName Name of the CloudFormation stack
-     * @param template CloudFormation template as a string
      * @param parameters Object of key-value pairs of the parameters
      * @returns Observable for the starting of stack creation
      */
-    public startCreateStack$(stackName: string, template: string, parameters: object): Observable<CloudFormation.CreateStackOutput> {
-        return sendRequest$(
-            this.cloudFormation.createStack({
-                StackName: stackName,
-                TemplateBody: template,
-                OnFailure: 'ROLLBACK',
-                Capabilities: [
-                    'CAPABILITY_IAM',
-                    'CAPABILITY_NAMED_IAM',
-                ],
-                Parameters: convertStackParameters(parameters),
-            }),
-        );
+    public startCreateStack$(parameters: object): Observable<CloudFormation.CreateStackOutput> {
+        return this.readTemplate$()
+            .switchMap((template) => sendRequest$(
+                this.cloudFormation.createStack({
+                    StackName: this.options.stackName,
+                    TemplateBody: template,
+                    OnFailure: 'ROLLBACK',
+                    Capabilities: [
+                        'CAPABILITY_IAM',
+                        'CAPABILITY_NAMED_IAM',
+                    ],
+                    Parameters: convertStackParameters(parameters),
+                }),
+            ))
+        ;
     }
 
     /**
      * Starts updating an existing CloudFormation stack using the given template.
      * This will fail if the stack does not exist.
      * NOTE: If no update is needed, the observable completes without emitting any value!
-     * @param stackName Name of the CloudFormation stack
-     * @param template CloudFormation template as a string
      * @param parameters Object of key-value pairs of the parameters
      * @returns Observable for the starting of stack update
      */
-    public startUpdateStack$(stackName: string, template: string, parameters: object) {
-        return sendRequest$(
-            this.cloudFormation.updateStack({
-                StackName: stackName,
-                TemplateBody: template,
-                Capabilities: [
-                    'CAPABILITY_IAM',
-                    'CAPABILITY_NAMED_IAM',
-                ],
-                Parameters: convertStackParameters(parameters),
-            }),
-        ).catch<CloudFormation.UpdateStackOutput, CloudFormation.UpdateStackOutput>((error: Error) => {
-            if (error.message && error.message.indexOf('No updates are to be performed') >= 0) {
-                // Let's not consider this an error. Just do not emit anything.
-                return Observable.empty();
-            }
-            return Observable.throw(error);
-        });
+    public startUpdateStack$(parameters: object) {
+        return this.readTemplate$()
+            .switchMap((template) => sendRequest$(
+                this.cloudFormation.updateStack({
+                    StackName: this.options.stackName,
+                    TemplateBody: template,
+                    Capabilities: [
+                        'CAPABILITY_IAM',
+                        'CAPABILITY_NAMED_IAM',
+                    ],
+                    Parameters: convertStackParameters(parameters),
+                }),
+            ).catch<CloudFormation.UpdateStackOutput, CloudFormation.UpdateStackOutput>((error: Error) => {
+                if (error.message && error.message.indexOf('No updates are to be performed') >= 0) {
+                    // Let's not consider this an error. Just do not emit anything.
+                    return Observable.empty();
+                }
+                return Observable.throw(error);
+            }))
+        ;
     }
 
     /**
-     * Deploys the given CloudFormation stack. If the stack already exists,
+     * Deploys the CloudFormation stack. If the stack already exists,
      * it will be updated. Otherwise, it will be created. Polls the stack
      * and its resources while the deployment is in progress.
-     * @param stackName Name of the CloudFormation stack
      * @param parameters Parameters for the CloudFormation template
-     * @param template CloudFromation template string for the creation/update
      */
-    public deployStack$(stackName: string, parameters: object, template: string): Observable<IStackWithResources>;
-    /**
-     * Deploys the given CloudFormation stack. If the stack already exists,
-     * it will be updated. Otherwise, it will be created. Polls the stack
-     * and its resources while the deployment is in progress.
-     * @param stackName Name of the CloudFormation stack
-     * @param parameters Parameters for the CloudFormation template
-     * @param updateTemplate CloudFromation template string for the update
-     * @param createTemplate CloudFromation template string for the creation
-     */
-    public deployStack$(stackName: string, parameters: object, updateTemplate: string, createTemplate = updateTemplate): Observable<IStackWithResources> {
-        return this.checkStackExists$(stackName).first()
+    public deployStack$(parameters: object): Observable<IStackWithResources> {
+        return this.checkStackExists$().first()
             // Either create or update the stack
             .switchMap((stackExists) => stackExists
-                ? this.startUpdateStack$(stackName, updateTemplate, parameters)
-                : this.startCreateStack$(stackName, createTemplate, parameters),
+                ? this.startUpdateStack$(parameters)
+                : this.startCreateStack$(parameters),
             )
             // Start polling the stack state after creation/update has started successfully
             .defaultIfEmpty(null)
-            .switchMapTo(this.waitForDeployment$(stackName, 2000))
+            .switchMapTo(this.waitForDeployment$(2000))
         ;
     }
     /**
-     * Polls the state of the given CloudFormation stack until it changes to
+     * Polls the state of the CloudFormation stack until it changes to
      * a complete state, or fails, in which case the observable fails.
-     * @param stackName Name of the CloudFormation stack
      * @returns Observable emitting the stack and its resources until complete
      */
-    public waitForDeployment$(stackName: string, minInterval: number): Observable<IStackWithResources> {
+    public waitForDeployment$(minInterval: number): Observable<IStackWithResources> {
         return new Observable<IStackWithResources>((subscriber) =>
             Observable.timer(0, minInterval)
-                .exhaustMap(() => this.describeStack$(stackName)
+                .exhaustMap(() => this.describeStack$()
                     .combineLatest(
-                        this.describeStackResources$(stackName),
+                        this.describeStackResources$(),
                         (Stack, StackResources) => ({...Stack, StackResources}) as IStackWithResources,
                     )
                     .first(),
@@ -249,6 +230,10 @@ export class AWS {
                 },
             }),
         );
+    }
+
+    private readTemplate$() {
+        return readFile$(this.options.templatePath);
     }
 }
 

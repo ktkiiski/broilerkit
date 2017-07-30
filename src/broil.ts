@@ -1,5 +1,4 @@
 #! /usr/bin/env node
-import * as fs from 'fs';
 import * as _ from 'lodash';
 import * as path from 'path';
 import { Observable } from 'rxjs';
@@ -55,7 +54,6 @@ yargs
                     console.log(`Deploying the app for the stage ${config.stage} to region ${config.region}...`);
                     const aws = new AWS(config);
                     return aws.deployStack$(
-                        config.stackName,
                         {
                             ServiceName: config.stackName,
                             SiteDomainName: config.siteDomain,
@@ -63,7 +61,6 @@ yargs
                             AssetsDomainName: config.assetsDomain,
                             AssetsHostedZoneName: getHostedZone(config.assetsDomain),
                         },
-                        fs.readFileSync(config.templatePath, 'utf8'),
                     )
                     .map((stack) => stack.StackResources)
                     .startWith([])
@@ -88,7 +85,7 @@ yargs
                         .do((stats) => console.log(stats.toString({colors: true}))),
                     )
                     .first()
-                    .switchMapTo(aws.getStackOutput$(config.stackName))
+                    .switchMapTo(aws.getStackOutput$())
                     .switchMap((output) =>
                         Observable.concat(
                             uploadFilesToS3Bucket$(
