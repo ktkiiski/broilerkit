@@ -1,5 +1,4 @@
 #! /usr/bin/env node
-import * as _ from 'lodash';
 import * as path from 'path';
 import { Observable } from 'rxjs';
 import * as File from 'vinyl';
@@ -52,26 +51,16 @@ yargs
             readAppConfig$(argv)
                 .switchMap((config) => {
                     const aws = new AWS(config);
-                    return aws.deployStack$(
-                        {
-                            ServiceName: config.stackName,
-                            SiteDomainName: config.siteDomain,
-                            SiteHostedZoneName: getHostedZone(config.siteDomain),
-                            AssetsDomainName: config.assetsDomain,
-                            AssetsHostedZoneName: getHostedZone(config.assetsDomain),
-                        },
-                    )
-                    .map((stack) => stack.StackResources)
-                    .startWith([])
-                    .pairwise()
-                    .switchMap(([prevResources, nextResources]) =>
-                        _.differenceBy(nextResources, prevResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`),
-                    )
-                    .do({
-                        next: (resource) => console.log(`Resource ${resource.LogicalResourceId} => ${resource.ResourceStatus} ${resource.ResourceStatusReason || ''}`),
-                    })
-                    .last()
-                    .combineLatest(
+                    return Observable.forkJoin(
+                        aws.deployStack$(
+                            {
+                                ServiceName: config.stackName,
+                                SiteDomainName: config.siteDomain,
+                                SiteHostedZoneName: getHostedZone(config.siteDomain),
+                                AssetsDomainName: config.assetsDomain,
+                                AssetsHostedZoneName: getHostedZone(config.assetsDomain),
+                            },
+                        ),
                         compile({
                             baseUrl: `https://${config.assetsDomain}/`,
                             buildDir: config.buildDir,
@@ -82,7 +71,6 @@ yargs
                         })
                         .do((stats) => console.log(stats.toString({colors: true}))),
                     )
-                    .first()
                     .switchMapTo(aws.getStackOutput$())
                     .switchMap((output) =>
                         Observable.concat(

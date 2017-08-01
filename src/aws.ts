@@ -1,10 +1,11 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { bold, green } from 'chalk';
+import { bold, cyan, green, red } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { IAppConfig } from './config';
 import { readFile$ } from './utils';
 
+import * as _ from 'lodash';
 import * as mime from 'mime';
 import * as path from 'path';
 import * as File from 'vinyl';
@@ -59,6 +60,20 @@ export class AWS {
     }
 
     /**
+     * Like describeStack$ but the stack will also contain the 'StackResources'
+     * attribute, containing all the resources of the stack, like from
+     * describeStackResources$.
+     * @returns Observable for a stack including its resources
+     */
+    public describeStackWithResources$(): Observable<IStackWithResources> {
+        return Observable.combineLatest(
+            this.describeStack$(),
+            this.describeStackResources$(),
+            (Stack, StackResources) => ({...Stack, StackResources}),
+        );
+    }
+
+    /**
      * Retrieves the outputs of the CloudFormation stack.
      * The outputs are represented as an object, where keys are the
      * output keys, and values are the output values.
@@ -93,12 +108,12 @@ export class AWS {
     }
 
     /**
-     * Starts creating a new CloudFormation stack using the template.
+     * Creating a new CloudFormation stack using the template.
      * This will fail if the stack already exists.
      * @param parameters Object of key-value pairs of the parameters
      * @returns Observable for the starting of stack creation
      */
-    public startCreateStack$(parameters: object): Observable<CloudFormation.CreateStackOutput> {
+    public createStack$(parameters: object) {
         return this.readTemplate$()
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.createStack({
@@ -113,17 +128,18 @@ export class AWS {
                 }),
             ))
             .do(() => this.log('Stack creation has started.'))
+            .switchMapTo(this.waitForDeployment$(2000))
         ;
     }
 
     /**
-     * Starts updating an existing CloudFormation stack using the given template.
+     * Updating an existing CloudFormation stack using the given template.
      * This will fail if the stack does not exist.
      * NOTE: If no update is needed, the observable completes without emitting any value!
      * @param parameters Object of key-value pairs of the parameters
      * @returns Observable for the starting of stack update
      */
-    public startUpdateStack$(parameters: object) {
+    public updateStack$(parameters: object) {
         return this.readTemplate$()
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.updateStack({
@@ -144,6 +160,7 @@ export class AWS {
                 return Observable.throw(error);
             }))
             .do(() => this.log('Stack update has started.'))
+            .switchMapTo(this.waitForDeployment$(2000))
         ;
     }
 
@@ -155,20 +172,36 @@ export class AWS {
      */
     public deployStack$(parameters: object): Observable<IStackWithResources> {
         this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
-        return this.checkStackExists$().first()
+        return this.checkStackExists$()
             // Either create or update the stack
             .switchMap((stackExists) => {
                 if (stackExists) {
                     this.log(`Updating existing stack...`);
-                    return this.startUpdateStack$(parameters);
+                    return this.describeStackWithResources$().concat(this.updateStack$(parameters));
                 } else {
                     this.log(`Creating a new stack...`);
-                    return this.startCreateStack$(parameters);
+                    return Observable.of({} as IStackWithResources).concat(this.createStack$(parameters));
                 }
             })
-            // Start polling the stack state after creation/update has started successfully
+            .scan<IStackWithResources>((oldStack, newStack) => {
+                const oldResources = oldStack.StackResources || [];
+                const newResources = newStack.StackResources || [];
+                const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
+                for (const resource of alteredResources) {
+                    const status = resource.ResourceStatus;
+                    if (status.endsWith('_FAILED')) {
+                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${red(status)} (${resource.ResourceStatusReason})`);
+                    } else if (status.endsWith('_COMPLETE')) {
+                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${green(status)}`);
+                    } else {
+                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${cyan(status)}`);
+                    }
+                }
+                return newStack;
+            })
+            .last()
             .defaultIfEmpty(null)
-            .switchMapTo(this.waitForDeployment$(2000))
+            .switchMapTo(this.describeStackWithResources$())
             .do({
                 complete: () => this.log('Stack was deployed successfully!'),
             })
@@ -182,13 +215,7 @@ export class AWS {
     public waitForDeployment$(minInterval: number): Observable<IStackWithResources> {
         return new Observable<IStackWithResources>((subscriber) =>
             Observable.timer(0, minInterval)
-                .exhaustMap(() => this.describeStack$()
-                    .combineLatest(
-                        this.describeStackResources$(),
-                        (Stack, StackResources) => ({...Stack, StackResources}) as IStackWithResources,
-                    )
-                    .first(),
-                )
+                .exhaustMap(() => this.describeStackWithResources$())
                 .subscribe((stack) => {
                     const stackStatus = stack.StackStatus;
                     if (stackStatus.endsWith('_IN_PROGRESS')) {
