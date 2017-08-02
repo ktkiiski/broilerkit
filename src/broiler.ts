@@ -29,7 +29,7 @@ const staticAssetsCacheDuration = 31556926;
 // HTML pages are cached for an hour
 const staticHtmlCacheDuration = 3600;
 
-export class AWS {
+export class Broiler {
 
     private cloudFormation = new CloudFormation({
         region: this.options.region,

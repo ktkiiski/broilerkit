@@ -1,5 +1,3 @@
-import * as aws from './aws';
-import * as utils from './utils';
+import * as broiler from './broiler';
 
-export const AWS = aws.AWS;
-export const src$ = utils.src$;
+export const Broiler = broiler.Broiler;

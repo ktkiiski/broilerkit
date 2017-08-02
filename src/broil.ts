@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import * as YAML from 'yamljs';
 import * as yargs from 'yargs';
 
-import { AWS } from './aws';
+import { Broiler } from './broiler';
 import { clean } from './clean';
 import { compile } from './compile';
 import { IAppConfigOptions, readAppConfig$ } from './config';
@@ -43,7 +43,7 @@ yargs
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
                 .switchMap((config) => {
-                    const aws = new AWS(config);
+                    const aws = new Broiler(config);
                     return Observable.forkJoin(
                         aws.deployStack$(),
                         compile({
