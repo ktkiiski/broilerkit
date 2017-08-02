@@ -1,7 +1,6 @@
 #! /usr/bin/env node
 import * as path from 'path';
 import { Observable } from 'rxjs';
-import * as File from 'vinyl';
 import * as YAML from 'yamljs';
 import * as yargs from 'yargs';
 
@@ -9,12 +8,6 @@ import { AWS } from './aws';
 import { clean } from './clean';
 import { compile } from './compile';
 import { IAppConfigOptions, readAppConfig$ } from './config';
-import { searchFiles$ } from './utils';
-
-// Static assets are cached for a year
-const staticAssetsCacheDuration = 31556926;
-// HTML pages are cached for an hour
-const staticHtmlCacheDuration = 3600;
 
 /* tslint:disable:no-console */
 // tslint:disable-next-line:no-unused-expression
@@ -71,21 +64,7 @@ yargs
                         })
                         .do((stats) => console.log(stats.toString({colors: true}))),
                     )
-                    .switchMapTo(aws.getStackOutput$())
-                    .switchMap((output) =>
-                        Observable.concat(
-                            uploadFilesToS3Bucket$(
-                                aws, output.AssetsS3BucketName,
-                                searchFiles$(config.buildDir, ['!**/*.html']),
-                                staticAssetsCacheDuration,
-                            ),
-                            uploadFilesToS3Bucket$(
-                                aws, output.SiteS3BucketName,
-                                searchFiles$(config.buildDir, ['**/*.html']),
-                                staticHtmlCacheDuration,
-                            ),
-                        ),
-                    )
+                    .switchMapTo(aws.deployFile$())
                     .do({
                         complete: () => console.log(`Deployment complete! The web app is now available at https://${config.siteDomain}`),
                     });
@@ -129,15 +108,6 @@ yargs
     .help()
     .argv
 ;
-
-function uploadFilesToS3Bucket$(aws: AWS, bucketName: string, file$: Observable<File>, cacheDuration: number) {
-    return file$
-        .filter((file) => !file.isDirectory())
-        .mergeMap((file) => aws.uploadFileToS3Bucket$(
-            bucketName, file, 'public-read', cacheDuration,
-        ), 3)
-    ;
-}
 /* tslint:enable:no-console */
 
 function compileClean(argv: any) {

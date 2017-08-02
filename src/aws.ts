@@ -3,7 +3,7 @@ import { bold, cyan, green, red } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { IAppConfig } from './config';
-import { readFile$ } from './utils';
+import { readFile$, searchFiles$ } from './utils';
 
 import * as _ from 'lodash';
 import * as mime from 'mime';
@@ -17,6 +17,17 @@ export interface IStackOutput {
 export interface IStackWithResources extends CloudFormation.Stack {
     StackResources: CloudFormation.StackResource[];
 }
+
+export interface IFileUpload {
+    file: File;
+    bucketName: string;
+    result: S3.PutObjectOutput;
+}
+
+// Static assets are cached for a year
+const staticAssetsCacheDuration = 31556926;
+// HTML pages are cached for an hour
+const staticHtmlCacheDuration = 3600;
 
 export class AWS {
 
@@ -81,6 +92,21 @@ export class AWS {
                 complete: () => this.log('Stack was deployed successfully!'),
             })
         ;
+    }
+
+    /**
+     * Deploys the compiled asset files from the build directory to the
+     * Amazon S3 buckets in the deployed stack.
+     */
+    public deployFile$(): Observable<IFileUpload> {
+        const asset$ = searchFiles$(this.options.buildDir, ['!**/*.html']);
+        const page$ = searchFiles$(this.options.buildDir, ['**/*.html']);
+        return this.getStackOutput$().switchMap((output) =>
+            Observable.concat(
+                this.uploadFilesToS3Bucket$(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration),
+                this.uploadFilesToS3Bucket$(output.SiteS3BucketName, page$, staticHtmlCacheDuration),
+            ),
+        );
     }
 
     /**
@@ -233,6 +259,18 @@ export class AWS {
     }
 
     /**
+     * Uploads all of the files from the observable to a S3 bucket.
+     * @param bucketName Name of the S3 bucket to upload the files
+     * @param file$ Observable of vinyl files
+     * @param cacheDuration How long the files should be cached
+     */
+    public uploadFilesToS3Bucket$(bucketName: string, file$: Observable<File>, cacheDuration: number) {
+        return file$.mergeMap((file) => this.uploadFileToS3Bucket$(
+            bucketName, file, 'public-read', cacheDuration,
+        ), 3);
+    }
+
+    /**
      * Uploads the given Vinyl file to a Amazon S3 bucket.
      * @param bucketName Name of the S3 bucket to upload the files
      * @param file The Vinyl file to upload
@@ -250,7 +288,9 @@ export class AWS {
                 ContentType: mime.lookup(file.relative),
                 ContentLength: file.isStream() && file.stat ? file.stat.size : undefined,
             }),
-        ).do(() => this.log('Uploaded', bold(file.relative), 'to bucket', bucketName, green('✔︎')));
+        )
+        .map((data) => ({file, bucketName, result: data} as IFileUpload))
+        .do(() => this.log('Uploaded', bold(file.relative), 'to bucket', bucketName, green('✔︎')));
     }
 
     /**
