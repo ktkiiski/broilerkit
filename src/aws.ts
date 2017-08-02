@@ -40,6 +40,50 @@ export class AWS {
     constructor(private options: IAppConfig) { }
 
     /**
+     * Deploys the CloudFormation stack. If the stack already exists,
+     * it will be updated. Otherwise, it will be created. Polls the stack
+     * and its resources while the deployment is in progress.
+     * @param parameters Parameters for the CloudFormation template
+     */
+    public deployStack$(parameters: object): Observable<IStackWithResources> {
+        this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
+        return this.checkStackExists$()
+            // Either create or update the stack
+            .switchMap((stackExists) => {
+                if (stackExists) {
+                    this.log(`Updating existing stack...`);
+                    return this.describeStackWithResources$().concat(this.updateStack$(parameters));
+                } else {
+                    this.log(`Creating a new stack...`);
+                    return Observable.of({} as IStackWithResources).concat(this.createStack$(parameters));
+                }
+            })
+            .scan<IStackWithResources>((oldStack, newStack) => {
+                const oldResources = oldStack.StackResources || [];
+                const newResources = newStack.StackResources || [];
+                const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
+                for (const resource of alteredResources) {
+                    const status = resource.ResourceStatus;
+                    if (status.endsWith('_FAILED')) {
+                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${red(status)} (${resource.ResourceStatusReason})`);
+                    } else if (status.endsWith('_COMPLETE')) {
+                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${green(status)}`);
+                    } else {
+                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${cyan(status)}`);
+                    }
+                }
+                return newStack;
+            })
+            .last()
+            .defaultIfEmpty(null)
+            .switchMapTo(this.describeStackWithResources$())
+            .do({
+                complete: () => this.log('Stack was deployed successfully!'),
+            })
+        ;
+    }
+
+    /**
      * Describes the CloudFormation stack, or fails if does not exist.
      * @returns Observable for the stack description
      */
@@ -164,49 +208,6 @@ export class AWS {
         ;
     }
 
-    /**
-     * Deploys the CloudFormation stack. If the stack already exists,
-     * it will be updated. Otherwise, it will be created. Polls the stack
-     * and its resources while the deployment is in progress.
-     * @param parameters Parameters for the CloudFormation template
-     */
-    public deployStack$(parameters: object): Observable<IStackWithResources> {
-        this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
-        return this.checkStackExists$()
-            // Either create or update the stack
-            .switchMap((stackExists) => {
-                if (stackExists) {
-                    this.log(`Updating existing stack...`);
-                    return this.describeStackWithResources$().concat(this.updateStack$(parameters));
-                } else {
-                    this.log(`Creating a new stack...`);
-                    return Observable.of({} as IStackWithResources).concat(this.createStack$(parameters));
-                }
-            })
-            .scan<IStackWithResources>((oldStack, newStack) => {
-                const oldResources = oldStack.StackResources || [];
-                const newResources = newStack.StackResources || [];
-                const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
-                for (const resource of alteredResources) {
-                    const status = resource.ResourceStatus;
-                    if (status.endsWith('_FAILED')) {
-                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${red(status)} (${resource.ResourceStatusReason})`);
-                    } else if (status.endsWith('_COMPLETE')) {
-                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${green(status)}`);
-                    } else {
-                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${cyan(status)}`);
-                    }
-                }
-                return newStack;
-            })
-            .last()
-            .defaultIfEmpty(null)
-            .switchMapTo(this.describeStackWithResources$())
-            .do({
-                complete: () => this.log('Stack was deployed successfully!'),
-            })
-        ;
-    }
     /**
      * Polls the state of the CloudFormation stack until it changes to
      * a complete state, or fails, in which case the observable fails.
