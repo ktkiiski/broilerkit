@@ -45,15 +45,7 @@ yargs
                 .switchMap((config) => {
                     const aws = new AWS(config);
                     return Observable.forkJoin(
-                        aws.deployStack$(
-                            {
-                                ServiceName: config.stackName,
-                                SiteDomainName: config.siteDomain,
-                                SiteHostedZoneName: getHostedZone(config.siteDomain),
-                                AssetsDomainName: config.assetsDomain,
-                                AssetsHostedZoneName: getHostedZone(config.assetsDomain),
-                            },
-                        ),
+                        aws.deployStack$(),
                         compile({
                             baseUrl: `https://${config.assetsDomain}/`,
                             buildDir: config.buildDir,
@@ -136,9 +128,4 @@ function readStageConfig(configFile: string, stageName: string) {
         baseUrl: `https://${stageConfig.assetsDomain}/`,
         stackName: `${siteConfig.appName}-${stageName}`,
     };
-}
-
-function getHostedZone(domain: string) {
-    const match = /([^.]+\.[^.]+)$/.exec(domain);
-    return match && match[0];
 }

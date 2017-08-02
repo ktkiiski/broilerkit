@@ -54,19 +54,18 @@ export class AWS {
      * Deploys the CloudFormation stack. If the stack already exists,
      * it will be updated. Otherwise, it will be created. Polls the stack
      * and its resources while the deployment is in progress.
-     * @param parameters Parameters for the CloudFormation template
      */
-    public deployStack$(parameters: object): Observable<IStackWithResources> {
+    public deployStack$(): Observable<IStackWithResources> {
         this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
         return this.checkStackExists$()
             // Either create or update the stack
             .switchMap((stackExists) => {
                 if (stackExists) {
                     this.log(`Updating existing stack...`);
-                    return this.describeStackWithResources$().concat(this.updateStack$(parameters));
+                    return this.describeStackWithResources$().concat(this.updateStack$());
                 } else {
                     this.log(`Creating a new stack...`);
-                    return Observable.of({} as IStackWithResources).concat(this.createStack$(parameters));
+                    return Observable.of({} as IStackWithResources).concat(this.createStack$());
                 }
             })
             .scan<IStackWithResources>((oldStack, newStack) => {
@@ -107,6 +106,19 @@ export class AWS {
                 this.uploadFilesToS3Bucket$(output.SiteS3BucketName, page$, staticHtmlCacheDuration),
             ),
         );
+    }
+
+    /**
+     * Returns the parameters that are given to the CloudFormation template.
+     */
+    public getStackParameters() {
+        return convertStackParameters({
+            ServiceName: this.options.stackName,
+            SiteDomainName: this.options.siteDomain,
+            SiteHostedZoneName: getHostedZone(this.options.siteDomain),
+            AssetsDomainName: this.options.assetsDomain,
+            AssetsHostedZoneName: getHostedZone(this.options.assetsDomain),
+        });
     }
 
     /**
@@ -180,10 +192,9 @@ export class AWS {
     /**
      * Creating a new CloudFormation stack using the template.
      * This will fail if the stack already exists.
-     * @param parameters Object of key-value pairs of the parameters
      * @returns Observable for the starting of stack creation
      */
-    public createStack$(parameters: object) {
+    public createStack$() {
         return this.readTemplate$()
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.createStack({
@@ -194,7 +205,7 @@ export class AWS {
                         'CAPABILITY_IAM',
                         'CAPABILITY_NAMED_IAM',
                     ],
-                    Parameters: convertStackParameters(parameters),
+                    Parameters: this.getStackParameters(),
                 }),
             ))
             .do(() => this.log('Stack creation has started.'))
@@ -206,10 +217,9 @@ export class AWS {
      * Updating an existing CloudFormation stack using the given template.
      * This will fail if the stack does not exist.
      * NOTE: If no update is needed, the observable completes without emitting any value!
-     * @param parameters Object of key-value pairs of the parameters
      * @returns Observable for the starting of stack update
      */
-    public updateStack$(parameters: object) {
+    public updateStack$() {
         return this.readTemplate$()
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.updateStack({
@@ -219,7 +229,7 @@ export class AWS {
                         'CAPABILITY_IAM',
                         'CAPABILITY_NAMED_IAM',
                     ],
-                    Parameters: convertStackParameters(parameters),
+                    Parameters: this.getStackParameters(),
                 }),
             ).catch<CloudFormation.UpdateStackOutput, CloudFormation.UpdateStackOutput>((error: Error) => {
                 if (error.message && error.message.indexOf('No updates are to be performed') >= 0) {
@@ -357,4 +367,9 @@ function formatS3KeyName(filename: string): string {
     const dirname = path.dirname(filename);
     const basename = path.basename(filename, extension);
     return path.join(dirname, `${basename}${extension}`);
+}
+
+function getHostedZone(domain: string) {
+    const match = /([^.]+\.[^.]+)$/.exec(domain);
+    return match && match[0];
 }
