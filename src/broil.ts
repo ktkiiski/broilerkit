@@ -9,7 +9,7 @@ import { AWS } from './aws';
 import { clean } from './clean';
 import { compile } from './compile';
 import { IAppConfigOptions, readAppConfig$ } from './config';
-import { src$ } from './utils';
+import { searchFiles$ } from './utils';
 
 // Static assets are cached for a year
 const staticAssetsCacheDuration = 31556926;
@@ -75,15 +75,14 @@ yargs
                     .switchMap((output) =>
                         Observable.concat(
                             uploadFilesToS3Bucket$(
-                                aws, output.AssetsS3BucketName, src$([
-                                    path.join(config.buildDir, '**/*'),
-                                    '!' + path.join(config.buildDir, '**/*.html'),
-                                ]), staticAssetsCacheDuration,
+                                aws, output.AssetsS3BucketName,
+                                searchFiles$(config.buildDir, ['!**/*.html']),
+                                staticAssetsCacheDuration,
                             ),
                             uploadFilesToS3Bucket$(
-                                aws, output.SiteS3BucketName, src$([
-                                    path.join(config.buildDir, '**/*.html'),
-                                ]), staticHtmlCacheDuration,
+                                aws, output.SiteS3BucketName,
+                                searchFiles$(config.buildDir, ['**/*.html']),
+                                staticHtmlCacheDuration,
                             ),
                         ),
                     )
