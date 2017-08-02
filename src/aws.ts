@@ -273,7 +273,7 @@ export class AWS {
     }
 
     private readTemplate$() {
-        return readFile$(this.options.templatePath);
+        return readFile$(path.resolve(__dirname, '../res/cloudformation.yml'));
     }
 
     private log(message: any, ...params: any[]) {
