@@ -4,7 +4,8 @@
   "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
   "main": "dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "bin": {
     "broil": "./dist/broil.js"
