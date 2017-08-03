@@ -2,7 +2,7 @@
   "name": "broiling",
   "version": "0.0.0",
   "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
-  "main": "dist/index.js",
+  "main": "dist/broiler.js",
   "files": [
     "dist",
     "res",
