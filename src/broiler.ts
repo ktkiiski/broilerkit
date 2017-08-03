@@ -1,12 +1,12 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { bold, cyan, green, red, underline } from 'chalk';
+import { bold, green, underline } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { Stats as WebpackStats } from 'webpack';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
 import { serve$ } from './server';
-import { convertStackParameters, formatS3KeyName, sendRequest$ } from './utils/aws';
+import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './utils/aws';
 import { readFile$, searchFiles$ } from './utils/fs';
 
 import * as _ from 'lodash';
@@ -82,6 +82,35 @@ export class Broiler {
     }
 
     /**
+     * Outputs information about the stack.
+     */
+    public printStack$(): Observable<IStackWithResources> {
+        return this.describeStackWithResources$()
+            .do((stack) => {
+                this.log(`Stack ${bold(stack.StackName)}`);
+                this.log(`- Status: ${formatStatus(stack.StackStatus)}`);
+                this.log('Resources:');
+                for (const resource of stack.StackResources) {
+                    const status = resource.ResourceStatus;
+                    const colorizedStatus = formatStatus(status);
+                    const statusReason = resource.ResourceStatusReason;
+                    let msg = `- ${bold(resource.LogicalResourceId)}: ${colorizedStatus}`;
+                    if (statusReason) {
+                        msg += ` (${statusReason})`;
+                    }
+                    this.log(msg);
+                }
+                if (stack.Outputs) {
+                    this.log('Outputs:');
+                    stack.Outputs.forEach(({OutputKey, OutputValue}) => {
+                        this.log(`- ${OutputKey} = ${bold(String(OutputValue))}`);
+                    });
+                }
+            })
+        ;
+    }
+
+    /**
      * Deploys the CloudFormation stack. If the stack already exists,
      * it will be updated. Otherwise, it will be created. Polls the stack
      * and its resources while the deployment is in progress.
@@ -105,13 +134,13 @@ export class Broiler {
                 const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
                 for (const resource of alteredResources) {
                     const status = resource.ResourceStatus;
-                    if (status.endsWith('_FAILED')) {
-                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${red(status)} (${resource.ResourceStatusReason})`);
-                    } else if (status.endsWith('_COMPLETE')) {
-                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${green(status)}`);
-                    } else {
-                        this.log(`Resource ${bold(resource.LogicalResourceId)} => ${cyan(status)}`);
+                    const colorizedStatus = formatStatus(status);
+                    const statusReason = resource.ResourceStatusReason;
+                    let msg = `Resource ${bold(resource.LogicalResourceId)} => ${colorizedStatus}`;
+                    if (statusReason) {
+                        msg += ` (${statusReason})`;
                     }
+                    this.log(msg);
                 }
                 return newStack;
             })
@@ -166,10 +195,12 @@ export class Broiler {
      * Describes all the resources in the CloudFormation stack.
      * @returns Observable for a list of stack resources
      */
-    public describeStackResources$(): Observable<CloudFormation.StackResource[]> {
-        return sendRequest$(
+    public describeStackResources$(): Observable<CloudFormation.StackResource> {
+        return retrievePage$(
             this.cloudFormation.describeStackResources({ StackName: this.options.stackName }),
-        ).map((data) => data.StackResources || []);
+            'StackResources',
+        )
+        .concatMap((resources) => resources || []);
     }
 
     /**
@@ -181,7 +212,7 @@ export class Broiler {
     public describeStackWithResources$(): Observable<IStackWithResources> {
         return Observable.combineLatest(
             this.describeStack$(),
-            this.describeStackResources$(),
+            this.describeStackResources$().toArray(),
             (Stack, StackResources) => ({...Stack, StackResources}),
         );
     }

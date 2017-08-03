@@ -60,8 +60,17 @@ yargs
         },
     })
     .command({
+        command: 'describe <stage>',
+        describe: 'Describes the deployed resources of the given stage.',
+        handler: (argv) => {
+            readAppConfig$(argv)
+            .switchMap((config) => new Broiler(config).printStack$())
+            .subscribe()
+            ;
+        },
+    })
+    .command({
         command: 'serve',
-        aliases: ['server', 'run'],
         describe: 'Run the local development server',
         handler: (argv) => {
             console.log(`Starting the local development server...`);
