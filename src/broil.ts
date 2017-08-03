@@ -76,7 +76,7 @@ yargs
         },
     })
     .demandCommand(1)
-    .wrap(yargs.terminalWidth())
+    .wrap(Math.min(yargs.terminalWidth(), 140))
     .help()
     .argv
 ;
