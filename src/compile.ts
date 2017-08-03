@@ -21,14 +21,14 @@ export function compile(options: ICompileOptions): Observable<webpack.Stats> {
         .map(webpack)
         .map((compiler) => compiler.run.bind(compiler) as typeof compiler.run)
         .switchMap((run) => Observable.bindNodeCallback(run)())
-        .switchMap((stats) => {
+        .map((stats) => {
             if (stats.hasErrors()) {
-                return Observable.throw(Object.assign(
+                throw Object.assign(
                     new Error(stats.toString('errors-only')),
                     {stats},
-                ));
+                );
             }
-            return Observable.of(stats);
+            return stats;
         })
     ;
 }

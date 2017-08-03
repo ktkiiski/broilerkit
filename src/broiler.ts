@@ -2,6 +2,8 @@ import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, red } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
+import { Stats as WebpackStats } from 'webpack';
+import { compile } from './compile';
 import { IAppConfig } from './config';
 import { readFile$, searchFiles$ } from './utils';
 
@@ -49,6 +51,21 @@ export class Broiler {
      * @param options An object of options
      */
     constructor(private options: IAppConfig) { }
+
+    /**
+     * Compiles the assets with Webpack to the build directory.
+     */
+    public compile$(): Observable<WebpackStats> {
+        return compile({
+            baseUrl: `https://${this.options.assetsDomain}/`,
+            buildDir: this.options.buildDir,
+            debug: this.options.debug,
+            devServer: false,
+            iconFile: this.options.iconFile,
+            webpackConfigPath: this.options.webpackConfigPath,
+        })
+        .do((stats) => this.log(stats.toString({colors: true})));
+    }
 
     /**
      * Deploys the CloudFormation stack. If the stack already exists,

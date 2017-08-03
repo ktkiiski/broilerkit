@@ -5,8 +5,6 @@ import * as YAML from 'yamljs';
 import * as yargs from 'yargs';
 
 import { Broiler } from './broiler';
-import { clean } from './clean';
-import { compile } from './compile';
 import { IAppConfigOptions, readAppConfig$ } from './config';
 
 /* tslint:disable:no-console */
@@ -43,20 +41,14 @@ yargs
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
                 .switchMap((config) => {
-                    const aws = new Broiler(config);
+                    const broiler = new Broiler(config);
                     return Observable.forkJoin(
-                        aws.deployStack$(),
-                        compile({
-                            baseUrl: `https://${config.assetsDomain}/`,
-                            buildDir: config.buildDir,
-                            debug: config.debug,
-                            devServer: false,
-                            iconFile: config.iconFile,
-                            webpackConfigPath: config.webpackConfigPath,
-                        })
-                        .do((stats) => console.log(stats.toString({colors: true}))),
+                        broiler.deployStack$(),
+                        broiler.compile$(),
                     )
-                    .switchMapTo(aws.deployFile$())
+                    .switchMapTo(
+                        broiler.deployFile$(),
+                    )
                     .do({
                         complete: () => console.log(`Deployment complete! The web app is now available at https://${config.siteDomain}`),
                     });
@@ -77,23 +69,10 @@ yargs
         },
         handler: (argv) => {
             console.log(`Compiling the app for the stage ${argv.stage}...`);
-            compileClean(argv)
-                .subscribe((stats) => {
-                    console.log(stats.toString({colors: true}));
-                })
+            readAppConfig$(argv)
+                .switchMap((config) => new Broiler(config).compile$())
+                .subscribe()
             ;
-        },
-    })
-    .command({
-        command: 'clean',
-        aliases: ['clear'],
-        describe: 'Removes the contents of the build directory.',
-        handler: (argv) => {
-            console.log(`Removing the contents of ${argv.buildDir}...`);
-            clean(argv.buildDir).subscribe((files) => {
-                console.log(`Removed ${files.length} files:`);
-                files.forEach((file) => console.log(file));
-            });
         },
     })
     .demandCommand(1)
@@ -101,13 +80,6 @@ yargs
     .argv
 ;
 /* tslint:enable:no-console */
-
-function compileClean(argv: any) {
-    const webpackConfig = argv.webpackConfig(argv);
-    return clean(argv.buildDir)
-        .switchMapTo(compile(webpackConfig))
-    ;
-}
 
 function readConfigFile(configFile: string): any {
     const cwd = process.cwd();
