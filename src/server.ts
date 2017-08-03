@@ -3,7 +3,7 @@ import { URL } from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { ICompileOptions, IWebpackConfigFactory } from './compile';
-import { readConfig$ } from './utils';
+import { readConfig$ } from './utils/fs';
 
 /**
  * Runs the Webpack development server.

@@ -6,7 +6,8 @@ import { Stats as WebpackStats } from 'webpack';
 import { compile } from './compile';
 import { IAppConfig } from './config';
 import { serve$ } from './server';
-import { readFile$, searchFiles$ } from './utils';
+import { convertStackParameters, formatS3KeyName, sendRequest$ } from './utils/aws';
+import { readFile$, searchFiles$ } from './utils/fs';
 
 import * as _ from 'lodash';
 import * as mime from 'mime';
@@ -361,42 +362,6 @@ export class Broiler {
         // tslint:disable-next-line:no-console
         console.log(message, ...params);
     }
-}
-
-/**
- * Converts an object of parameter key-values to an
- * array of stack parameter objects.
- * @param parameters An object of parameter key-values
- * @returns Array of parameter objects.
- */
-function convertStackParameters(parameters: {[key: string]: any}) {
-    return map(
-        parameters,
-        (ParameterValue, ParameterKey) => ({ParameterKey, ParameterValue}),
-    );
-}
-
-/**
- * Converts a AWS.Request instance to an Observable.
- */
-function sendRequest$<D, E>(request: AWS.Request<D, E>): Observable<D> {
-    return new Observable<D>((subscriber) => {
-        request.send((error, data) => {
-            if (error) {
-                subscriber.error(error);
-            } else {
-                subscriber.next(data);
-                subscriber.complete();
-            }
-        });
-    });
-}
-
-function formatS3KeyName(filename: string): string {
-    const extension = path.extname(filename);
-    const dirname = path.dirname(filename);
-    const basename = path.basename(filename, extension);
-    return path.join(dirname, `${basename}${extension}`);
 }
 
 function getHostedZone(domain: string) {

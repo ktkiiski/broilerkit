@@ -1,5 +1,5 @@
 import { Observable } from 'rxjs';
-import { readConfig$ } from './utils';
+import { readConfig$ } from './utils/fs';
 
 export interface IAppConfigOptions {
     appConfigPath: string;

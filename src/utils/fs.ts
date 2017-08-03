@@ -56,11 +56,11 @@ export function readFile$(filename: string): Observable<string> {
     });
 }
 
-export function require$<T>(id: string): Observable<T> {
+function require$<T>(id: string): Observable<T> {
     return call$(() => require(id));
 }
 
-export function call$<T>(callback: () => T): Observable<T> {
+function call$<T>(callback: () => T): Observable<T> {
     return new Observable<T>((subscriber) => {
         try {
             subscriber.next(callback() as T);

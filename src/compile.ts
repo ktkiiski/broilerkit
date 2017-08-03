@@ -1,7 +1,7 @@
 import { Observable } from 'rxjs';
 import * as webpack from 'webpack';
 import { clean } from './clean';
-import { readConfig$ } from './utils';
+import { readConfig$ } from './utils/fs';
 
 export interface ICompileOptions {
     buildDir: string;
