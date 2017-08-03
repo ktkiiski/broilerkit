@@ -18,11 +18,6 @@ yargs
     .default('tsconfigPath', './tsconfig.json')
     .alias('tsconfigPath', 'tsconfig')
     .normalize('tsconfigPath')
-    // Read the CloudFormation template
-    .describe('templatePath', 'Path to the CloudFormation template')
-    .default('templatePath', './cloudformation.yml')
-    .alias('templatePath', 'template')
-    .normalize('templatePath')
     // Read the app configuration
     .describe('appConfigPath', 'Path to the app configuration')
     .default('appConfigPath', './site.config.js')

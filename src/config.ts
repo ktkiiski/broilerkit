@@ -4,7 +4,6 @@ import { readConfig$ } from './utils';
 export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
-    templatePath: string;
     tsconfigPath: string;
     webpackConfigPath: string;
 }
