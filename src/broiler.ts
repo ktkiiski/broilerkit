@@ -3,7 +3,7 @@ import { bold, cyan, green, red, underline } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { Stats as WebpackStats } from 'webpack';
-import { compile } from './compile';
+import { compile$ } from './compile';
 import { IAppConfig } from './config';
 import { serve$ } from './server';
 import { convertStackParameters, formatS3KeyName, sendRequest$ } from './utils/aws';
@@ -58,7 +58,7 @@ export class Broiler {
      * Compiles the assets with Webpack to the build directory.
      */
     public compile$(): Observable<WebpackStats> {
-        return compile({
+        return compile$({
             baseUrl: `https://${this.options.assetsDomain}/`,
             buildDir: this.options.buildDir,
             debug: this.options.debug,

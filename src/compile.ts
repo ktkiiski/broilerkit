@@ -1,6 +1,6 @@
 import { Observable } from 'rxjs';
 import * as webpack from 'webpack';
-import { clean } from './clean';
+import { clean$ } from './clean';
 import { readConfig$ } from './utils/fs';
 
 export interface ICompileOptions {
@@ -13,9 +13,9 @@ export interface ICompileOptions {
 
 export type IWebpackConfigFactory = (options: ICompileOptions & {devServer: boolean}) => webpack.Configuration;
 
-export function compile(options: ICompileOptions): Observable<webpack.Stats> {
+export function compile$(options: ICompileOptions): Observable<webpack.Stats> {
     return readConfig$<IWebpackConfigFactory>(options.webpackConfigPath)
-        .combineLatest(clean(options.buildDir).last(), (config) => config)
+        .combineLatest(clean$(options.buildDir).last(), (config) => config)
         .map((createWebpackConfig) => createWebpackConfig({...options, devServer: false}))
         .map((config) => webpack(config))
         .map((compiler) => compiler.run.bind(compiler) as typeof compiler.run)
