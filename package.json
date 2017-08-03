@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
   "main": "dist/broiler.js",
+  "types": "dist/broiler.d.ts",
   "files": [
     "dist",
     "res",
