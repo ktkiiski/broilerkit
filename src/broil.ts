@@ -1,7 +1,5 @@
 #! /usr/bin/env node
-import * as path from 'path';
 import { Observable } from 'rxjs';
-import * as YAML from 'yamljs';
 import * as yargs from 'yargs';
 
 import { Broiler } from './broiler';
@@ -48,10 +46,7 @@ yargs
                     )
                     .switchMapTo(
                         broiler.deployFile$(),
-                    )
-                    .do({
-                        complete: () => console.log(`Deployment complete! The web app is now available at https://${config.siteDomain}`),
-                    });
+                    );
                 })
                 .subscribe()
             ;
@@ -61,16 +56,22 @@ yargs
         command: 'compile <stage>',
         aliases: ['build'],
         describe: 'Compile the web app for the given stage.',
-        builder: {
-            stage: {
-                config: true,
-                configParser: (stageName: string) => readStageConfig('./site.config.js', stageName),
-            },
-        },
         handler: (argv) => {
             console.log(`Compiling the app for the stage ${argv.stage}...`);
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).compile$())
+                .subscribe()
+            ;
+        },
+    })
+    .command({
+        command: 'serve',
+        aliases: ['server', 'run'],
+        describe: 'Run the local development server',
+        handler: (argv) => {
+            console.log(`Starting the local development server...`);
+            readAppConfig$(argv)
+                .switchMap((config) => new Broiler(config).serve$())
                 .subscribe()
             ;
         },
@@ -81,24 +82,3 @@ yargs
     .argv
 ;
 /* tslint:enable:no-console */
-
-function readConfigFile(configFile: string): any {
-    const cwd = process.cwd();
-    const configPath = path.resolve(cwd, configFile);
-    if (/\.(js|json)$/.test(configPath)) {
-        return require(configPath);
-    }
-    return YAML.load(configFile);
-}
-
-function readStageConfig(configFile: string, stageName: string) {
-    const {stages, ...siteConfig} = readConfigFile(configFile);
-    const stageConfig = stages[stageName];
-    return {
-        ...siteConfig,
-        ...stageConfig,
-        stage: stageName,
-        baseUrl: `https://${stageConfig.assetsDomain}/`,
-        stackName: `${siteConfig.appName}-${stageName}`,
-    };
-}

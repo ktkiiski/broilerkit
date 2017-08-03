@@ -1,10 +1,11 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { bold, cyan, green, red } from 'chalk';
+import { bold, cyan, green, red, underline } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { Stats as WebpackStats } from 'webpack';
 import { compile } from './compile';
 import { IAppConfig } from './config';
+import { serve$ } from './server';
 import { readFile$, searchFiles$ } from './utils';
 
 import * as _ from 'lodash';
@@ -60,11 +61,23 @@ export class Broiler {
             baseUrl: `https://${this.options.assetsDomain}/`,
             buildDir: this.options.buildDir,
             debug: this.options.debug,
-            devServer: false,
             iconFile: this.options.iconFile,
             webpackConfigPath: this.options.webpackConfigPath,
         })
         .do((stats) => this.log(stats.toString({colors: true})));
+    }
+
+    /**
+     * Runs the local development server.
+     */
+    public serve$(): Observable<any> {
+        return serve$({
+            baseUrl: `http://0.0.0.0:1111/`,
+            buildDir: this.options.buildDir,
+            debug: this.options.debug,
+            iconFile: this.options.iconFile,
+            webpackConfigPath: this.options.webpackConfigPath,
+        }).do((opts) => this.log(`Serving the local development website at ${underline(opts.baseUrl)}`));
     }
 
     /**
@@ -105,7 +118,7 @@ export class Broiler {
             .defaultIfEmpty(null)
             .switchMapTo(this.describeStackWithResources$())
             .do({
-                complete: () => this.log('Stack was deployed successfully!'),
+                complete: () => this.log(`Deployment complete! The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
             })
         ;
     }
