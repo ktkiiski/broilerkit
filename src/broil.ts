@@ -76,6 +76,7 @@ yargs
         },
     })
     .demandCommand(1)
+    .wrap(yargs.terminalWidth())
     .help()
     .argv
 ;
