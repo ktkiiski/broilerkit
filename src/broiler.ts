@@ -3,6 +3,7 @@ import { bold, green, underline } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { Stats as WebpackStats } from 'webpack';
+import { emptyBucket$ } from './aws';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
 import { serve$ } from './server';
@@ -128,27 +129,40 @@ export class Broiler {
                     return Observable.of({} as IStackWithResources).concat(this.createStack$());
                 }
             })
-            .scan<IStackWithResources>((oldStack, newStack) => {
-                const oldResources = oldStack.StackResources || [];
-                const newResources = newStack.StackResources || [];
-                const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
-                for (const resource of alteredResources) {
-                    const status = resource.ResourceStatus;
-                    const colorizedStatus = formatStatus(status);
-                    const statusReason = resource.ResourceStatusReason;
-                    let msg = `Resource ${bold(resource.LogicalResourceId)} => ${colorizedStatus}`;
-                    if (statusReason) {
-                        msg += ` (${statusReason})`;
-                    }
-                    this.log(msg);
-                }
-                return newStack;
-            })
+            .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
             .last()
             .defaultIfEmpty(null)
             .switchMapTo(this.describeStackWithResources$())
             .do({
                 complete: () => this.log(`Deployment complete! The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
+            })
+        ;
+    }
+
+    /**
+     * Removes (undeploys) the stack. It first clears the contents
+     * of the S3 buckets.
+     */
+    public undeployStack$(): Observable<CloudFormation.Stack> {
+        this.log(`Removing the stack ${bold(this.options.stackName)} from region ${bold(this.options.region)}`);
+        return this.getStackOutput$()
+            .switchMap((output) => Observable.merge(
+                emptyBucket$(this.s3, output.AssetsS3BucketName),
+                emptyBucket$(this.s3, output.SiteS3BucketName),
+            ))
+            .do((item) => {
+                if (item.VersionId) {
+                    this.log(`Deleted ${bold(item.Key)} version ${bold(item.VersionId)} from bucket ${item.Bucket}`);
+                } else {
+                    this.log(`Deleted ${bold(item.Key)} from bucket ${item.Bucket}`);
+                }
+            })
+            .count()
+            .do((count) => this.log(`Deleted total of ${count} items`))
+            .switchMapTo(this.describeStackWithResources$().concat(this.deleteStack$()))
+            .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
+            .do({
+                complete: () => this.log('Undeployment complete!'),
             })
         ;
     }
@@ -307,6 +321,18 @@ export class Broiler {
     }
 
     /**
+     * Deletes the existing CloudFormation stack.
+     * This will fail if the stack does not exist.
+     */
+    public deleteStack$() {
+        return sendRequest$(
+            this.cloudFormation.deleteStack({ StackName: this.options.stackName }),
+        )
+        .do(() => this.log('Stack deletion has started.'))
+        .switchMapTo(this.waitForDeletion$(2000));
+    }
+
+    /**
      * Polls the state of the CloudFormation stack until it changes to
      * a complete state, or fails, in which case the observable fails.
      * @returns Observable emitting the stack and its resources until complete
@@ -326,6 +352,29 @@ export class Broiler {
                         subscriber.next(stack);
                         subscriber.complete();
                     }
+                }),
+        );
+    }
+
+    /**
+     * Polls the state of the CloudFormation stack until the stack no longer exists.
+     * @returns Observable emitting the stack and its resources until deleted
+     */
+    public waitForDeletion$(minInterval: number): Observable<IStackWithResources> {
+        return new Observable<IStackWithResources>((subscriber) =>
+            Observable.timer(0, minInterval)
+                .exhaustMap(() => this.describeStackWithResources$())
+                .subscribe((stack) => {
+                    const stackStatus = stack.StackStatus;
+                    if (stackStatus.endsWith('_IN_PROGRESS')) {
+                        subscriber.next(stack);
+                    } else if (stackStatus.endsWith('_FAILED')) {
+                        subscriber.next(stack);
+                        subscriber.error(new Error(`Stack deployment failed: ${stack.StackStatusReason}`));
+                    }
+                }, () => {
+                    // Error occurred: assume that the stack does not exist!
+                    subscriber.complete();
                 }),
         );
     }
@@ -392,6 +441,23 @@ export class Broiler {
     private log(message: any, ...params: any[]) {
         // tslint:disable-next-line:no-console
         console.log(message, ...params);
+    }
+
+    private logStackChanges(oldStack: IStackWithResources, newStack: IStackWithResources): IStackWithResources {
+        const oldResources = oldStack.StackResources || [];
+        const newResources = newStack.StackResources || [];
+        const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
+        for (const resource of alteredResources) {
+            const status = resource.ResourceStatus;
+            const colorizedStatus = formatStatus(status);
+            const statusReason = resource.ResourceStatusReason;
+            let msg = `Resource ${bold(resource.LogicalResourceId)} => ${colorizedStatus}`;
+            if (statusReason) {
+                msg += ` (${statusReason})`;
+            }
+            this.log(msg);
+        }
+        return newStack;
     }
 }
 

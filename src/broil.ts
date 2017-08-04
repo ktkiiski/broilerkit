@@ -48,6 +48,16 @@ yargs
         },
     })
     .command({
+        command: 'undeploy <stage>',
+        describe: 'Deletes the previously deployed web app for the given stage.',
+        handler: (argv: IAppConfigOptions) => {
+            readAppConfig$(argv)
+                .switchMap((config) => new Broiler(config).undeployStack$())
+                .subscribe()
+            ;
+        },
+    })
+    .command({
         command: 'compile <stage>',
         aliases: ['build'],
         describe: 'Compile the web app for the given stage.',
