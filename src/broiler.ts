@@ -68,7 +68,7 @@ export class Broiler {
             this.deployFile$(),
         )
         .do({
-            complete: () => this.log(`Deployment complete! The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
+            complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
         });
     }
 
@@ -94,7 +94,7 @@ export class Broiler {
             .switchMapTo(this.describeStackWithResources$().concat(this.deleteStack$()))
             .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
             .do({
-                complete: () => this.log('Undeployment complete!'),
+                complete: () => this.log(green('Undeployment complete!')),
             })
         ;
     }
