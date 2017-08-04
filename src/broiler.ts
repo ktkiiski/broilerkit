@@ -56,9 +56,54 @@ export class Broiler {
     constructor(private options: IAppConfig) { }
 
     /**
+     * Deploys the web app, creating/updating the stack
+     * and uploading all the files to S3 buckets.
+     */
+    public deploy$() {
+        return Observable.forkJoin(
+            this.deployStack$(),
+            this.compile$(),
+        )
+        .switchMapTo(
+            this.deployFile$(),
+        )
+        .do({
+            complete: () => this.log(`Deployment complete! The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
+        });
+    }
+
+    /**
+     * Removes (undeploys) the stack, first clearing the contents of the S3 buckets
+     */
+    public undeploy$(): Observable<CloudFormation.Stack> {
+        this.log(`Removing the stack ${bold(this.options.stackName)} from region ${bold(this.options.region)}`);
+        return this.getStackOutput$()
+            .switchMap((output) => Observable.merge(
+                emptyBucket$(this.s3, output.AssetsS3BucketName),
+                emptyBucket$(this.s3, output.SiteS3BucketName),
+            ))
+            .do((item) => {
+                if (item.VersionId) {
+                    this.log(`Deleted ${bold(item.Key)} version ${bold(item.VersionId)} from bucket ${item.Bucket}`);
+                } else {
+                    this.log(`Deleted ${bold(item.Key)} from bucket ${item.Bucket}`);
+                }
+            })
+            .count()
+            .do((count) => this.log(`Deleted total of ${count} items`))
+            .switchMapTo(this.describeStackWithResources$().concat(this.deleteStack$()))
+            .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
+            .do({
+                complete: () => this.log('Undeployment complete!'),
+            })
+        ;
+    }
+
+    /**
      * Compiles the assets with Webpack to the build directory.
      */
     public compile$(): Observable<WebpackStats> {
+        this.log(`Compiling the app for the stage ${bold(this.options.stage)}...`);
         return compile$({
             baseUrl: `https://${this.options.assetsDomain}/`,
             buildDir: this.options.buildDir,
@@ -73,6 +118,7 @@ export class Broiler {
      * Runs the local development server.
      */
     public serve$(): Observable<any> {
+        this.log(`Starting the local development server...`);
         return serve$({
             baseUrl: `http://0.0.0.0:1111/`,
             buildDir: this.options.buildDir,
@@ -133,37 +179,6 @@ export class Broiler {
             .last()
             .defaultIfEmpty(null)
             .switchMapTo(this.describeStackWithResources$())
-            .do({
-                complete: () => this.log(`Deployment complete! The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
-            })
-        ;
-    }
-
-    /**
-     * Removes (undeploys) the stack. It first clears the contents
-     * of the S3 buckets.
-     */
-    public undeployStack$(): Observable<CloudFormation.Stack> {
-        this.log(`Removing the stack ${bold(this.options.stackName)} from region ${bold(this.options.region)}`);
-        return this.getStackOutput$()
-            .switchMap((output) => Observable.merge(
-                emptyBucket$(this.s3, output.AssetsS3BucketName),
-                emptyBucket$(this.s3, output.SiteS3BucketName),
-            ))
-            .do((item) => {
-                if (item.VersionId) {
-                    this.log(`Deleted ${bold(item.Key)} version ${bold(item.VersionId)} from bucket ${item.Bucket}`);
-                } else {
-                    this.log(`Deleted ${bold(item.Key)} from bucket ${item.Bucket}`);
-                }
-            })
-            .count()
-            .do((count) => this.log(`Deleted total of ${count} items`))
-            .switchMapTo(this.describeStackWithResources$().concat(this.deleteStack$()))
-            .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
-            .do({
-                complete: () => this.log('Undeployment complete!'),
-            })
         ;
     }
 

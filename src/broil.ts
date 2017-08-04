@@ -1,11 +1,9 @@
 #! /usr/bin/env node
-import { Observable } from 'rxjs';
 import * as yargs from 'yargs';
 
 import { Broiler } from './broiler';
 import { IAppConfigOptions, readAppConfig$ } from './config';
 
-/* tslint:disable:no-console */
 // tslint:disable-next-line:no-unused-expression
 yargs
     // Read the Webpack configuration
@@ -33,16 +31,7 @@ yargs
         describe: 'Deploy the web app for the given stage.',
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
-                .switchMap((config) => {
-                    const broiler = new Broiler(config);
-                    return Observable.forkJoin(
-                        broiler.deployStack$(),
-                        broiler.compile$(),
-                    )
-                    .switchMapTo(
-                        broiler.deployFile$(),
-                    );
-                })
+                .switchMap((config) => new Broiler(config).deploy$())
                 .subscribe()
             ;
         },
@@ -52,7 +41,7 @@ yargs
         describe: 'Deletes the previously deployed web app for the given stage.',
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
-                .switchMap((config) => new Broiler(config).undeployStack$())
+                .switchMap((config) => new Broiler(config).undeploy$())
                 .subscribe()
             ;
         },
@@ -62,7 +51,6 @@ yargs
         aliases: ['build'],
         describe: 'Compile the web app for the given stage.',
         handler: (argv) => {
-            console.log(`Compiling the app for the stage ${argv.stage}...`);
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).compile$())
                 .subscribe()
@@ -74,8 +62,8 @@ yargs
         describe: 'Describes the deployed resources of the given stage.',
         handler: (argv) => {
             readAppConfig$(argv)
-            .switchMap((config) => new Broiler(config).printStack$())
-            .subscribe()
+                .switchMap((config) => new Broiler(config).printStack$())
+                .subscribe()
             ;
         },
     })
@@ -83,7 +71,6 @@ yargs
         command: 'serve',
         describe: 'Run the local development server',
         handler: (argv) => {
-            console.log(`Starting the local development server...`);
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).serve$())
                 .subscribe()
@@ -95,4 +82,3 @@ yargs
     .help()
     .argv
 ;
-/* tslint:enable:no-console */
