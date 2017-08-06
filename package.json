@@ -21,7 +21,7 @@
     "clean": "rm -rf ./dist",
     "clean-build": "npm run clean && npm run compile",
     "compile": "tsc -p . && chmod +x ./dist/broil.js",
-    "prepublish": "npm run clean-build",
+    "prepare": "npm run clean-build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
