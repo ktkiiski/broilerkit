@@ -6,7 +6,6 @@ export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
     tsconfigPath: string;
-    webpackConfigPath: string;
 }
 
 export interface IAppConfig extends IAppConfigOptions {
