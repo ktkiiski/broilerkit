@@ -26,10 +26,11 @@ export interface IWebpackConfigOptions extends IAppCompileOptions {
 export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {baseUrl, devServer, debug, iconFile, sourceDir, buildDir, pages} = config;
     // Resolve modules, source, build and static paths
-    const sourceDirPath = path.resolve(process.cwd(), sourceDir);
+    const projectDirPath = process.cwd();
+    const sourceDirPath = path.resolve(projectDirPath, sourceDir);
     const scriptPaths = _.union(..._.map(pages, (page) => page.scripts));
-    const buildDirPath = path.resolve(process.cwd(), buildDir);
-    const modulesDirPath = path.resolve(process.cwd(), 'node_modules');
+    const buildDirPath = path.resolve(projectDirPath, buildDir);
+    const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, '../node_modules');
 
     const gitCommitHashCmd = 'git rev-parse HEAD';
@@ -191,6 +192,10 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
                 {
                     test: /\.tsx?$/,
                     loader: 'awesome-typescript-loader',
+                    options: {
+                        // Explicitly expect the tsconfig.json to be located at the project root
+                        configFileName: path.resolve(projectDirPath, './tsconfig.json'),
+                    },
                 },
                 // Extract CSS stylesheets from the main bundle
                 {
