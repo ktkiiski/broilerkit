@@ -63,3 +63,11 @@ export function formatS3KeyName(filename: string): string {
     const basename = path.basename(filename, extension);
     return path.join(dirname, `${basename}${extension}`);
 }
+
+export function isDoesNotExistsError(error: Error): boolean {
+    return !!error.message && error.message.indexOf('does not exist') >= 0;
+}
+
+export function isUpToDateError(error: Error): boolean {
+    return !!error.message && error.message.indexOf('No updates are to be performed') >= 0;
+}

@@ -8,6 +8,7 @@ import { compile$ } from './compile';
 import { IAppConfig } from './config';
 import { serve$ } from './server';
 import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './utils/aws';
+import { isDoesNotExistsError, isUpToDateError } from './utils/aws';
 import { readFile$, searchFiles$ } from './utils/fs';
 
 import * as _ from 'lodash';
@@ -262,11 +263,11 @@ export class Broiler {
             .mapTo(true)
             .catch<boolean, boolean>((error: Error) => {
                 // Check if the message indicates that the stack was not found
-                if (error.message && error.message.indexOf('does not exist') >= 0) {
+                if (isDoesNotExistsError(error)) {
                     return Observable.of(false);
                 }
                 // Pass the error through
-                return Observable.throw(error);
+                throw error;
             })
         ;
     }
@@ -313,13 +314,13 @@ export class Broiler {
                     ],
                     Parameters: this.getStackParameters(),
                 }),
-            ).catch<CloudFormation.UpdateStackOutput, CloudFormation.UpdateStackOutput>((error: Error) => {
-                if (error.message && error.message.indexOf('No updates are to be performed') >= 0) {
+            ).catch((error: Error) => {
+                if (isUpToDateError(error)) {
                     // Let's not consider this an error. Just do not emit anything.
                     this.log('Stack is up-to-date! No updates are to be performed.');
-                    return Observable.empty();
+                    return Observable.empty() as Observable<CloudFormation.UpdateStackOutput>;
                 }
-                return Observable.throw(error);
+                throw error;
             }))
             .do(() => this.log('Stack update has started.'))
             .switchMapTo(this.waitForDeployment$(2000))
