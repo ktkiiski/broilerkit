@@ -112,15 +112,15 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
                     // Create Apple startup images. `boolean` or `{ offset, background }`
                     appleStartup: !debug,
                     // Create Opera Coast icon with offset 25%. `boolean` or `{ offset, background }`
-                    coast: !debug,
+                    coast: false,
                     // Create regular favicons. `boolean`
                     favicons: true,
                     // Create Firefox OS icons. `boolean` or `{ offset, background }`
-                    firefox: !debug,
+                    firefox: false,
                     // Create Windows 8 tile icons. `boolean` or `{ background }`
                     windows: !debug,
                     // Create Yandex browser icon. `boolean` or `{ background }`
-                    yandex: !debug,
+                    yandex: false,
                 },
             }),
         );
