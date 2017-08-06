@@ -28,7 +28,7 @@ yargs
     .command({
         command: 'init',
         aliases: ['update'],
-        describe: 'Initializes a new project using the Broilerplate template, or updates the project up-to-date with the latest changes to the template.',
+        describe: 'Initializes/updates your project to use the Broilerplate template.',
         handler: () => {
             execute$('git pull https://github.com/ktkiiski/broilerplate.git master --allow-unrelated-histories')
                 .subscribe()
