@@ -3,6 +3,7 @@ import * as yargs from 'yargs';
 
 import { Broiler } from './broiler';
 import { IAppConfigOptions, readAppConfig$ } from './config';
+import { execute$ } from './exec';
 
 // tslint:disable-next-line:no-unused-expression
 yargs
@@ -26,6 +27,16 @@ yargs
     .describe('debug', 'Compile assets for debugging')
 
     /**** Commands ****/
+    .command({
+        command: 'init',
+        aliases: ['update'],
+        describe: 'Initializes a new project using the Broilerplate template, or updates the project up-to-date with the latest changes to the template.',
+        handler: () => {
+            execute$('git pull https://github.com/ktkiiski/broilerplate.git master --allow-unrelated-histories')
+                .subscribe()
+            ;
+        },
+    })
     .command({
         command: 'deploy <stage>',
         describe: 'Deploy the web app for the given stage.',

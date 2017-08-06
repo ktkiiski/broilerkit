@@ -1,9 +1,9 @@
-import * as childProcess from 'child_process';
 import * as _ from 'lodash';
 import * as path from 'path';
 import * as webpack from 'webpack';
 
 import { IAppCompileOptions } from './config';
+import { executeSync } from './exec';
 
 // Webpack plugins
 const ExtractTextPlugin = require('extract-text-webpack-plugin');
@@ -33,12 +33,9 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
     const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, '../node_modules');
 
-    const gitCommitHashCmd = 'git rev-parse HEAD';
-    const gitCommitHash = childProcess.execSync(gitCommitHashCmd).toString().trim();
-    const gitVersionCmd = 'git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"';
-    const gitVersion = childProcess.execSync(gitVersionCmd).toString().trim();
-    const gitBranchCmd = 'git rev-parse --abbrev-ref HEAD';
-    const gitBranch = childProcess.execSync(gitBranchCmd).toString().trim();
+    const gitCommitHash = executeSync('git rev-parse HEAD');
+    const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
+    const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
         // Extract stylesheets to separate files in production
