@@ -18,15 +18,11 @@ export interface IWebpackConfigOptions extends IAppCompileOptions {
  * Creates the Webpack 2 configuration according to the
  * defined environment. The options are documented at
  * https://webpack.js.org/configuration/
- *
- * --env.baseUrl : The base URL for the static assets. Must end with '/'
- * --env.devServer : Include the dev server host to the public URLs.
- * --env.debug : Disable compression and make the bundle easier to debug.
  */
 export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
-    const {baseUrl, devServer, debug, iconFile, sourceDir, buildDir, pages} = config;
+    const {baseUrl, devServer, debug, iconFile, sourceDir, buildDir, pages, projectRoot} = config;
     // Resolve modules, source, build and static paths
-    const projectDirPath = process.cwd();
+    const projectDirPath = path.resolve(process.cwd(), projectRoot);
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
     const scriptPaths = _.union(..._.map(pages, (page) => page.scripts));
     const buildDirPath = path.resolve(projectDirPath, buildDir);
@@ -142,7 +138,7 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
         ),
 
         output: {
-            // Output files are place to this folder
+            // Output files are placed to this folder
             path: buildDirPath,
             // The file name template for the entry chunks
             filename: debug ? '[name].js' : '[name].[chunkhash].js',
