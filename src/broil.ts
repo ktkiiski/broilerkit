@@ -89,5 +89,6 @@ yargs
     .demandCommand(1)
     .wrap(Math.min(yargs.terminalWidth(), 140))
     .help()
+    .version()
     .argv
 ;
