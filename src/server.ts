@@ -2,22 +2,21 @@ import { Observable } from 'rxjs';
 import { URL } from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
-import { ICompileOptions, IWebpackConfigFactory } from './compile';
-import { readConfig$ } from './utils/fs';
+import { IAppCompileOptions } from './config';
+import { getWebpackConfig } from './webpack';
 
 /**
  * Runs the Webpack development server.
  */
-export function serve$(options: ICompileOptions): Observable<ICompileOptions> {
+export function serve$(options: IAppCompileOptions): Observable<IAppCompileOptions> {
     const baseUrl = options.baseUrl;
     const baseUrlObj = new URL(baseUrl);
     const serverHostName = baseUrlObj.hostname;
     const serverPort = parseInt(baseUrlObj.port, 10);
     // TODO: Is this configuration for the inline livereloading still required?
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
-    return readConfig$<IWebpackConfigFactory>(options.webpackConfigPath)
-        .map((createWebpackConfig) => createWebpackConfig({...options, devServer: true}))
-        .map((config) => webpack(config))
+    return Observable.of({...options, devServer: true})
+        .map((config) => webpack(getWebpackConfig(config)))
         .map((compiler) => new WebpackDevServer(compiler, {
             stats: {
                 colors: true,

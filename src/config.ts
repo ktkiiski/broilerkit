@@ -14,9 +14,19 @@ export interface IAppConfig extends IAppConfigOptions {
     buildDir: string;
     debug: boolean;
     iconFile: string;
+    pages: Array<{
+        title: string;
+        file: string;
+        scripts: string[];
+    }>;
     region: string;
     siteDomain: string;
+    sourceDir: string;
     stackName: string;
+}
+
+export interface IAppCompileOptions extends IAppConfig {
+    baseUrl: string;
 }
 
 export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfig> {

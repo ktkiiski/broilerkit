@@ -1,22 +1,12 @@
 import { Observable } from 'rxjs';
 import * as webpack from 'webpack';
 import { clean$ } from './clean';
-import { readConfig$ } from './utils/fs';
+import { IAppCompileOptions } from './config';
+import { getWebpackConfig } from './webpack';
 
-export interface ICompileOptions {
-    buildDir: string;
-    webpackConfigPath: string;
-    baseUrl: string;
-    iconFile: string;
-    debug: boolean;
-}
-
-export type IWebpackConfigFactory = (options: ICompileOptions & {devServer: boolean}) => webpack.Configuration;
-
-export function compile$(options: ICompileOptions): Observable<webpack.Stats> {
-    return readConfig$<IWebpackConfigFactory>(options.webpackConfigPath)
-        .combineLatest(clean$(options.buildDir).last(), (config) => config)
-        .map((createWebpackConfig) => createWebpackConfig({...options, devServer: false}))
+export function compile$(options: IAppCompileOptions): Observable<webpack.Stats> {
+    return clean$(options.buildDir)
+        .map(() => getWebpackConfig({...options, devServer: false}))
         .map((config) => webpack(config))
         .map((compiler) => compiler.run.bind(compiler) as typeof compiler.run)
         .switchMap((run) => Observable.bindNodeCallback(run)())

@@ -104,14 +104,9 @@ export class Broiler {
      */
     public compile$(): Observable<WebpackStats> {
         this.log(`Compiling the app for the stage ${bold(this.options.stage)}...`);
-        return compile$({
-            baseUrl: `https://${this.options.assetsDomain}/`,
-            buildDir: this.options.buildDir,
-            debug: this.options.debug,
-            iconFile: this.options.iconFile,
-            webpackConfigPath: this.options.webpackConfigPath,
-        })
-        .do((stats) => this.log(stats.toString({colors: true})));
+        return compile$({...this.options, baseUrl: `https://${this.options.assetsDomain}/`})
+            .do((stats) => this.log(stats.toString({colors: true})))
+        ;
     }
 
     /**
@@ -119,13 +114,9 @@ export class Broiler {
      */
     public serve$(): Observable<any> {
         this.log(`Starting the local development server...`);
-        return serve$({
-            baseUrl: `http://0.0.0.0:1111/`,
-            buildDir: this.options.buildDir,
-            debug: this.options.debug,
-            iconFile: this.options.iconFile,
-            webpackConfigPath: this.options.webpackConfigPath,
-        }).do((opts) => this.log(`Serving the local development website at ${underline(opts.baseUrl)}`));
+        return serve$({...this.options, baseUrl: `http://0.0.0.0:1111/`})
+            .do((opts) => this.log(`Serving the local development website at ${underline(opts.baseUrl)}`))
+        ;
     }
 
     /**
