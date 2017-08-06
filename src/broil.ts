@@ -10,11 +10,6 @@ import 'ts-node/register';
 
 // tslint:disable-next-line:no-unused-expression
 yargs
-    // Read the TypeScript configuration.
-    .describe('tsconfigPath', 'Path to the TypeScript configuration file')
-    .default('tsconfigPath', './tsconfig.json')
-    .alias('tsconfigPath', 'tsconfig')
-    .normalize('tsconfigPath')
     // Read the app configuration
     .describe('appConfigPath', 'Path to the app configuration')
     .default('appConfigPath', './app.config.ts')

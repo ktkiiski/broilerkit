@@ -6,7 +6,6 @@ import { readConfig$ } from './utils/fs';
 export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
-    tsconfigPath: string;
 }
 
 export interface IAppConfig extends IAppConfigOptions {
