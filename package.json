@@ -10,7 +10,8 @@
   "files": [
     "dist",
     "res",
-    "src"
+    "src",
+    "types"
   ],
   "bin": {
     "broil": "./dist/broil.js"
