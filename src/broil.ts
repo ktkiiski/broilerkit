@@ -5,6 +5,9 @@ import { Broiler } from './broiler';
 import { IAppConfigOptions, readAppConfig$ } from './config';
 import { execute$ } from './exec';
 
+// Allow loading TypeScript (.ts) files using `require()` commands
+import 'ts-node/register';
+
 // tslint:disable-next-line:no-unused-expression
 yargs
     // Read the Webpack configuration
