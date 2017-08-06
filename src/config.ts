@@ -1,4 +1,5 @@
 import { Observable } from 'rxjs';
+import * as semver from 'semver';
 import { readConfig$ } from './utils/fs';
 
 export interface IAppConfigOptions {
@@ -10,6 +11,7 @@ export interface IAppConfigOptions {
 
 export interface IAppConfig extends IAppConfigOptions {
     appName: string;
+    broilerKitVersion: string;
     assetsDomain: string;
     buildDir: string;
     debug: boolean;
@@ -30,6 +32,8 @@ export interface IAppCompileOptions extends IAppConfig {
 }
 
 export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfig> {
+    // Read the version of the BroikerKit itself
+    const { version } = require('../package.json');
     const tsconfig$ = readConfig$<any>(options.tsconfigPath);
     const appConfig$ = readConfig$<any>(options.appConfigPath);
     const appStageConfig$ = appConfig$.map((appConfig) => {
@@ -50,5 +54,11 @@ export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfi
             ...appStageConfig,
             buildDir: tsconfig.compilerOptions.outDir,
         }),
-    );
+    ).map((config) => {
+        const requiredVersion = config.broilerKitVersion;
+        if (semver.satisfies(version, requiredVersion)) {
+            return config;
+        }
+        throw new Error(`The app requires BroilerKit version ${requiredVersion} but the currently used version is ${version}!`);
+    });
 }
