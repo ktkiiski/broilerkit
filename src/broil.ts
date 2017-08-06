@@ -22,7 +22,7 @@ yargs
     .normalize('tsconfigPath')
     // Read the app configuration
     .describe('appConfigPath', 'Path to the app configuration')
-    .default('appConfigPath', './site.config.js')
+    .default('appConfigPath', './app.config.ts')
     .alias('appConfigPath', 'appConfig')
     .normalize('appConfigPath')
 
