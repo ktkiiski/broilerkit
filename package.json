@@ -48,6 +48,7 @@
     "@types/del": "^2.2.32",
     "@types/lodash": "^4.14.71",
     "@types/mime": "^1.3.1",
+    "@types/pug": "^2.0.4",
     "@types/semver": "^5.3.33",
     "@types/vinyl-fs": "^2.4.5",
     "@types/webpack": "^3.0.5",
