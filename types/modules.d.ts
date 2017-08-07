@@ -1,5 +1,3 @@
-import { compileTemplate } from 'pug';
-
 /**
  * When importing a PNG file, the imported value is the URL of the image.
  */
@@ -37,6 +35,6 @@ declare module "*.tmpl" {
  * When importing a PUG file, the imported value is the template function.
  */
 declare module "*.pug" {
-    const compiler: compileTemplate;
+    const compiler: (locals?: {[propName: string]: any}) => string;
     export = compiler;
 }
