@@ -6,6 +6,7 @@ import { readConfig$ } from './utils/fs';
 export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
+    debug: boolean;
 }
 
 export interface IAppConfig extends IAppConfigOptions {
@@ -34,7 +35,7 @@ export interface IAppCompileOptions extends IAppConfig {
 export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfig> {
     // Read the version of the BroikerKit itself
     const { version } = require('../package.json');
-    const { stage, appConfigPath } = options;
+    const { stage, appConfigPath, debug } = options;
     const appConfig$ = readConfig$<any>(appConfigPath);
     const projectRoot = path.dirname(appConfigPath);
     return appConfig$
@@ -46,6 +47,7 @@ export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfi
             return {
                 ...siteConfig,
                 ...stageConfig,
+                debug,
                 projectRoot,
                 buildDir,
                 stage,

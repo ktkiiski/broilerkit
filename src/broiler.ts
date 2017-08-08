@@ -1,5 +1,5 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { bold, green, underline } from 'chalk';
+import { bold, cyan, green, underline, yellow } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
 import { Stats as WebpackStats } from 'webpack';
@@ -104,7 +104,7 @@ export class Broiler {
      * Compiles the assets with Webpack to the build directory.
      */
     public compile$(): Observable<WebpackStats> {
-        this.log(`Compiling the app for the stage ${bold(this.options.stage)}...`);
+        this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app for the stage ${bold(this.options.stage)}...`);
         return compile$({...this.options, baseUrl: `https://${this.options.assetsDomain}/`})
             .do((stats) => this.log(stats.toString({colors: true})))
         ;

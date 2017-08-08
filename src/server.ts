@@ -15,7 +15,7 @@ export function serve$(options: IAppCompileOptions): Observable<IAppCompileOptio
     const serverPort = parseInt(baseUrlObj.port, 10);
     // TODO: Is this configuration for the inline livereloading still required?
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
-    return Observable.of({...options, devServer: true})
+    return Observable.of({...options, debug: true, devServer: true})
         .map((config) => webpack(getWebpackConfig(config)))
         .map((compiler) => new WebpackDevServer(compiler, {
             stats: {
