@@ -69,6 +69,11 @@ export class Broiler {
         .switchMapTo(
             this.deployFile$(),
         )
+        .concat(
+            this.getStackOutput$().switchMap(
+                (output) => this.invalidateCloudFront$(output.SiteCloudFrontDistributionId),
+            ),
+        )
         .do({
             complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.options.siteOrigin}/`)}`),
         });
@@ -431,6 +436,7 @@ export class Broiler {
      * @param items Item patterns to invalidate
      */
     public invalidateCloudFront$(distributionId: string, items = ['/*']) {
+        this.log(`Invalidating CloudFront distribution ${distributionId} items`);
         return sendRequest$(
             this.cloudFront.createInvalidation({
                 DistributionId: distributionId,
@@ -442,7 +448,7 @@ export class Broiler {
                     },
                 },
             }),
-        ).do(() => this.log(`Invalidated CloudFront distribution ${distributionId} items:`, items));
+        ).do(() => this.log(`Successfully created CloudFront distribution invalidation! It should take effect shortly!`));
     }
 
     private readTemplate$() {
