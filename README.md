@@ -27,6 +27,13 @@ The command line interface includes commands to deploy your production-ready web
 - Host static assets on separate cookieless domain with infinite caching, for maximum performance scoring and reliability
 - Separate **stages** for your releases, e.g. the production version (`prod`) and the development version (`dev`)
 
+## What do I need?
+
+To use this utility, you need the following:
+
+- Your own **domain** for your web app. You can buy one, e.g, from [GoDaddy](https://www.godaddy.com/domains).
+- An [Amazon Web Services](https://aws.amazon.com/) account. You can get started with [AWS Free Tier](https://aws.amazon.com/free/).
+
 ## Installing
 
 To install the command line utility:
@@ -94,7 +101,7 @@ aws configure
 
 #### Create a Hosted Zone
 
-NOTE: You need to [create a Hosted Zone for Amazon Route53](http://docs.aws.amazon.com/AmazonS3/latest/dev/website-hosting-custom-domain-walkthrough.html#root-domain-walkthrough-switch-to-route53-as-dnsprovider) first for your custom domain first! Also, if you are using other domain name provider, such as GoDaddy, then you need to set up the DNS records for your domain.
+NOTE: You need to [create a Hosted Zone for Amazon Route53](http://docs.aws.amazon.com/AmazonS3/latest/dev/website-hosting-custom-domain-walkthrough.html#root-domain-walkthrough-switch-to-route53-as-dnsprovider) for your custom domain first! Also, if you are using other domain name provider, such as GoDaddy, then you need to set up the DNS records for your domain.
 
 #### Configure stages
 
