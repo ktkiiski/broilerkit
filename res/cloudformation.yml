@@ -22,7 +22,8 @@ Resources:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub "${ServiceName}-website"
+      BucketName:
+        Fn::Sub: "${ServiceName}-website"
       WebsiteConfiguration:
         IndexDocument: index.html
   # S3 bucket for storing the static asset files
@@ -30,14 +31,16 @@ Resources:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub "${ServiceName}-assets"
+      BucketName:
+        Fn::Sub: "${ServiceName}-assets"
       WebsiteConfiguration:
         IndexDocument: index.html
   # Make website HTML files public for everyone
   SiteS3BucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
     Properties:
-      Bucket: !Ref SiteS3Bucket
+      Bucket:
+        Ref: SiteS3Bucket
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -45,12 +48,14 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: 's3:GetObject'
-            Resource: !Sub "${SiteS3Bucket.Arn}/*"
+            Resource:
+              Fn::Sub: "${SiteS3Bucket.Arn}/*"
   # Make static asset files public for everyone
   AssetsS3BucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
     Properties:
-      Bucket: !Ref AssetsS3Bucket
+      Bucket:
+        Ref: AssetsS3Bucket
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -58,25 +63,27 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: 's3:GetObject'
-            Resource: !Sub "${AssetsS3Bucket.Arn}/*"
+            Resource:
+              Fn::Sub: "${AssetsS3Bucket.Arn}/*"
   # CloudFront distribution for the static asset files cached forever
   AssetsCloudFrontDistribution:
     Type: "AWS::CloudFront::Distribution"
     Properties:
       DistributionConfig:
         Aliases:
-          - !Ref AssetsDomainName
+          - Ref: AssetsDomainName
         Origins:
           - DomainName:
               Fn::Select:
                 - 2
                 - Fn::Split:
                   - "/"
-                  - !GetAtt AssetsS3Bucket.WebsiteURL
+                  - Fn::GetAtt: AssetsS3Bucket.WebsiteURL
             Id: AssetsS3BucketOrigin
             CustomOriginConfig:
               OriginProtocolPolicy: "http-only"
-        Comment: !Sub "${ServiceName} static assets CloudFront distribution (cookieless)"
+        Comment:
+          Fn::Sub: "${ServiceName} static assets CloudFront distribution (cookieless)"
         Enabled: true
         DefaultCacheBehavior:
           Compress: true
@@ -85,7 +92,8 @@ Resources:
           TargetOriginId: AssetsS3BucketOrigin
           ViewerProtocolPolicy: "redirect-to-https"
         ViewerCertificate:
-          AcmCertificateArn: !Ref DomainCertificate
+          AcmCertificateArn:
+            Ref: DomainCertificate
           SslSupportMethod: "sni-only"
   # CloudFront distribution for the website HTML files
   SiteCloudFrontDistribution:
@@ -93,18 +101,19 @@ Resources:
     Properties:
       DistributionConfig:
         Aliases:
-          - !Ref SiteDomainName
+          - Ref: SiteDomainName
         Origins:
           - DomainName:
               Fn::Select:
                 - 2
                 - Fn::Split:
                   - "/"
-                  - !GetAtt SiteS3Bucket.WebsiteURL
+                  - Fn::GetAtt: SiteS3Bucket.WebsiteURL
             Id: SiteS3BucketOrigin
             CustomOriginConfig:
               OriginProtocolPolicy: "http-only"
-        Comment: !Sub "${ServiceName} website CloudFront distribution"
+        Comment:
+          Fn::Sub: "${ServiceName} website CloudFront distribution"
         Enabled: true
         DefaultCacheBehavior:
           Compress: true
@@ -113,45 +122,57 @@ Resources:
           TargetOriginId: SiteS3BucketOrigin
           ViewerProtocolPolicy: "redirect-to-https"
         ViewerCertificate:
-          AcmCertificateArn: !Ref DomainCertificate
+          AcmCertificateArn:
+            Ref: DomainCertificate
           SslSupportMethod: "sni-only"
   # DNS domain name for the host of the static asset files
   AssetsDNS:
     Type: "AWS::Route53::RecordSetGroup"
     Properties:
-      HostedZoneName: !Sub "${AssetsHostedZoneName}."
+      HostedZoneName:
+        Fn::Sub: "${AssetsHostedZoneName}."
       Comment: "Domain for the CloudFront distribution of the static asset files"
       RecordSets:
-        - Name: !Sub "${AssetsDomainName}."
+        - Name:
+            Fn::Sub: "${AssetsDomainName}."
           Type: A
           AliasTarget:
             HostedZoneId: Z2FDTNDATAQYW2
-            DNSName: !GetAtt AssetsCloudFrontDistribution.DomainName
+            DNSName:
+              Fn::GetAtt: AssetsCloudFrontDistribution.DomainName
   # DNS domain name for the host of the website HTML files
   SiteDNS:
     Type: "AWS::Route53::RecordSetGroup"
     Properties:
-      HostedZoneName: !Sub "${SiteHostedZoneName}."
+      HostedZoneName:
+        Fn::Sub: "${SiteHostedZoneName}."
       Comment: "Domain for the CloudFront distribution of the HTML website files"
       RecordSets:
-        - Name: !Sub "${SiteDomainName}."
+        - Name:
+            Fn::Sub: "${SiteDomainName}."
           Type: A
           AliasTarget:
             HostedZoneId: Z2FDTNDATAQYW2
-            DNSName: !GetAtt SiteCloudFrontDistribution.DomainName
+            DNSName:
+              Fn::GetAtt: SiteCloudFrontDistribution.DomainName
   # Certificate for the domains
   DomainCertificate:
     Type: "AWS::CertificateManager::Certificate"
     Properties:
-      DomainName: !Ref SiteDomainName
+      DomainName:
+        Ref: SiteDomainName
       SubjectAlternativeNames:
-        - !Ref AssetsDomainName
+        - Ref: AssetsDomainName
 Outputs:
   SiteS3BucketName:
-    Value: !Ref SiteS3Bucket
+    Value:
+      Ref: SiteS3Bucket
   AssetsS3BucketName:
-    Value: !Ref AssetsS3Bucket
+    Value:
+      Ref: AssetsS3Bucket
   SiteCloudFrontDistributionId:
-    Value: !Ref SiteCloudFrontDistribution
+    Value:
+      Ref: SiteCloudFrontDistribution
   AssetsCloudFrontDistributionId:
-    Value: !Ref AssetsCloudFrontDistribution
+    Value:
+      Ref: AssetsCloudFrontDistribution
