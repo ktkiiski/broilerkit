@@ -1,12 +1,23 @@
 export interface IStageConfig {
     /**
-     * Domain where all the indefinitely-cached static assets are hosted.
+     * The URL origin where all the indefinitely-cached static assets are hosted.
+     * This must contain the protocol, hostname and optionally any port. The origin
+     * must NOT end with a trailing slash.
+     *
+     * Examples:
+     * - "https://static.example.com"
+     * - "http://localhost:8080"
      */
-    assetsDomain: string;
+    assetsOrigin: string;
     /**
-     * Domain where the HTML pages are hosted.
+     * The URL origin where the HTML pages are hosted. This must contain the protocol,
+     * hostname and optionally any port. The origin must NOT end with a trailing slash.
+     *
+     * Examples:
+     * - "https://www.example.com"
+     * - "http://localhost:8080"
      */
-    siteDomain: string;
+    siteOrigin: string;
 }
 
 export interface IWebPageConfig {

@@ -72,8 +72,9 @@ yargs
         },
     })
     .command({
-        command: 'serve',
+        command: 'serve [stage]',
         describe: 'Run the local development server',
+        builder: (cmdYargs) => cmdYargs.default('stage', 'local'),
         handler: (argv) => {
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).serve$())

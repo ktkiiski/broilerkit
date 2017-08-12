@@ -12,7 +12,7 @@ export interface IAppConfigOptions {
 export interface IAppConfig extends IAppConfigOptions {
     appName: string;
     broilerKitVersion: string;
-    assetsDomain: string;
+    assetsOrigin: string;
     buildDir: string;
     debug: boolean;
     iconFile: string;
@@ -23,13 +23,9 @@ export interface IAppConfig extends IAppConfigOptions {
     }>;
     projectRoot: string;
     region: string;
-    siteDomain: string;
+    siteOrigin: string;
     sourceDir: string;
     stackName: string;
-}
-
-export interface IAppCompileOptions extends IAppConfig {
-    baseUrl: string;
 }
 
 export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfig> {

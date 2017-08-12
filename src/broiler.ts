@@ -2,6 +2,7 @@ import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
 import { fromPairs, map } from 'lodash';
 import { Observable } from 'rxjs';
+import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
 import { emptyBucket$ } from './aws';
 import { compile$ } from './compile';
@@ -69,7 +70,7 @@ export class Broiler {
             this.deployFile$(),
         )
         .do({
-            complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`https://${this.options.siteDomain}`)}`),
+            complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.options.siteOrigin}/`)}`),
         });
     }
 
@@ -105,7 +106,7 @@ export class Broiler {
      */
     public compile$(): Observable<WebpackStats> {
         this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app for the stage ${bold(this.options.stage)}...`);
-        return compile$({...this.options, baseUrl: `https://${this.options.assetsDomain}/`})
+        return compile$(this.options)
             .do((stats) => this.log(stats.toString({colors: true})))
         ;
     }
@@ -115,8 +116,8 @@ export class Broiler {
      */
     public serve$(): Observable<any> {
         this.log(`Starting the local development server...`);
-        return serve$({...this.options, baseUrl: `http://0.0.0.0:1111/`})
-            .do((opts) => this.log(`Serving the local development website at ${underline(opts.baseUrl)}`))
+        return serve$(this.options)
+            .do((opts) => this.log(`Serving the local development website at ${underline(`${opts.siteOrigin}/`)}`))
         ;
     }
 
@@ -193,12 +194,16 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public getStackParameters() {
+        const siteOriginUrl = new URL(this.options.siteOrigin);
+        const siteDomain = siteOriginUrl.hostname;
+        const assetsOriginUrl = new URL(this.options.assetsOrigin);
+        const assetsDomain = assetsOriginUrl.hostname;
         return convertStackParameters({
             ServiceName: this.options.stackName,
-            SiteDomainName: this.options.siteDomain,
-            SiteHostedZoneName: getHostedZone(this.options.siteDomain),
-            AssetsDomainName: this.options.assetsDomain,
-            AssetsHostedZoneName: getHostedZone(this.options.assetsDomain),
+            SiteDomainName: siteDomain,
+            SiteHostedZoneName: getHostedZone(siteDomain),
+            AssetsDomainName: assetsDomain,
+            AssetsHostedZoneName: getHostedZone(assetsDomain),
         });
     }
 
