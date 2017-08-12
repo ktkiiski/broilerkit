@@ -21,6 +21,7 @@ export interface IWebpackConfigOptions extends IAppConfig {
  */
 export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRoot} = config;
+    const {assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const projectDirPath = path.resolve(process.cwd(), projectRoot);
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
@@ -60,6 +61,10 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
             'process.env': {
                 NODE_ENV: JSON.stringify(debug ? 'development' : 'production'),
             },
+            // Static assets URL origin
+            '__ASSETS_ORIGIN__': JSON.stringify(assetsOrigin),
+            // Web site URL origin
+            '__SITE_ORIGIN__': JSON.stringify(siteOrigin),
             // Allow using the GIT commit hash ID
             '__COMMIT_HASH__': JSON.stringify(gitCommitHash),
             // Allow using the GIT version
@@ -143,7 +148,7 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
             // The file name template for the entry chunks
             filename: debug ? '[name].js' : '[name].[chunkhash].js',
             // The URL to the output directory resolved relative to the HTML page
-            publicPath: `${config.assetsOrigin}/`,
+            publicPath: `${assetsOrigin}/`,
             // The name of the exported library, e.g. the global variable name
             library: 'app',
             // How the library is exported? E.g. 'var', 'this'

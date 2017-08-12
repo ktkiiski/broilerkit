@@ -1,15 +1,27 @@
 /**
+ * The origin of the static asset URLs, not containing
+ * the trailing slash. Example: "https://static.example.com"
+ */
+declare const __ASSETS_ORIGIN__: string;
+
+/**
+ * The origin of the web site URLs, not containing
+ * the trailing slash. Example: "https://www.example.com"
+ */
+declare const __SITE_ORIGIN__: string;
+
+/**
  * GIT commit hash of the web app build.
  */
-declare var __COMMIT_HASH__: string;
+declare const __COMMIT_HASH__: string;
 
 /**
  * The version of the app as described by
  * the GIT command `git describe`.
  */
-declare var __VERSION__: string;
+declare const __VERSION__: string;
 
 /**
  * The GIT branch that was used to build the app.
  */
-declare var __BRANCH__: string;
+declare const __BRANCH__: string;
