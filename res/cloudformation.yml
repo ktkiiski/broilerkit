@@ -1,9 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Stack for the deployed application
 Parameters:
-  # Name of the service, including the stage
-  ServiceName:
-    Type: String
   # Domain for the website HTML files
   SiteDomainName:
     Type: String
@@ -23,7 +20,7 @@ Resources:
     DeletionPolicy: Delete
     Properties:
       BucketName:
-        Fn::Sub: "${ServiceName}-website"
+        Fn::Sub: "${AWS::StackName}-website"
       WebsiteConfiguration:
         IndexDocument: index.html
   # S3 bucket for storing the static asset files
@@ -32,7 +29,7 @@ Resources:
     DeletionPolicy: Delete
     Properties:
       BucketName:
-        Fn::Sub: "${ServiceName}-assets"
+        Fn::Sub: "${AWS::StackName}-assets"
       WebsiteConfiguration:
         IndexDocument: index.html
   # Make website HTML files public for everyone
@@ -83,7 +80,7 @@ Resources:
             CustomOriginConfig:
               OriginProtocolPolicy: "http-only"
         Comment:
-          Fn::Sub: "${ServiceName} static assets CloudFront distribution (cookieless)"
+          Fn::Sub: "${AWS::StackName} static assets CloudFront distribution (cookieless)"
         Enabled: true
         DefaultCacheBehavior:
           Compress: true
@@ -113,7 +110,7 @@ Resources:
             CustomOriginConfig:
               OriginProtocolPolicy: "http-only"
         Comment:
-          Fn::Sub: "${ServiceName} website CloudFront distribution"
+          Fn::Sub: "${AWS::StackName} website CloudFront distribution"
         Enabled: true
         DefaultCacheBehavior:
           Compress: true

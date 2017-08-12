@@ -199,7 +199,6 @@ export class Broiler {
         const assetsOriginUrl = new URL(this.options.assetsOrigin);
         const assetsDomain = assetsOriginUrl.hostname;
         return convertStackParameters({
-            ServiceName: this.options.stackName,
             SiteDomainName: siteDomain,
             SiteHostedZoneName: getHostedZone(siteDomain),
             AssetsDomainName: assetsDomain,
