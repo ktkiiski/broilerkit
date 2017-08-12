@@ -10,7 +10,7 @@ export interface IAppConfigOptions {
 }
 
 export interface IAppConfig extends IAppConfigOptions {
-    appName: string;
+    name: string;
     broilerKitVersion: string;
     assetsOrigin: string;
     buildDir: string;
@@ -39,7 +39,7 @@ export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfi
             const {stages, ...siteConfig} = appConfig;
             const stageConfig = stages[stage];
             const buildDir = path.join('./.broiler/build', stage || 'local');
-            const stackName = `${siteConfig.appName}-${stage}`;
+            const stackName = `${siteConfig.name}-${stage}`;
             return {
                 ...siteConfig,
                 ...stageConfig,

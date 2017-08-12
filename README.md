@@ -68,6 +68,13 @@ To install the node packages included in the template:
 npm install
 ```
 
+## Configuring the app
+
+You should change the configuration in [`app.config.ts`](./app.config.ts) according to your web app's needs.
+
+- `name`: A distinct name of your app. Recommended to be in lower case and separate words with dashes, because the name will be used in Amazon resource names and internal host names.
+- `stages`: Configuration for each different stage that your app has. By default there are `dev` stage for a development version and `prod` stage for the production version. You should change the `siteDomain` and `assetsDomain` to the domain names that you would like to use for each stage. There is also a special stage `local` that is used for the locally run development server.
+
 ## Running locally
 
 To run the app locally, start the local HTTP server and the build watch process:
@@ -102,13 +109,6 @@ aws configure
 #### Create a Hosted Zone
 
 NOTE: You need to [create a Hosted Zone for Amazon Route53](http://docs.aws.amazon.com/AmazonS3/latest/dev/website-hosting-custom-domain-walkthrough.html#root-domain-walkthrough-switch-to-route53-as-dnsprovider) for your custom domain first! Also, if you are using other domain name provider, such as GoDaddy, then you need to set up the DNS records for your domain.
-
-#### Configure stages
-
-You should change the configuration in [`site.config.js`](./site.config.js) according to your web app's needs.
-
-- `appName`: A distinct name of your app. Recommended to be in lower case and separate words with dashes, because the name will be used in Amazon resource names and internal host names.
-- `stages`: Configuration for each different stage that your app has. By default there are `dev` stage for a development version and `prod` stage for the production version. You should change the `siteDomain` and `assetsDomain` to the domain names that you would like to use for each stage.
 
 ### Running deployment
 

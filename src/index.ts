@@ -40,7 +40,7 @@ export interface IAppConfig {
     /**
      * The name of the web app. Should include only letters, numbers, and dashes.
      */
-    appName: string;
+    name: string;
     /**
      * Which version of BroilerKit is this app using?
      */
