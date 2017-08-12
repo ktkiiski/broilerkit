@@ -83,7 +83,7 @@ To run the app locally, start the local HTTP server and the build watch process:
 broil serve
 ```
 
-Then navigate your browser to http://0.0.0.0:1111/
+Then navigate your browser to the website address as defined in your `local` stage configuration, which is http://localhost:1111/ by default!
 
 The web page is automatically reloaded when the app is re-built.
 
