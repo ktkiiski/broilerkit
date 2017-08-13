@@ -88,6 +88,7 @@ export class Broiler {
             .switchMap((output) => Observable.merge(
                 emptyBucket$(this.s3, output.AssetsS3BucketName),
                 emptyBucket$(this.s3, output.SiteS3BucketName),
+                emptyBucket$(this.s3, output.DeploymentManagementS3BucketName),
             ))
             .do((item) => {
                 if (item.VersionId) {
