@@ -490,12 +490,16 @@ function getHostedZone(domain: string) {
 }
 
 function formatResourceChange(resource: CloudFormation.StackResource): string {
+    const id = resource.LogicalResourceId;
     const status = resource.ResourceStatus;
     const colorizedStatus = formatStatus(status);
     const statusReason = resource.ResourceStatusReason;
-    let msg = `Resource ${bold(resource.LogicalResourceId)} => ${colorizedStatus}`;
+    let msg = `Resource ${bold(id)} => ${colorizedStatus}`;
     if (statusReason) {
         msg += ` (${statusReason})`;
+    }
+    if (id === 'DomainCertificate' && status === 'CREATE_IN_PROGRESS') {
+        msg += `\n${yellow('ACTION REQUIRED!')} You have received the confirmation email(s) from AWS Certificate Manager! ${bold('Please go to your inbox and confirm the certificates using the provided links!')}`;
     }
     return msg;
 }
