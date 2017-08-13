@@ -1,0 +1,17 @@
+# This is a base CloudFormation template that will be used when
+# creating a new stack. It will only include the deployment bucket.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Initial stack for the deployed application
+Resources:
+  # S3 bucket for storing resources that are required by later stack updates,
+  # such as the Lambda function source codes.
+  DeploymentManagementS3Bucket:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Delete
+    Properties:
+      BucketName:
+        Fn::Sub: "${AWS::StackName}-deployment"
+Outputs:
+  DeploymentManagementS3BucketName:
+    Value:
+      Ref: DeploymentManagementS3Bucket

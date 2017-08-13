@@ -1,6 +1,6 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
-import { fromPairs, map } from 'lodash';
+import { difference, fromPairs, map, merge } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
@@ -12,10 +12,10 @@ import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, s
 import { isDoesNotExistsError, isUpToDateError } from './utils/aws';
 import { readFile$, searchFiles$ } from './utils/fs';
 
-import * as _ from 'lodash';
 import * as mime from 'mime';
 import * as path from 'path';
 import * as File from 'vinyl';
+import * as YAML from 'yamljs';
 
 export interface IStackOutput {
     [key: string]: string;
@@ -163,14 +163,20 @@ export class Broiler {
     public deployStack$(): Observable<IStackWithResources> {
         this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
         return this.checkStackExists$()
-            // Either create or update the stack
             .switchMap((stackExists) => {
                 if (stackExists) {
                     this.log(`Updating existing stack...`);
-                    return this.describeStackWithResources$().concat(this.updateStack$());
+                    return Observable.concat(
+                        this.describeStackWithResources$(),
+                        this.updateStack$(),
+                    );
                 } else {
                     this.log(`Creating a new stack...`);
-                    return Observable.of({} as IStackWithResources).concat(this.createStack$());
+                    return Observable.concat(
+                        Observable.of({} as IStackWithResources),
+                        this.createStack$(),
+                        this.updateStack$(),
+                    );
                 }
             })
             .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
@@ -282,12 +288,12 @@ export class Broiler {
     }
 
     /**
-     * Creating a new CloudFormation stack using the template.
+     * Creating a new CloudFormation stack using the initialization template.
      * This will fail if the stack already exists.
      * @returns Observable for the starting of stack creation
      */
     public createStack$() {
-        return this.readTemplate$()
+        return this.readTemplate$('cloudformation-init.yml')
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.createStack({
                     StackName: this.options.stackName,
@@ -297,7 +303,6 @@ export class Broiler {
                         'CAPABILITY_IAM',
                         'CAPABILITY_NAMED_IAM',
                     ],
-                    Parameters: this.getStackParameters(),
                 }),
             ))
             .do(() => this.log('Stack creation has started.'))
@@ -312,7 +317,7 @@ export class Broiler {
      * @returns Observable for the starting of stack update
      */
     public updateStack$() {
-        return this.readTemplate$()
+        return this.readTemplate$('cloudformation-init.yml', 'cloudformation-app.yml')
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.updateStack({
                     StackName: this.options.stackName,
@@ -451,8 +456,15 @@ export class Broiler {
         ).do(() => this.log(`Successfully created CloudFront distribution invalidation! It should take effect shortly!`));
     }
 
-    private readTemplate$() {
-        return readFile$(path.resolve(__dirname, '../res/cloudformation.yml'));
+    private readTemplate$(...templateFiles: string[]) {
+        return Observable
+            .forkJoin(
+                map(templateFiles, (templateFile) => readFile$(path.resolve(__dirname, '../res/', templateFile))),
+            )
+            .concatMap((templates) => map(templates, (template) => YAML.parse(template)))
+            .reduce((mergedTemplate, template) => merge({}, mergedTemplate, template), {} as any)
+            .map((template) => YAML.stringify(template, 8, 2))
+        ;
     }
 
     private log(message: any, ...params: any[]) {
@@ -461,18 +473,11 @@ export class Broiler {
     }
 
     private logStackChanges(oldStack: IStackWithResources, newStack: IStackWithResources): IStackWithResources {
-        const oldResources = oldStack.StackResources || [];
-        const newResources = newStack.StackResources || [];
-        const alteredResources = _.differenceBy(newResources, oldResources, (resource) => `${resource.LogicalResourceId}:${resource.ResourceStatus}`);
-        for (const resource of alteredResources) {
-            const status = resource.ResourceStatus;
-            const colorizedStatus = formatStatus(status);
-            const statusReason = resource.ResourceStatusReason;
-            let msg = `Resource ${bold(resource.LogicalResourceId)} => ${colorizedStatus}`;
-            if (statusReason) {
-                msg += ` (${statusReason})`;
-            }
-            this.log(msg);
+        const oldResourceStates = map(oldStack.StackResources, formatResourceChange);
+        const newResourceStates = map(newStack.StackResources, formatResourceChange);
+        const alteredResourcesStates = difference(newResourceStates, oldResourceStates);
+        for (const resourceState of alteredResourcesStates) {
+            this.log(resourceState);
         }
         return newStack;
     }
@@ -481,4 +486,15 @@ export class Broiler {
 function getHostedZone(domain: string) {
     const match = /([^.]+\.[^.]+)$/.exec(domain);
     return match && match[0];
+}
+
+function formatResourceChange(resource: CloudFormation.StackResource): string {
+    const status = resource.ResourceStatus;
+    const colorizedStatus = formatStatus(status);
+    const statusReason = resource.ResourceStatusReason;
+    let msg = `Resource ${bold(resource.LogicalResourceId)} => ${colorizedStatus}`;
+    if (statusReason) {
+        msg += ` (${statusReason})`;
+    }
+    return msg;
 }
