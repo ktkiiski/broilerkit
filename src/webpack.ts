@@ -290,6 +290,13 @@ export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configu
             ],
         },
 
+        // Behavior for polyfilling node modules
+        node: {
+            // The default value `true` seems not to work with RxJS
+            // TODO: Take a look if this can be enabled
+            setImmediate: false,
+        },
+
         // When developing, enable sourcemaps for debugging webpack's output.
         devtool: debug ? 'cheap-eval-source-map' : 'source-map',
 
