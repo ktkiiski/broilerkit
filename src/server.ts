@@ -3,7 +3,7 @@ import { URL } from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { IAppConfig } from './config';
-import { getWebpackConfig } from './webpack';
+import { getFrontendWebpackConfig } from './webpack';
 
 /**
  * Runs the Webpack development server.
@@ -18,7 +18,7 @@ export function serve$(options: IAppConfig): Observable<IAppConfig> {
     // TODO: Is this configuration for the inline livereloading still required?
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
     return Observable.of({...options, debug: true, devServer: true})
-        .map((config) => webpack(getWebpackConfig(config)))
+        .map((config) => webpack(getFrontendWebpackConfig(config)))
         .map((compiler) => new WebpackDevServer(compiler, {
             allowedHosts: [
                 assetsOriginUrl.hostname,

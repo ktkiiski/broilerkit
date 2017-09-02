@@ -19,7 +19,7 @@ export interface IWebpackConfigOptions extends IAppConfig {
  * defined environment. The options are documented at
  * https://webpack.js.org/configuration/
  */
-export function getWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
+export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRoot} = config;
     const {assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
