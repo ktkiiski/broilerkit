@@ -365,9 +365,9 @@ export class Broiler {
                 .exhaustMap(() => this.describeStackWithResources$())
                 .subscribe((stack) => {
                     const stackStatus = stack.StackStatus;
-                    if (stackStatus.endsWith('_IN_PROGRESS')) {
+                    if (/_IN_PROGRESS$/.test(stackStatus)) {
                         subscriber.next(stack);
-                    } else if (stackStatus.endsWith('_FAILED')) {
+                    } else if (/_FAILED$|ROLLBACK_COMPLETE$/.test(stackStatus)) {
                         subscriber.next(stack);
                         subscriber.error(new Error(`Stack deployment failed: ${stack.StackStatusReason}`));
                     } else {
