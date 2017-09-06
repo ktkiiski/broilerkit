@@ -1,15 +1,10 @@
 import { Observable } from 'rxjs';
 import * as webpack from 'webpack';
-import { clean$ } from './clean';
-import { IAppConfig } from './config';
-import { getFrontendWebpackConfig } from './webpack';
 
-export function compile$(options: IAppConfig): Observable<webpack.Stats> {
-    return clean$(options.buildDir)
-        .map(() => getFrontendWebpackConfig({...options, devServer: false}))
-        .map((config) => webpack(config))
-        .map((compiler) => compiler.run.bind(compiler) as typeof compiler.run)
-        .switchMap((run) => Observable.bindNodeCallback(run)())
+export function compile$(config: webpack.Configuration): Observable<webpack.Stats> {
+    const compiler = webpack(config);
+    const run = compiler.run.bind(compiler) as typeof compiler.run;
+    return Observable.bindNodeCallback(run)()
         .map((stats) => {
             if (stats.hasErrors()) {
                 throw Object.assign(

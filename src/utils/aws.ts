@@ -57,10 +57,11 @@ export function formatStatus(status: string): string {
     }
 }
 
-export function formatS3KeyName(filename: string): string {
-    const extension = path.extname(filename);
+export function formatS3KeyName(filename: string, extension?: string): string {
+    const realExtension = path.extname(filename);
+    extension = extension || realExtension;
     const dirname = path.dirname(filename);
-    const basename = path.basename(filename, extension);
+    const basename = path.basename(filename, realExtension);
     return path.join(dirname, `${basename}${extension}`);
 }
 

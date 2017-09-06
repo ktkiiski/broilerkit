@@ -15,8 +15,8 @@ export interface IWebpackConfigOptions extends IAppConfig {
 }
 
 /**
- * Creates the Webpack 2 configuration according to the
- * defined environment. The options are documented at
+ * Creates the Webpack 2 configuration for the front-end asset compilation.
+ * The options are documented at
  * https://webpack.js.org/configuration/
  */
 export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
@@ -297,8 +297,148 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
             setImmediate: false,
         },
 
-        // When developing, enable sourcemaps for debugging webpack's output.
-        devtool: debug ? 'cheap-eval-source-map' : 'source-map',
+        // Enable sourcemaps for debugging webpack's output.
+        devtool: devServer ? 'cheap-eval-source-map' : 'source-map',
+
+        // Plugins
+        plugins,
+    };
+}
+/**
+ * Creates the Webpack 2 configuration for the back-end code compilation.
+ * The options are documented at
+ * https://webpack.js.org/configuration/
+ */
+export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
+    const {apiPath, debug, sourceDir, buildDir, projectRoot} = config;
+    const {assetsOrigin, siteOrigin} = config;
+    // Resolve modules, source, build and static paths
+    const projectDirPath = path.resolve(process.cwd(), projectRoot);
+    const sourceDirPath = path.resolve(projectDirPath, sourceDir);
+    const buildDirPath = path.resolve(projectDirPath, buildDir);
+    const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
+    const ownModulesDirPath = path.resolve(__dirname, '../node_modules');
+
+    const gitCommitHash = executeSync('git rev-parse HEAD');
+    const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
+    const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
+
+    // Generate the plugins
+    const plugins: webpack.Plugin[] = [
+        /**
+         * Replace "global variables" from the scripts with the constant values.
+         */
+        new webpack.DefinePlugin({
+            // Static assets URL origin
+            ___ASSETS_ORIGIN__: JSON.stringify(assetsOrigin),
+            // Web site URL origin
+            ___SITE_ORIGIN__: JSON.stringify(siteOrigin),
+            // Allow using the GIT commit hash ID
+            ___COMMIT_HASH__: JSON.stringify(gitCommitHash),
+            // Allow using the GIT version
+            ___VERSION__: JSON.stringify(gitVersion),
+            // Allow using the GIT branch name
+            ___BRANCH__: JSON.stringify(gitBranch),
+        }),
+    ];
+
+    // If building for the production, minimize the JavaScript
+    if (!debug) {
+        plugins.push(
+            new webpack.optimize.UglifyJsPlugin({
+                compress: {
+                    warnings: false,
+                },
+            }),
+        );
+    }
+    return {
+        // Build for running in node environment, instead of web browser
+        target: 'node',
+
+        // The main entry points for source files.
+        entry: {
+            _api: path.resolve(projectDirPath, apiPath),
+        },
+
+        output: {
+            // Output files are placed to this folder
+            path: buildDirPath,
+            // The file name template for the entry chunks
+            filename: '[name].[hash].js',
+            // The URL to the output directory resolved relative to the HTML page
+            publicPath: `${assetsOrigin}/`,
+            // Export so for use in a Lambda function
+            libraryTarget: 'commonjs2',
+        },
+
+        module: {
+            rules: [
+                // Pre-process sourcemaps for scripts
+                {
+                    test: /\.(jsx?|tsx?)$/,
+                    loader: 'source-map-loader',
+                    enforce: 'pre',
+                },
+                // Lint TypeScript files using tslint
+                {
+                    test: /\.tsx?$/,
+                    include: sourceDirPath,
+                    loader: 'tslint-loader',
+                    enforce: 'pre',
+                    options: {
+                        fix: true, // Auto-fix if possible
+                    },
+                },
+                // Lint JavaScript files using eslint
+                {
+                    test: /\.jsx?$/,
+                    include: sourceDirPath,
+                    loader: 'eslint-loader',
+                    enforce: 'pre',
+                    options: {
+                        cache: true,
+                        failOnError: true, // Fail the build if there are linting errors
+                        failOnWarning: false, // Do not fail the build on linting warnings
+                        fix: true, // Auto-fix if possible
+                    },
+                },
+                // Compile TypeScript files ('.ts' or '.tsx')
+                {
+                    test: /\.tsx?$/,
+                    loader: 'awesome-typescript-loader',
+                    options: {
+                        // Explicitly expect the tsconfig.json to be located at the project root
+                        configFileName: path.resolve(projectDirPath, './tsconfig.json'),
+                    },
+                },
+            ],
+        },
+
+        externals: {
+            // No need to bundle AWS SDK, because it will be available in the Lambda node environment
+            'aws-sdk': true,
+        },
+
+        resolve: {
+            // Look import modules from these directories
+            modules: [
+                sourceDirPath,
+                modulesDirPath,
+            ],
+            // Add '.ts' and '.tsx' as resolvable extensions.
+            extensions: ['.ts', '.tsx', '.js'],
+        },
+
+        resolveLoader: {
+            // Look from this library's node modules!
+            modules: [
+                ownModulesDirPath,
+            ],
+        },
+
+        // Enable sourcemaps for debugging webpack's output.
+        devtool: 'source-map',
 
         // Plugins
         plugins,

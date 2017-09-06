@@ -1,12 +1,19 @@
 import * as path from 'path';
 import { Observable } from 'rxjs';
 import * as semver from 'semver';
+import { IApiDefinition } from './api';
+import { ApiRequestHandler, IApiEndpoint } from './endpoints';
+import { HttpMethod } from './http';
 import { readConfig$ } from './utils/fs';
 
 export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
     debug: boolean;
+}
+
+export interface IAppApiEndpointConfig<T> extends IApiDefinition<T> {
+    methods: HttpMethod[];
 }
 
 export interface IAppConfig extends IAppConfigOptions {
@@ -26,6 +33,8 @@ export interface IAppConfig extends IAppConfigOptions {
     siteOrigin: string;
     sourceDir: string;
     stackName: string;
+    apiPath?: string;
+    api?: ApiRequestHandler<{[endpoint: string]: IApiEndpoint<any>}>;
 }
 
 export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfig> {
@@ -49,6 +58,16 @@ export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfi
                 stage,
                 stackName,
             };
+        })
+        // Read any API config
+        .switchMap((config) => {
+            // No api defined?
+            if (!config.apiPath) {
+                return [config];
+            }
+            return readConfig$<any>(config.apiPath)
+                .map((api) => ({...config, api}))
+            ;
         })
         .map((config) => {
             const requiredVersion = config.broilerKitVersion;

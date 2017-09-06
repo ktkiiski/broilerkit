@@ -18,6 +18,17 @@ export interface IStageConfig {
      * - "http://localhost:8080"
      */
     siteOrigin: string;
+    /**
+     * The URL origin where the REST API is hosted. This must contain the protocol,
+     * hostname and optionally any port. The origin must NOT end with a trailing slash.
+     *
+     * You may omit this if the app does not have an API.
+     *
+     * Examples:
+     * - "https://api.example.com"
+     * - "http://localhost:8081"
+     */
+    apiOrigin?: string;
 }
 
 export interface IWebPageConfig {
@@ -68,6 +79,11 @@ export interface IAppConfig {
          */
         [stage: string]: IStageConfig;
     };
+    /**
+     * Relative path to the module that defines all the API endpoints.
+     * The path must be relative to the source directory.
+     */
+    apiPath?: string;
     /**
      * The folder containing all the source files for your app.
      */
