@@ -1,12 +1,21 @@
 #! /usr/bin/env node
 import * as yargs from 'yargs';
 
+import { red } from 'chalk';
 import { Broiler } from './broiler';
 import { IAppConfigOptions, readAppConfig$ } from './config';
 import { execute$ } from './exec';
 
 // Allow loading TypeScript (.ts) files using `require()` commands
 import 'ts-node/register';
+
+const errorHandler = {
+    error: (error: Error) => {
+        process.exitCode = 1;
+        // tslint:disable-next-line:no-console
+        console.error(red(String(error.stack || error)));
+    },
+};
 
 // tslint:disable-next-line:no-unused-expression
 yargs
@@ -26,7 +35,7 @@ yargs
         describe: 'Initializes/updates your project to use the Broilerplate template.',
         handler: () => {
             execute$('git pull https://github.com/ktkiiski/broilerplate.git master --allow-unrelated-histories')
-                .subscribe()
+                .subscribe(errorHandler)
             ;
         },
     })
@@ -36,7 +45,7 @@ yargs
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).deploy$())
-                .subscribe()
+                .subscribe(errorHandler)
             ;
         },
     })
@@ -46,7 +55,7 @@ yargs
         handler: (argv: IAppConfigOptions) => {
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).undeploy$())
-                .subscribe()
+                .subscribe(errorHandler)
             ;
         },
     })
@@ -57,7 +66,7 @@ yargs
         handler: (argv) => {
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).compile$())
-                .subscribe()
+                .subscribe(errorHandler)
             ;
         },
     })
@@ -67,7 +76,7 @@ yargs
         handler: (argv) => {
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).printStack$())
-                .subscribe()
+                .subscribe(errorHandler)
             ;
         },
     })
@@ -78,7 +87,7 @@ yargs
         handler: (argv) => {
             readAppConfig$(argv)
                 .switchMap((config) => new Broiler(config).serve$())
-                .subscribe()
+                .subscribe(errorHandler)
             ;
         },
     })
