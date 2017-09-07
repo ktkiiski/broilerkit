@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  # API gateway method for OPTIONS request, for enabling CORS
+  <ApiMethodName>:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: OPTIONS
+      ResourceId:
+        Ref: <ApiResourceName>
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      AuthorizationType: NONE
+      MethodResponses:
+      - StatusCode: '200'
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Headers: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Credentials: true
+        ResponseModels: {}
+      RequestParameters: {}
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: "{statusCode:200}"
+        IntegrationResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin:
+              Fn::Sub: "'${SiteOrigin}'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With'"
+            method.response.header.Access-Control-Allow-Methods: "'<ApiResourceAllowedMethods>'"
+            method.response.header.Access-Control-Allow-Credentials: "'true'"
+          ResponseTemplates:
+            application/json: ''
+
+  # Add this method to the deployment dependencies
+  ApiGatewayDeployment:
+    DependsOn:
+    - <ApiMethodName>

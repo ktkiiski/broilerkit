@@ -1,3 +1,4 @@
+// tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
 import { map, partition } from 'lodash';
@@ -23,6 +24,7 @@ import * as File from 'vinyl';
 import * as YAML from 'yamljs';
 
 import { IApiEndpoint } from './endpoints';
+import { HttpMethod } from './http';
 
 export interface IStackOutput {
     [key: string]: string;
@@ -519,18 +521,27 @@ export class Broiler {
     }
 
     private generateTemplate$() {
-        const api = this.options.api;
+        const apiConfig = this.options.api;
         // TODO: At this point validate that the endpoint configuration looks legit?
-        const endpoints = map(api && api.endpoints);
-        const baseTemplates = ['cloudformation-init.yml', 'cloudformation-app.yml'];
-        if (endpoints.length) {
-            baseTemplates.push('cloudformation-api.yml');
-        }
-        // Build templates for every API resource
-        const resources$ = Observable.from(endpoints)
-            // tslint:disable-next-line:no-shadowed-variable
+        const endpoints = sortBy(
+            map(apiConfig && apiConfig.endpoints, ({api, path}, name) => ({api, name, path})),
+            ({api}) => api.url,
+        );
+        const baseTemplates = [
+            'cloudformation-init.yml',
+            'cloudformation-app.yml',
+            'cloudformation-api.yml',
+        ];
+        // Build templates for API Lambda functions
+        const apiFunctions$ = Observable.from(endpoints)
+            .concatMap(({name}) => this.readTemplate$(['cloudformation-api-function.yml'], {
+                ApiFunctionName: upperFirst(name),
+                apiFunctionName: name,
+            }))
+        ;
+        // Build templates for every API Gateway Resource
+        const apiResources$ = Observable.from(endpoints)
             .concatMap(({path}) => map(path, (_, index) => path.slice(0, index + 1)))
-            // tslint:disable-next-line:no-shadowed-variable
             .map((path) => ({
                 [getApiResourceName(path)]: {
                     Type: 'AWS::ApiGateway::Resource',
@@ -548,23 +559,38 @@ export class Broiler {
             .reduce((template, resource) => ({...template, ...resource}), {})
             .map((Resources) => ({Resources}))
         ;
-
-        return this.readTemplate$(baseTemplates)
-            .concat(resources$)
-            // Also read templates for any API endpoint definitions
-            .concat(Observable.from(sortBy(endpoints, (endpoint) => endpoint.api.url))
-                .concatMap((endpoint) => {
-                    const {methods} = endpoint.api;
-                    const ApiResourceName = getApiResourceName(endpoint.path);
-                    return Observable.from(methods).concatMap((ApiMethod) => {
-                        const ApiMethodName = `${ApiResourceName}${capitalize(ApiMethod)}`;
-                        return this.readTemplate$(
-                            ['cloudformation-api-method.yml'],
-                            {ApiResourceName, ApiMethodName, ApiMethod},
-                        );
+        // Build templates for every HTTP method, for every endpoint
+        const apiMethods$ = Observable.from(endpoints)
+            .concatMap(({api, path, name}) => map(api.methods, (method) => ({method, path, name})))
+            .concatMap(({method, path, name}) => this.readTemplate$(['cloudformation-api-method.yml'], {
+                ApiMethodName: getApiMethodName(path, method),
+                ApiFunctionName: upperFirst(name),
+                ApiResourceName: getApiResourceName(path),
+                ApiMethod: method,
+            }))
+        ;
+        // Enable CORS for every endpoint URL
+        const apiCors$ = Observable.from(endpoints)
+            .groupBy(({path}) => path.join('/'), ({api}) => api.methods)
+            .mergeMap((methods$) => methods$
+                .concatMap((methods) => methods)
+                .distinct()
+                .toArray()
+                .concatMap((methods) => {
+                    const path = methods$.key.split('/');
+                    return this.readTemplate$(['cloudformation-api-resource-cors.yml'], {
+                        ApiMethodName: getApiMethodName(path, 'OPTIONS'),
+                        ApiResourceName: getApiResourceName(path),
+                        ApiResourceAllowedMethods: methods.join(','),
                     });
                 }),
             )
+        ;
+        return this.readTemplate$(baseTemplates)
+            .concat(apiFunctions$)
+            .concat(apiResources$)
+            .concat(apiMethods$)
+            .concat(apiCors$)
             // Merge everything together
             .reduce(mergeTemplates, {} as any)
         ;
@@ -667,10 +693,16 @@ interface IApiResourceHierarchy {
 }
 
 function getApiResourceName(urlPath: string[]) {
-    // tslint:disable-next-line:no-shadowed-variable
-    const capitalizedPath = map(urlPath, (path) => {
+    return `Url${formatPathForResourceName(urlPath)}ApiGatewayResource`;
+}
+
+function getApiMethodName(urlPath: string[], method: HttpMethod) {
+    return `Url${formatPathForResourceName(urlPath)}${capitalize(method)}ApiGatewayMethod`;
+}
+
+function formatPathForResourceName(urlPath: string[]) {
+    return map(urlPath, (path) => {
         const match = /^{(.*)}$/.exec(path);
         return match ? upperFirst(match[1]) : upperFirst(path);
-    });
-    return `Url${capitalizedPath.join('')}ApiGatewayResource`;
+    }).join('');
 }

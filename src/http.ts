@@ -25,7 +25,7 @@ export const enum HttpStatus {
 /**
  * Any supported HTTP method.
  */
-export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
 export interface IHttpHeaders {
     [header: string]: string;

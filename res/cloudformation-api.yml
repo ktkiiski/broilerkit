@@ -51,4 +51,4 @@ Resources:
     Properties:
       RestApiId:
         Ref: ApiGatewayRestApi
-      StageName: dev
+      StageName: api

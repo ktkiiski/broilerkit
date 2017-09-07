@@ -1,32 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
-  <ApiMethodName>LogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName:
-        Fn::Sub: "/aws/lambda/${AWS::StackName}-<ApiMethodName>"
-
-  <ApiMethodName>LambdaFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Code:
-        S3Bucket:
-          Ref: DeploymentManagementS3Bucket
-        S3Key:
-          Ref: ApiRequestLambdaFunctionS3Key
-      FunctionName:
-        Fn::Sub: "${AWS::StackName}-<ApiMethodName>"
-      Handler: api.request
-      MemorySize: 1024
-      Role:
-        Fn::GetAtt: ["LambdaExecutionIamRole", "Arn"]
-      Runtime: nodejs6.10
-      Timeout: 6
-    DependsOn:
-    - <ApiMethodName>LogGroup
-    - LambdaExecutionIamRole
-
-  <ApiMethodName>ApiGatewayMethod:
+  # Enabled HTTP method for an API resource
+  <ApiMethodName>:
     Type: AWS::ApiGateway::Method
     Properties:
       HttpMethod: <ApiMethod>
@@ -40,9 +15,10 @@ Resources:
         IntegrationHttpMethod: <ApiMethod>
         Type: AWS_PROXY
         Uri:
-          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${<ApiMethodName>LambdaFunction.Arn}/invocations"
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${<ApiFunctionName>LambdaFunction.Arn}/invocations"
       MethodResponses: []
 
+  # Add this method to the deployment dependencies
   ApiGatewayDeployment:
     DependsOn:
-    - <ApiMethodName>ApiGatewayMethod
+    - <ApiMethodName>
