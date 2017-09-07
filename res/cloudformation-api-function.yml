@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
   # Lambda function
-  <ApiFunctionName>LambdaFunction:
+  <ApiFunctionName>:
     Type: AWS::Lambda::Function
     Properties:
       Code:

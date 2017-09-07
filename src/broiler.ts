@@ -535,7 +535,7 @@ export class Broiler {
         // Build templates for API Lambda functions
         const apiFunctions$ = Observable.from(endpoints)
             .concatMap(({name}) => this.readTemplate$(['cloudformation-api-function.yml'], {
-                ApiFunctionName: upperFirst(name),
+                ApiFunctionName: getApiLambdaFunctionLogicalId(name),
                 apiFunctionName: name,
             }))
         ;
@@ -543,11 +543,11 @@ export class Broiler {
         const apiResources$ = Observable.from(endpoints)
             .concatMap(({path}) => map(path, (_, index) => path.slice(0, index + 1)))
             .map((path) => ({
-                [getApiResourceName(path)]: {
+                [getApiResourceLogicalId(path)]: {
                     Type: 'AWS::ApiGateway::Resource',
                     Properties: {
                         ParentId: path.length > 1 ?
-                            {Ref: getApiResourceName(path.slice(0, -1))} :
+                            {Ref: getApiResourceLogicalId(path.slice(0, -1))} :
                             {'Fn::GetAtt': ['ApiGatewayRestApi', 'RootResourceId']},
                         PathPart: path[path.length - 1],
                         RestApiId: {
@@ -563,9 +563,9 @@ export class Broiler {
         const apiMethods$ = Observable.from(endpoints)
             .concatMap(({api, path, name}) => map(api.methods, (method) => ({method, path, name})))
             .concatMap(({method, path, name}) => this.readTemplate$(['cloudformation-api-method.yml'], {
-                ApiMethodName: getApiMethodName(path, method),
-                ApiFunctionName: upperFirst(name),
-                ApiResourceName: getApiResourceName(path),
+                ApiMethodName: getApiMethodLogicalId(path, method),
+                ApiFunctionName: getApiLambdaFunctionLogicalId(name),
+                ApiResourceName: getApiResourceLogicalId(path),
                 ApiMethod: method,
             }))
         ;
@@ -579,8 +579,8 @@ export class Broiler {
                 .concatMap((methods) => {
                     const path = methods$.key.split('/');
                     return this.readTemplate$(['cloudformation-api-resource-cors.yml'], {
-                        ApiMethodName: getApiMethodName(path, 'OPTIONS'),
-                        ApiResourceName: getApiResourceName(path),
+                        ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
+                        ApiResourceName: getApiResourceLogicalId(path),
                         ApiResourceAllowedMethods: methods.join(','),
                     });
                 }),
@@ -692,15 +692,19 @@ interface IApiResourceHierarchy {
     subResources: IApiResourceHierarchy[];
 }
 
-function getApiResourceName(urlPath: string[]) {
-    return `Url${formatPathForResourceName(urlPath)}ApiGatewayResource`;
+function getApiLambdaFunctionLogicalId(name: string) {
+    return `Api${upperFirst(name)}LambdaFunction`;
 }
 
-function getApiMethodName(urlPath: string[], method: HttpMethod) {
-    return `Url${formatPathForResourceName(urlPath)}${capitalize(method)}ApiGatewayMethod`;
+function getApiResourceLogicalId(urlPath: string[]) {
+    return `Endpoint${formatPathForLogicalId(urlPath)}ApiGatewayResource`;
 }
 
-function formatPathForResourceName(urlPath: string[]) {
+function getApiMethodLogicalId(urlPath: string[], method: HttpMethod) {
+    return `Endpoint${formatPathForLogicalId(urlPath)}${capitalize(method)}ApiGatewayMethod`;
+}
+
+function formatPathForLogicalId(urlPath: string[]) {
     return map(urlPath, (path) => {
         const match = /^{(.*)}$/.exec(path);
         return match ? upperFirst(match[1]) : upperFirst(path);
