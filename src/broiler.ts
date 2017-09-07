@@ -2,7 +2,7 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
 import { map, partition } from 'lodash';
-import { difference, fromPairs, groupBy, isArray, mergeWith, sortBy } from 'lodash';
+import { difference, fromPairs, groupBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
@@ -12,16 +12,15 @@ import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
 import { serve$ } from './server';
+import { dumpTemplate, mergeTemplates, readTemplate$ } from './templates';
 import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './utils/aws';
 import { isDoesNotExistsError, isUpToDateError } from './utils/aws';
-import { readFile$, searchFiles$ } from './utils/fs';
+import { searchFiles$ } from './utils/fs';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
 import * as mime from 'mime';
-import * as path from 'path';
 import * as File from 'vinyl';
-import * as YAML from 'yamljs';
 
 import { IApiEndpoint } from './endpoints';
 import { HttpMethod } from './http';
@@ -303,7 +302,7 @@ export class Broiler {
      * @returns Observable for the starting of stack creation
      */
     public createStack$() {
-        return this.readTemplate$(['cloudformation-init.yml'])
+        return readTemplate$(['cloudformation-init.yml'])
             .switchMap((template) => sendRequest$(
                 this.cloudFormation.createStack({
                     StackName: this.options.stackName,
@@ -534,7 +533,7 @@ export class Broiler {
         ];
         // Build templates for API Lambda functions
         const apiFunctions$ = Observable.from(endpoints)
-            .concatMap(({name}) => this.readTemplate$(['cloudformation-api-function.yml'], {
+            .concatMap(({name}) => readTemplate$(['cloudformation-api-function.yml'], {
                 ApiFunctionName: getApiLambdaFunctionLogicalId(name),
                 apiFunctionName: name,
             }))
@@ -562,7 +561,7 @@ export class Broiler {
         // Build templates for every HTTP method, for every endpoint
         const apiMethods$ = Observable.from(endpoints)
             .concatMap(({api, path, name}) => map(api.methods, (method) => ({method, path, name})))
-            .concatMap(({method, path, name}) => this.readTemplate$(['cloudformation-api-method.yml'], {
+            .concatMap(({method, path, name}) => readTemplate$(['cloudformation-api-method.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, method),
                 ApiFunctionName: getApiLambdaFunctionLogicalId(name),
                 ApiResourceName: getApiResourceLogicalId(path),
@@ -578,7 +577,7 @@ export class Broiler {
                 .toArray()
                 .concatMap((methods) => {
                     const path = methods$.key.split('/');
-                    return this.readTemplate$(['cloudformation-api-resource-cors.yml'], {
+                    return readTemplate$(['cloudformation-api-resource-cors.yml'], {
                         ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
                         ApiResourceName: getApiResourceLogicalId(path),
                         ApiResourceAllowedMethods: methods.join(','),
@@ -586,22 +585,12 @@ export class Broiler {
                 }),
             )
         ;
-        return this.readTemplate$(baseTemplates)
+        return readTemplate$(baseTemplates)
             .concat(apiFunctions$)
             .concat(apiResources$)
             .concat(apiMethods$)
             .concat(apiCors$)
             // Merge everything together
-            .reduce(mergeTemplates, {} as any)
-        ;
-    }
-
-    private readTemplate$(templateFiles: string[], placeholders: {[placeholder: string]: string} = {}) {
-        return Observable
-            .forkJoin(
-                map(templateFiles, (templateFile) => readFile$(path.resolve(__dirname, '../res/', templateFile))),
-            )
-            .concatMap((templates) => map(templates, (template) => deserializeTemplate(template, placeholders)))
             .reduce(mergeTemplates, {} as any)
         ;
     }
@@ -624,29 +613,6 @@ export class Broiler {
         }
         return newStack;
     }
-}
-
-function deserializeTemplate(template: string, placeholderValues: {[placeholder: string]: string}) {
-    const replacedTemplate = template.replace(/<(\w+)>/g, (match, key) => {
-        const value = placeholderValues[key];
-        if (value == null) {
-            throw new Error(`Missing template placeholder value for ${match}`);
-        }
-        return value;
-    });
-    return YAML.parse(replacedTemplate);
-}
-
-function dumpTemplate(template: any): string {
-    return YAML.stringify(template, 8, 2);
-}
-
-function mergeTemplates(template1: any, template2: any): any {
-    return mergeWith({}, template1, template2, (objValue, srcValue) => {
-        if (isArray(objValue) && isArray(srcValue)) {
-            return objValue.concat(srcValue);
-        }
-    });
 }
 
 function getHostedZone(domain: string) {
