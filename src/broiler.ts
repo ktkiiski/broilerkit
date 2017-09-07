@@ -666,6 +666,9 @@ function formatResourceChange(resource: CloudFormation.StackResource): string {
     if (id === 'DomainCertificate' && status === 'CREATE_IN_PROGRESS') {
         msg += `\n${yellow('ACTION REQUIRED!')} You have received the confirmation email(s) from AWS Certificate Manager! ${bold('Please go to your inbox and confirm the certificates using the provided links!')}`;
     }
+    if (/CloudFrontDistribution$/.test(id) && /^(CREATE|UPDATE|DELETE)_IN_PROGRESS$/.test(status)) {
+        msg += ` (This will take a while)`;
+    }
     return msg;
 }
 
