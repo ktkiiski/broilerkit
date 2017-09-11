@@ -7,7 +7,7 @@ import { capitalize, upperFirst } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
-import { emptyBucket$ } from './aws';
+import { AmazonS3 } from './aws';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
@@ -54,10 +54,7 @@ export class Broiler {
         region: this.options.region,
         apiVersion: '2017-03-25',
     });
-    private s3 = new S3({
-        region: this.options.region,
-        apiVersion: '2006-03-01',
-    });
+    private s3 = new AmazonS3(this.options.region);
 
     /**
      * Creates a new Broiler utility with the given options.
@@ -93,9 +90,9 @@ export class Broiler {
         this.log(`Removing the stack ${bold(this.options.stackName)} from region ${bold(this.options.region)}`);
         return this.getStackOutput$()
             .switchMap((output) => Observable.merge(
-                emptyBucket$(this.s3, output.AssetsS3BucketName),
-                emptyBucket$(this.s3, output.SiteS3BucketName),
-                emptyBucket$(this.s3, output.DeploymentManagementS3BucketName),
+                this.s3.emptyBucket$(output.AssetsS3BucketName),
+                this.s3.emptyBucket$(output.SiteS3BucketName),
+                this.s3.emptyBucket$(output.DeploymentManagementS3BucketName),
             ))
             .do((item) => {
                 if (item.VersionId) {
@@ -204,9 +201,9 @@ export class Broiler {
         const asset$ = searchFiles$(this.options.buildDir, ['!**/*.html', '!_api*.js']);
         const page$ = searchFiles$(this.options.buildDir, ['**/*.html']);
         return this.getStackOutput$().switchMap((output) =>
-            Observable.concat(
-                this.uploadFilesToS3Bucket$(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration),
-                this.uploadFilesToS3Bucket$(output.SiteS3BucketName, page$, staticHtmlCacheDuration),
+            Observable.merge(
+                this.uploadFilesToS3Bucket$(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false),
+                this.uploadFilesToS3Bucket$(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true),
             ),
         );
     }
@@ -421,33 +418,20 @@ export class Broiler {
      * @param file$ Observable of vinyl files
      * @param cacheDuration How long the files should be cached
      */
-    public uploadFilesToS3Bucket$(bucketName: string, file$: Observable<File>, cacheDuration: number) {
-        return file$.mergeMap((file) => this.uploadFileToS3Bucket$(
-            bucketName, file, 'public-read', cacheDuration,
-        ), 3);
-    }
-
-    /**
-     * Uploads the given Vinyl file to a Amazon S3 bucket.
-     * @param bucketName Name of the S3 bucket to upload the files
-     * @param file The Vinyl file to upload
-     * @param acl The ACL parameter used for the object PUT operation
-     * @param cacheDuration Number of seconds for caching the files
-     */
-    public uploadFileToS3Bucket$(bucketName: string, file: File, acl: S3.ObjectCannedACL, cacheDuration: number) {
-        return sendRequest$(
-            this.s3.putObject({
+    public uploadFilesToS3Bucket$(bucketName: string, file$: Observable<File>, cacheDuration: number, overwrite: boolean) {
+        return file$.mergeMap(
+            (file) => this.createS3File$({
                 Bucket: bucketName,
                 Key: formatS3KeyName(file.relative),
                 Body: file.contents as Buffer,
-                ACL: acl,
+                ACL: 'public-read',
                 CacheControl: `max-age=${cacheDuration}`,
                 ContentType: mime.lookup(file.relative),
                 ContentLength: file.isStream() && file.stat ? file.stat.size : undefined,
-            }),
-        )
-        .map((data) => ({file, bucketName, result: data} as IFileUpload))
-        .do(() => this.log('Uploaded', bold(file.relative), 'to bucket', bucketName, green('✔︎')));
+            }, overwrite)
+            .map((data) => ({file, bucketName, result: data} as IFileUpload)),
+            5,
+        );
     }
 
     /**
@@ -489,15 +473,13 @@ export class Broiler {
                     const bucketName = output.DeploymentManagementS3BucketName;
                     const key = formatS3KeyName(file.relative, '.zip');
                     this.log(`Zipped the API implementation as ${bold(key)}`);
-                    return sendRequest$(
-                        this.s3.putObject({
-                            Bucket: bucketName,
-                            Key: key,
-                            Body: zipFileData,
-                            ACL: 'private',
-                            ContentType: 'application/zip',
-                        }),
-                    ).do(() => this.log('Uploaded API implementation', bold(key), 'to bucket', bucketName, green('✔︎')));
+                    return this.createS3File$({
+                        Bucket: bucketName,
+                        Key: key,
+                        Body: zipFileData,
+                        ACL: 'private',
+                        ContentType: 'application/zip',
+                    }, false);
                 });
             })
         ;
@@ -604,6 +586,21 @@ export class Broiler {
             .concat(apiCors$)
             // Merge everything together
             .reduce(mergeTemplates, {} as any)
+        ;
+    }
+
+    private createS3File$(params: S3.PutObjectRequest, overwrite: boolean) {
+        return (overwrite ? Observable.of(false) : this.s3.objectExists$(params))
+            .switchMap((fileExists) => {
+                if (fileExists) {
+                    this.log('File', bold(params.Key), 'already exists in bucket', params.Bucket, green('✔︎'));
+                    return [];
+                } else {
+                    return this.s3.putObject$(params)
+                        .do(() => this.log('Uploaded', bold(params.Key), 'to bucket', params.Bucket, green('✔︎')))
+                    ;
+                }
+            })
         ;
     }
 
