@@ -2,7 +2,7 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
 import { map, partition } from 'lodash';
-import { difference, fromPairs, groupBy, sortBy } from 'lodash';
+import { difference, differenceBy, fromPairs, groupBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
@@ -134,6 +134,9 @@ export class Broiler {
      * Compiles the backend code with Webpack to the build directory.
      */
     public compileBackend$(): Observable<WebpackStats> {
+        if (!this.options.api) {
+            return Observable.empty();
+        }
         this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.options.stage)}...`);
         return compile$(getBackendWebpackConfig({...this.options, devServer: false}))
             .do((stats) => this.log(stats.toString({colors: true})))
@@ -216,14 +219,17 @@ export class Broiler {
         const siteDomain = siteOriginUrl.hostname;
         const assetsOriginUrl = new URL(this.options.assetsOrigin);
         const assetsDomain = assetsOriginUrl.hostname;
-        return this.getCompiledApiFile$().map((apiFile) => convertStackParameters({
-            SiteOrigin: siteOriginUrl.origin,
-            SiteDomainName: siteDomain,
-            SiteHostedZoneName: getHostedZone(siteDomain),
-            AssetsDomainName: assetsDomain,
-            AssetsHostedZoneName: getHostedZone(assetsDomain),
-            ApiRequestLambdaFunctionS3Key: formatS3KeyName(apiFile.relative, '.zip'),
-        }));
+        return this.getCompiledApiFile$()
+            .defaultIfEmpty<File | undefined>(undefined)
+            .map((apiFile) => convertStackParameters({
+                SiteOrigin: siteOriginUrl.origin,
+                SiteDomainName: siteDomain,
+                SiteHostedZoneName: getHostedZone(siteDomain),
+                AssetsDomainName: assetsDomain,
+                AssetsHostedZoneName: getHostedZone(assetsDomain),
+                ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),
+            }))
+        ;
     }
 
     /**
@@ -469,7 +475,10 @@ export class Broiler {
      * Deploys the compiled asset files from the build directory to the
      * Amazon S3 buckets in the deployed stack.
      */
-    private uploadBackend$() {
+    private uploadBackend$(): Observable<S3.PutObjectOutput> {
+        if (!this.options.api) {
+            return Observable.empty();
+        }
         return this.getCompiledApiFile$()
             .switchMap((file) => {
                 return Observable.forkJoin(
@@ -526,11 +535,13 @@ export class Broiler {
             map(apiConfig && apiConfig.endpoints, ({api, path}, name) => ({api, name, path})),
             ({api}) => api.url,
         );
-        const baseTemplates = [
+        const baseTemplate$ = readTemplate$([
             'cloudformation-init.yml',
             'cloudformation-app.yml',
-            'cloudformation-api.yml',
-        ];
+        ]);
+        if (!apiConfig) {
+            return baseTemplate$;
+        }
         // Build templates for API Lambda functions
         const apiFunctions$ = Observable.from(endpoints)
             .concatMap(({name}) => readTemplate$(['cloudformation-api-function.yml'], {
@@ -585,7 +596,8 @@ export class Broiler {
                 }),
             )
         ;
-        return readTemplate$(baseTemplates)
+        return baseTemplate$
+            .concat(readTemplate$(['cloudformation-api.yml']))
             .concat(apiFunctions$)
             .concat(apiResources$)
             .concat(apiMethods$)
@@ -596,7 +608,11 @@ export class Broiler {
     }
 
     private getCompiledApiFile$() {
-        return searchFiles$(this.options.buildDir, ['_api*.js']).single();
+        if (this.options.api) {
+            return searchFiles$(this.options.buildDir, ['_api*.js']).single();
+        } else {
+            return Observable.empty<File>();
+        }
     }
 
     private log(message: any, ...params: any[]) {
@@ -607,7 +623,15 @@ export class Broiler {
     private logStackChanges(oldStack: IStackWithResources, newStack: IStackWithResources): IStackWithResources {
         const oldResourceStates = map(oldStack.StackResources, formatResourceChange);
         const newResourceStates = map(newStack.StackResources, formatResourceChange);
-        const alteredResourcesStates = difference(newResourceStates, oldResourceStates);
+        const deletedResourceStates = map(
+            differenceBy(
+                oldStack.StackResources,
+                newStack.StackResources,
+                (resource) => resource.LogicalResourceId,
+            ),
+            formatResourceDelete,
+        );
+        const alteredResourcesStates = difference(newResourceStates.concat(deletedResourceStates), oldResourceStates);
         for (const resourceState of alteredResourcesStates) {
             this.log(resourceState);
         }
@@ -636,6 +660,14 @@ function formatResourceChange(resource: CloudFormation.StackResource): string {
         msg += ` (This will take a while)`;
     }
     return msg;
+}
+
+function formatResourceDelete(resource: CloudFormation.StackResource): string {
+    return formatResourceChange({
+        ...resource,
+        ResourceStatus: 'DELETE_COMPLETED',
+        ResourceStatusReason: undefined,
+    });
 }
 
 function buildApiResourceHierarchy(endpoints: Array<IApiEndpoint<any>>, parentPath: string[] = []): IApiResourceHierarchy[] {

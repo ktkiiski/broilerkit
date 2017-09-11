@@ -12,7 +12,8 @@ Resources:
       RequestParameters: {}
       AuthorizationType: NONE
       Integration:
-        IntegrationHttpMethod: <ApiMethod>
+        # NOTE: Lambda execution endpoint is always called with POST
+        IntegrationHttpMethod: POST
         Type: AWS_PROXY
         Uri:
           Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${<ApiFunctionName>.Arn}/invocations"

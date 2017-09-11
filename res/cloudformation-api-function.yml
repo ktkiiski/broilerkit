@@ -21,6 +21,17 @@ Resources:
     - <ApiFunctionName>LogGroup
     - LambdaExecutionIamRole
 
+  # Grant API Gateway REST API a permission to execute the Lambda function
+  <ApiFunctionName>PermissionApiGateway:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::GetAtt: ["<ApiFunctionName>", "Arn"]
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/*"
+
   # CloudWatch log group for the lambda function
   <ApiFunctionName>LogGroup:
     Type: AWS::Logs::LogGroup

@@ -6,11 +6,12 @@ import { HttpCallback, HttpStatus } from './http';
 import { IHttpHeaders, IHttpResponse } from './http';
 import { IHttpRequest, IHttpRequestContext } from './http';
 import { isReadHttpMethod, isWriteHttpMethod } from './http';
-import mapValues = require('lodash/mapValues');
-import isObject = require('lodash/isObject');
-import isNumber = require('lodash/isNumber');
-import isString = require('lodash/isString');
 import includes = require('lodash/includes');
+import isNumber = require('lodash/isNumber');
+import isObject = require('lodash/isObject');
+import isString = require('lodash/isString');
+import mapValues = require('lodash/mapValues');
+import sortBy = require('lodash/sortBy');
 // tslint:disable:max-classes-per-file
 
 export interface IApiResponse<T> {
@@ -140,10 +141,21 @@ export interface IApiEndpoint<I extends object> {
 
 export class ApiRequestHandler<T extends {[endpoint: string]: IApiEndpoint<any>}> {
 
-    constructor(public readonly endpoints: T) {}
+    private readonly sortedEndpoints: Array<IApiEndpoint<any>>;
 
-    public request(request: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback): void {
+    constructor(public readonly endpoints: T) {
+        this.sortedEndpoints = sortBy(endpoints, (endpoint) => endpoint.api.url);
+    }
+
+    public request(_request: IHttpRequest, _context: IHttpRequestContext, callback: HttpCallback): void {
+        // const endpoint = this.findMatchingEndpoint(request);
         // TODO
-        console.log(request, context, callback);
+        callback(null, {
+            statusCode: 200,
+            body: JSON.stringify({message: 'Hello, world!'}),
+            headers: {
+                'Content-Type': 'text/plain',
+            },
+        });
     }
 }

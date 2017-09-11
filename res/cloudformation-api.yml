@@ -51,4 +51,63 @@ Resources:
     Properties:
       RestApiId:
         Ref: ApiGatewayRestApi
+
+  # Stage for the API gateway
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId:
+        Ref: ApiGatewayDeployment
+      MethodSettings:
+      # Enables CloudWatch logging for the API gateway
+      - DataTraceEnabled: true
+        HttpMethod: "*"
+        LoggingLevel: INFO
+        ResourcePath: "/*"
+      RestApiId:
+        Ref: ApiGatewayRestApi
       StageName: api
+
+  # Role for the API gateway for enabling CloudWatch logging
+  ApiGatewayCloudWatchLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - apigateway.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: ApiGatewayLoggingPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+            - logs:PutLogEvents
+            - logs:GetLogEvents
+            - logs:FilterLogEvents
+            Resource: "*"
+
+  # Accout for the API Gateway for enabling CloudWatch logging
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn:
+        Fn::GetAtt: ["ApiGatewayCloudWatchLoggingRole", "Arn" ]
+    DependsOn:
+    - ApiGatewayCloudWatchLoggingRole
+
+Outputs:
+  ApiGatewayRestApiUrl:
+    Description: "Base URL of the REST API"
+    Value:
+      Fn::Sub: "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/api"

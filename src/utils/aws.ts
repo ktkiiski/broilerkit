@@ -1,5 +1,5 @@
 import { cyan, green, red } from 'chalk';
-import { map } from 'lodash';
+import { filter, map } from 'lodash';
 import * as path from 'path';
 import { Observable } from 'rxjs';
 
@@ -10,9 +10,12 @@ import { Observable } from 'rxjs';
  * @returns Array of parameter objects.
  */
 export function convertStackParameters(parameters: {[key: string]: any}) {
-    return map(
-        parameters,
-        (ParameterValue, ParameterKey) => ({ParameterKey, ParameterValue}),
+    return filter(
+        map(
+            parameters,
+            (ParameterValue, ParameterKey) => ({ParameterKey, ParameterValue}),
+        ),
+        ({ParameterValue}) => ParameterValue != null,
     );
 }
 
