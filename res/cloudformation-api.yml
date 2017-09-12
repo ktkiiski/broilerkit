@@ -46,7 +46,7 @@ Resources:
         Fn::Sub: "${AWS::StackName}-api"
 
   # Deployment of the API gateway
-  ApiGatewayDeployment:
+  <ApiGatewayDeploymentName>:
     Type: AWS::ApiGateway::Deployment
     Properties:
       RestApiId:
@@ -57,7 +57,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       DeploymentId:
-        Ref: ApiGatewayDeployment
+        Ref: <ApiGatewayDeploymentName>
       MethodSettings:
       # Enables CloudWatch logging for the API gateway
       - DataTraceEnabled: true

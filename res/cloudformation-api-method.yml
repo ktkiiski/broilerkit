@@ -20,6 +20,6 @@ Resources:
       MethodResponses: []
 
   # Add this method to the deployment dependencies
-  ApiGatewayDeployment:
+  <ApiGatewayDeploymentName>:
     DependsOn:
     - <ApiMethodName>

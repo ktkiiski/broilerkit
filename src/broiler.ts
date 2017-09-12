@@ -524,69 +524,75 @@ export class Broiler {
         if (!apiConfig) {
             return baseTemplate$;
         }
-        // Build templates for API Lambda functions
-        const apiFunctions$ = Observable.from(endpoints)
-            .concatMap(({name}) => readTemplate$(['cloudformation-api-function.yml'], {
-                ApiFunctionName: getApiLambdaFunctionLogicalId(name),
-                apiFunctionName: name,
-            }))
-        ;
-        // Build templates for every API Gateway Resource
-        const apiResources$ = Observable.from(endpoints)
-            .concatMap(({path}) => map(path, (_, index) => path.slice(0, index + 1)))
-            .map((path) => ({
-                [getApiResourceLogicalId(path)]: {
-                    Type: 'AWS::ApiGateway::Resource',
-                    Properties: {
-                        ParentId: path.length > 1 ?
-                            {Ref: getApiResourceLogicalId(path.slice(0, -1))} :
-                            {'Fn::GetAtt': ['ApiGatewayRestApi', 'RootResourceId']},
-                        PathPart: path[path.length - 1],
-                        RestApiId: {
-                            Ref: 'ApiGatewayRestApi',
+        return this.getApiHash$().switchMap((hash) => {
+            // Build templates for API Lambda functions
+            const apiFunctions$ = Observable.from(endpoints)
+                .concatMap(({name}) => readTemplate$(['cloudformation-api-function.yml'], {
+                    ApiFunctionName: getApiLambdaFunctionLogicalId(name),
+                    apiFunctionName: name,
+                }))
+            ;
+            // Build templates for every API Gateway Resource
+            const apiResources$ = Observable.from(endpoints)
+                .concatMap(({path}) => map(path, (_, index) => path.slice(0, index + 1)))
+                .map((path) => ({
+                    [getApiResourceLogicalId(path)]: {
+                        Type: 'AWS::ApiGateway::Resource',
+                        Properties: {
+                            ParentId: path.length > 1 ?
+                                {Ref: getApiResourceLogicalId(path.slice(0, -1))} :
+                                {'Fn::GetAtt': ['ApiGatewayRestApi', 'RootResourceId']},
+                            PathPart: path[path.length - 1],
+                            RestApiId: {
+                                Ref: 'ApiGatewayRestApi',
+                            },
                         },
                     },
-                },
-            }))
-            .reduce((template, resource) => ({...template, ...resource}), {})
-            .map((Resources) => ({Resources}))
-        ;
-        // Build templates for every HTTP method, for every endpoint
-        const apiMethods$ = Observable.from(endpoints)
-            .concatMap(({api, path, name}) => map(api.methods, (method) => ({method, path, name})))
-            .concatMap(({method, path, name}) => readTemplate$(['cloudformation-api-method.yml'], {
-                ApiMethodName: getApiMethodLogicalId(path, method),
-                ApiFunctionName: getApiLambdaFunctionLogicalId(name),
-                ApiResourceName: getApiResourceLogicalId(path),
-                ApiMethod: method,
-            }))
-        ;
-        // Enable CORS for every endpoint URL
-        const apiCors$ = Observable.from(endpoints)
-            .groupBy(({path}) => path.join('/'), ({api}) => api.methods)
-            .mergeMap((methods$) => methods$
-                .concatMap((methods) => methods)
-                .distinct()
-                .toArray()
-                .concatMap((methods) => {
-                    const path = methods$.key.split('/');
-                    return readTemplate$(['cloudformation-api-resource-cors.yml'], {
-                        ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
-                        ApiResourceName: getApiResourceLogicalId(path),
-                        ApiResourceAllowedMethods: methods.join(','),
-                    });
-                }),
-            )
-        ;
-        return baseTemplate$
-            .concat(readTemplate$(['cloudformation-api.yml']))
-            .concat(apiFunctions$)
-            .concat(apiResources$)
-            .concat(apiMethods$)
-            .concat(apiCors$)
-            // Merge everything together
-            .reduce(mergeTemplates, {} as any)
-        ;
+                }))
+                .reduce((template, resource) => ({...template, ...resource}), {})
+                .map((Resources) => ({Resources}))
+            ;
+            // Build templates for every HTTP method, for every endpoint
+            const apiMethods$ = Observable.from(endpoints)
+                .concatMap(({api, path, name}) => map(api.methods, (method) => ({method, path, name})))
+                .concatMap(({method, path, name}) => readTemplate$(['cloudformation-api-method.yml'], {
+                    ApiMethodName: getApiMethodLogicalId(path, method),
+                    ApiFunctionName: getApiLambdaFunctionLogicalId(name),
+                    ApiResourceName: getApiResourceLogicalId(path),
+                    ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
+                    ApiMethod: method,
+                }))
+            ;
+            // Enable CORS for every endpoint URL
+            const apiCors$ = Observable.from(endpoints)
+                .groupBy(({path}) => path.join('/'), ({api}) => api.methods)
+                .mergeMap((methods$) => methods$
+                    .concatMap((methods) => methods)
+                    .distinct()
+                    .toArray()
+                    .concatMap((methods) => {
+                        const path = methods$.key.split('/');
+                        return readTemplate$(['cloudformation-api-resource-cors.yml'], {
+                            ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
+                            ApiResourceName: getApiResourceLogicalId(path),
+                            ApiResourceAllowedMethods: methods.join(','),
+                            ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
+                        });
+                    }),
+                )
+            ;
+            return baseTemplate$
+                .concat(readTemplate$(['cloudformation-api.yml'], {
+                    ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
+                }))
+                .concat(apiFunctions$)
+                .concat(apiResources$)
+                .concat(apiMethods$)
+                .concat(apiCors$)
+                // Merge everything together
+                .reduce(mergeTemplates, {} as any)
+            ;
+        });
     }
 
     private createS3File$(params: S3.PutObjectRequest, overwrite: boolean) {
@@ -610,6 +616,13 @@ export class Broiler {
         } else {
             return Observable.empty<File>();
         }
+    }
+
+    private getApiHash$() {
+        return this.getCompiledApiFile$()
+            .map((file) => /\.(\w+)\./.exec(file.basename) as RegExpExecArray)
+            .map((match) => match[1])
+        ;
     }
 
     private log(message: any, ...params: any[]) {
