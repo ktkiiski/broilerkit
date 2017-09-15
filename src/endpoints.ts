@@ -2,6 +2,7 @@ import { Subscribable } from 'rxjs/Observable';
 import { defer } from 'rxjs/observable/defer';
 import { of } from 'rxjs/observable/of';
 import { Api } from './api';
+import { Field } from './fields';
 import { HttpCallback, HttpHandler, HttpStatus } from './http';
 import { IHttpHeaders, IHttpResponse } from './http';
 import { IHttpRequest, IHttpRequestContext } from './http';
@@ -76,7 +77,7 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
             input = {...queryStringParameters, payload};
         }
         return of(
-            mapValues(this.api.params, (field, name) => field.validate(input[name])),
+            mapValues(this.api.params, (field: Field<any>, name) => field.deserialize(input[name])),
         );
     }
 
