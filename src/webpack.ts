@@ -310,7 +310,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
-    const {apiPath, debug, sourceDir, buildDir, projectRoot} = config;
+    const {apiPath, sourceDir, buildDir, projectRoot} = config;
     const {assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const projectDirPath = path.resolve(process.cwd(), projectRoot);
@@ -341,17 +341,6 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
             ___BRANCH__: JSON.stringify(gitBranch),
         }),
     ];
-
-    // If building for the production, minimize the JavaScript
-    if (!debug) {
-        plugins.push(
-            new webpack.optimize.UglifyJsPlugin({
-                compress: {
-                    warnings: false,
-                },
-            }),
-        );
-    }
     return {
         // Build for running in node environment, instead of web browser
         target: 'node',

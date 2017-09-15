@@ -80,6 +80,8 @@ export interface IHttpRequest {
     isBase64Encoded?: boolean;
 }
 
+export type HttpHandler = (request: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback) => void;
+
 export function isReadHttpMethod(method: string): method is 'GET' | 'HEAD' {
     return method === 'GET' || method === 'HEAD';
 }

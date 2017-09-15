@@ -22,7 +22,7 @@ import { zip } from './zip';
 import * as mime from 'mime';
 import * as File from 'vinyl';
 
-import { IApiEndpoint } from './endpoints';
+import { Api } from './api';
 import { HttpMethod } from './http';
 
 export interface IStackOutput {
@@ -680,7 +680,7 @@ function formatResourceDelete(resource: CloudFormation.StackResource): string {
     });
 }
 
-function buildApiResourceHierarchy(endpoints: Array<IApiEndpoint<any>>, parentPath: string[] = []): IApiResourceHierarchy[] {
+function buildApiResourceHierarchy(endpoints: Array<{api: Api<any>, path: string[]}>, parentPath: string[] = []): IApiResourceHierarchy[] {
     const rootResources = groupBy(endpoints, (endpoint) => endpoint.path[0]);
     return map(rootResources, (subEndpoints, pathPart) => {
         const [descendants, children] = partition(subEndpoints, (endpoint) => endpoint.path.length > 1);
@@ -699,7 +699,7 @@ function buildApiResourceHierarchy(endpoints: Array<IApiEndpoint<any>>, parentPa
 interface IApiResourceHierarchy {
     pathPart: string;
     parentPath: string[];
-    endpoints: Array<IApiEndpoint<any>>;
+    endpoints: Array<{api: Api<any>, path: string[]}>;
     subResources: IApiResourceHierarchy[];
 }
 

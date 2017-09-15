@@ -2,7 +2,7 @@ import { Subscribable } from 'rxjs/Observable';
 import { defer } from 'rxjs/observable/defer';
 import { of } from 'rxjs/observable/of';
 import { Api } from './api';
-import { HttpCallback, HttpStatus } from './http';
+import { HttpCallback, HttpHandler, HttpStatus } from './http';
 import { IHttpHeaders, IHttpResponse } from './http';
 import { IHttpRequest, IHttpRequestContext } from './http';
 import { isReadHttpMethod, isWriteHttpMethod } from './http';
@@ -11,7 +11,7 @@ import isNumber = require('lodash/isNumber');
 import isObject = require('lodash/isObject');
 import isString = require('lodash/isString');
 import mapValues = require('lodash/mapValues');
-import sortBy = require('lodash/sortBy');
+import forEach = require('lodash/forEach');
 // tslint:disable:max-classes-per-file
 
 export interface IApiResponse<T> {
@@ -81,7 +81,6 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
     }
 
     public execute(event: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback) {
-        event = this.normalizeRequest(event);
         defer(() => this.deserialize(event))
             .switchMap((input) => this.run(input, event, context))
             .map(({statusCode, data, headers}) => {
@@ -114,11 +113,56 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
             })
         ;
     }
+}
+
+export interface IApiEndpoint<I extends object> {
+    api: Api<I>;
+    path: string[];
+    execute: HttpHandler;
+}
+
+export class ApiRequestHandler<T extends {[endpoint: string]: IApiEndpoint<any>}> {
+
+    private readonly endpointMapping: {[url: string]: IApiEndpoint<any>};
+
+    constructor(public readonly endpoints: T) {
+        this.endpointMapping = {};
+        forEach(endpoints, (endpoint) => {
+            forEach(endpoint.api.methods, (method) => {
+                this.endpointMapping[`${method} ${endpoint.api.url}`] = endpoint;
+            });
+        });
+    }
+
+    public request: HttpHandler = (request: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback) => {
+        request = this.normalizeRequest(request);
+        const endpoint = this.endpointMapping[`${request.httpMethod} ${request.resource}`];
+        if (endpoint) {
+            endpoint.execute(request, context, callback);
+        } else {
+            // This should not be possible if API gateway was configured correctly
+            callback(null, {
+                statusCode: 404,
+                body: JSON.stringify({
+                    message: 'API endpoint not found.',
+                    request: {
+                        resource: request.resource,
+                        path: request.path,
+                        httpMethod: request.httpMethod,
+                        queryStringParameters: request.queryStringParameters,
+                    },
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+        }
+    }
 
     protected normalizeRequest(request: IHttpRequest): IHttpRequest {
         let {httpMethod} = request;
-        const {queryStringParameters = {}} = request;
-        const {method} = queryStringParameters;
+        const {queryStringParameters} = request;
+        const {method = null} = queryStringParameters || {};
         if (method) {
             // Allow changing the HTTP method with 'method' query string parameter
             if (httpMethod === 'GET' && isReadHttpMethod(method)) {
@@ -131,31 +175,5 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
         }
         // Return with possible changed HTTP method
         return { ...request, httpMethod };
-    }
-}
-
-export interface IApiEndpoint<I extends object> {
-    api: Api<I>;
-    path: string[];
-}
-
-export class ApiRequestHandler<T extends {[endpoint: string]: IApiEndpoint<any>}> {
-
-    private readonly sortedEndpoints: Array<IApiEndpoint<any>>;
-
-    constructor(public readonly endpoints: T) {
-        this.sortedEndpoints = sortBy(endpoints, (endpoint) => endpoint.api.url);
-    }
-
-    public request(_request: IHttpRequest, _context: IHttpRequestContext, callback: HttpCallback): void {
-        // const endpoint = this.findMatchingEndpoint(request);
-        // TODO
-        callback(null, {
-            statusCode: 200,
-            body: JSON.stringify({message: 'Hello, world!'}),
-            headers: {
-                'Content-Type': 'text/plain',
-            },
-        });
     }
 }
