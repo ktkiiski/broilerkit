@@ -11,6 +11,12 @@ declare const __ASSETS_ORIGIN__: string;
 declare const __SITE_ORIGIN__: string;
 
 /**
+ * The origin of the REST API URLs, not containing
+ * the trailing slash. Example: "https://api.example.com"
+ */
+declare const __API_ORIGIN__: string;
+
+/**
  * GIT commit hash of the web app build.
  */
 declare const __COMMIT_HASH__: string;

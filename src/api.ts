@@ -8,6 +8,8 @@ import map = require('lodash/map');
 import mapValues = require('lodash/mapValues');
 import omit = require('lodash/omit');
 
+declare const __API_ORIGIN__: string;
+
 export interface IApiDefinition<I> {
     auth: boolean;
     url: string;
@@ -62,13 +64,14 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
     }
 
     public getUrl(input: {[key: string]: any}): string {
-        return this.url.replace(/{(\w+)}/g, (_, key) => {
+        const path = this.url.replace(/{(\w+)}/g, (_, key) => {
             const value = input[key];
             if (value == null) {
                 throw Error(`URL component "${key}" is missing a value.`);
             }
             return encodeURIComponent(value);
         });
+        return `${__API_ORIGIN__}${path}`;
     }
 
     public validate(input: {[key: string]: any}): I {

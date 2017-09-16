@@ -21,7 +21,7 @@ export interface IWebpackConfigOptions extends IAppConfig {
  */
 export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRoot} = config;
-    const {assetsOrigin, siteOrigin} = config;
+    const {apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const projectDirPath = path.resolve(process.cwd(), projectRoot);
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
@@ -65,6 +65,8 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
             '__ASSETS_ORIGIN__': JSON.stringify(assetsOrigin),
             // Web site URL origin
             '__SITE_ORIGIN__': JSON.stringify(siteOrigin),
+            // API URL origin
+            '__API_ORIGIN__': JSON.stringify(apiOrigin),
             // Allow using the GIT commit hash ID
             '__COMMIT_HASH__': JSON.stringify(gitCommitHash),
             // Allow using the GIT version
@@ -311,7 +313,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
  */
 export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {apiPath, sourceDir, buildDir, projectRoot} = config;
-    const {assetsOrigin, siteOrigin} = config;
+    const {apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const projectDirPath = path.resolve(process.cwd(), projectRoot);
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
@@ -330,15 +332,17 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
          */
         new webpack.DefinePlugin({
             // Static assets URL origin
-            ___ASSETS_ORIGIN__: JSON.stringify(assetsOrigin),
+            __ASSETS_ORIGIN__: JSON.stringify(assetsOrigin),
             // Web site URL origin
-            ___SITE_ORIGIN__: JSON.stringify(siteOrigin),
+            __SITE_ORIGIN__: JSON.stringify(siteOrigin),
+            // API URL origin
+            __API_ORIGIN__: JSON.stringify(apiOrigin),
             // Allow using the GIT commit hash ID
-            ___COMMIT_HASH__: JSON.stringify(gitCommitHash),
+            __COMMIT_HASH__: JSON.stringify(gitCommitHash),
             // Allow using the GIT version
-            ___VERSION__: JSON.stringify(gitVersion),
+            __VERSION__: JSON.stringify(gitVersion),
             // Allow using the GIT branch name
-            ___BRANCH__: JSON.stringify(gitBranch),
+            __BRANCH__: JSON.stringify(gitBranch),
         }),
     ];
     return {

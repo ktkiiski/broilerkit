@@ -15,6 +15,8 @@ import mapValues = require('lodash/mapValues');
 import forEach = require('lodash/forEach');
 // tslint:disable:max-classes-per-file
 
+declare const __SITE_ORIGIN__: string;
+
 export interface IApiResponse<T> {
     statusCode: HttpStatus;
     data?: T;
@@ -74,10 +76,19 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
             if (!isObject(payload)) {
                 throw new ApiError(HttpStatus.BadRequest, `Request payload is not a JSON object`);
             }
-            input = {...queryStringParameters, payload};
+            input = {...input, ...payload};
         }
         return of(
-            mapValues(this.api.params, (field: Field<any>, name) => field.deserialize(input[name])),
+            mapValues(this.api.params, (field: Field<any>, name) => {
+                try {
+                    return field.deserialize(input[name]);
+                } catch (error) {
+                    if (error.invalid) {
+                        throw new ApiError(HttpStatus.BadRequest, JSON.stringify({[name]: error.message}));
+                    }
+                    throw error;
+                }
+            }),
         );
     }
 
@@ -95,22 +106,30 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
                     },
                 } as IHttpResponse;
             })
+            .catch((error) => {
+                // Determine if the error was a HTTP response
+                const {statusCode, body, headers} = error || {} as any;
+                if (isNumber(statusCode) && isString(body) && isObject(headers)) {
+                    // This was an intentional HTTP error, so it should be considered
+                    // a successful execution of the lambda function.
+                    return of(error as IHttpResponse);
+                }
+                throw error;
+            })
+            // Ensure that the response contains the CORS headers
+            .map((response) => ({
+                ...response,
+                headers: {
+                    'Access-Control-Allow-Origin': __SITE_ORIGIN__,
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
+                    'Access-Control-Allow-Credentials': 'true',
+                    ...response.headers,
+                },
+            }))
             .single()
             .subscribe({
                 next: (result) => callback(null, result),
-                error: (error) => {
-                    // Determine if the error was a HTTP method
-                    const {statusCode, body, headers} = error || {} as any;
-                    if (isNumber(statusCode) && isString(body) && isObject(headers)) {
-                        // This was an intentional HTTP error, so it should be considered
-                        // a successful execution of the lambda function.
-                        callback(null, error);
-                    } else {
-                        // Something went wrong when handling the request.
-                        // This will be a 500 Internal server error.
-                        callback(error);
-                    }
-                },
+                error: (error) => callback(error),
             })
         ;
     }

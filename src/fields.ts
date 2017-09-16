@@ -13,6 +13,10 @@ export interface IFieldOptions<T> {
     defaultValue?: T;
 }
 
+export class ValidationError extends Error {
+    public readonly invalid = true;
+}
+
 export abstract class Field<T> implements IField<T> {
 
     private allowNull: boolean;
@@ -29,14 +33,14 @@ export abstract class Field<T> implements IField<T> {
     public deserialize(value: any): T {
         if (value === undefined) {
             if (this.required) {
-                throw new Error(`The field is required`);
+                throw new ValidationError(`The field is required`);
             }
             return this.defaultValue as T;
         } else if (value === null) {
             if (this.allowNull) {
                 return value;
             }
-            throw new Error(`The value null is not allowed`);
+            throw new ValidationError(`The value null is not allowed`);
         } else {
             return value;
         }
@@ -60,7 +64,7 @@ export class IntegerField extends Field<number> {
         } else if (isString(deserialized)) {
             return parseInt(deserialized, 10);
         } else {
-            throw new Error(`Invalid integer value`);
+            throw new ValidationError(`Invalid integer value`);
         }
     }
 }
@@ -70,6 +74,6 @@ export class BooleanField extends Field<boolean> {
         if (isBoolean(value)) {
             return value;
         }
-        throw new Error(`Invalid boolean value`);
+        throw new ValidationError(`Invalid boolean value`);
     }
 }
