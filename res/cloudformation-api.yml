@@ -3,6 +3,12 @@ Parameters:
   # The key of the ZIP file in the deployment S3 bucket
   ApiRequestLambdaFunctionS3Key:
     Type: String
+  # Domain for the REST API
+  ApiDomainName:
+    Type: String
+  # Hosted zone name of the domain for the REST API
+  ApiHostedZoneName:
+    Type: String
 
 Resources:
   # The role that is used by the API Lambda function execution
@@ -105,6 +111,49 @@ Resources:
         Fn::GetAtt: ["ApiGatewayCloudWatchLoggingRole", "Arn" ]
     DependsOn:
     - ApiGatewayCloudWatchLoggingRole
+
+  # Custom domain name for the REST API
+  ApiGatewayRestApiDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      CertificateArn:
+        Ref: DomainCertificate
+      DomainName:
+        Ref: ApiDomainName
+
+  # Removes the '/api' part from the REST API URL path
+  ApiGatewayRestApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      BasePath: ''
+      DomainName:
+        Ref: ApiGatewayRestApiDomainName
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      Stage:
+        Ref: ApiGatewayStage
+
+  # DNS domain name for the REST API
+  ApiDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneName:
+        Fn::Sub: "${ApiHostedZoneName}."
+      Comment: "Domain for the API Gateway deployment"
+      RecordSets:
+        - Name:
+            Fn::Sub: "${ApiDomainName}."
+          Type: A
+          AliasTarget:
+            HostedZoneId: Z2FDTNDATAQYW2
+            DNSName:
+              Fn::GetAtt: ApiGatewayRestApiDomainName.DistributionDomainName
+
+  # Append the API domain to the certificate
+  DomainCertificate:
+    Properties:
+      SubjectAlternativeNames:
+        - Ref: ApiDomainName
 
 Outputs:
   ApiGatewayRestApiUrl:

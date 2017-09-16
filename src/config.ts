@@ -20,6 +20,7 @@ export interface IAppConfig extends IAppConfigOptions {
     name: string;
     broilerKitVersion: string;
     assetsOrigin: string;
+    apiOrigin: string;
     buildDir: string;
     debug: boolean;
     iconFile: string;
