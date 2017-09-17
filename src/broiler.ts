@@ -11,7 +11,7 @@ import { AmazonS3 } from './aws';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
-import { serve$ } from './server';
+import { serve$, serveApi$ } from './server';
 import { dumpTemplate, mergeTemplates, readTemplate$ } from './templates';
 import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './utils/aws';
 import { isDoesNotExistsError, isUpToDateError } from './utils/aws';
@@ -147,6 +147,7 @@ export class Broiler {
         this.log(`Starting the local development server...`);
         return serve$(this.options)
             .do((opts) => this.log(`Serving the local development website at ${underline(`${opts.siteOrigin}/`)}`))
+            .merge(serveApi$(this.options))
         ;
     }
 
