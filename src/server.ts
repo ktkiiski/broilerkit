@@ -1,13 +1,15 @@
+import { bold, cyan, green, red, yellow } from 'chalk';
 import * as http from 'http';
 import * as path from 'path';
 import { Observable } from 'rxjs';
-import * as url from 'url';
 import { URL } from 'url';
+import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
+import { watch$ } from './compile';
 import { IAppConfig } from './config';
 import { ApiRequestHandler, IApiEndpoint } from './endpoints';
-import { HttpMethod, IHttpRequest, IHttpRequestContext, IHttpResponse } from './http';
+import { HttpMethod, HttpStatus, IHttpRequest, IHttpRequestContext, IHttpResponse } from './http';
 import { readStream } from './node';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import isFunction = require('lodash/isFunction');
@@ -70,21 +72,7 @@ export function serveApi$(options: IAppConfig) {
     if (enableHttps) {
         throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiOrigin.replace(/^https/, 'http')} instead!`);
     }
-    // TODO
-    const compiler = webpack(getBackendWebpackConfig({...options, debug: true, devServer: true}));
-    return new Observable<webpack.Stats>((subscriber) => {
-        const watching = compiler.watch({
-            aggregateTimeout: 300,
-            poll: 5000,
-        }, (error, stats) => {
-            if (error) {
-                subscriber.error(error);
-            } else {
-                subscriber.next(stats);
-            }
-        });
-        return () => watching.close(() => undefined);
-    })
+    return watch$(getBackendWebpackConfig({...options, debug: true, devServer: true}))
     .filter((stats) => {
         if (stats.hasErrors()) {
             // tslint:disable-next-line:no-console
@@ -97,6 +85,9 @@ export function serveApi$(options: IAppConfig) {
         return true;
     })
     .switchMap((stats) => {
+        // tslint:disable-next-line:no-console
+        console.log(stats.toString('minimal'));
+
         const statsJson = stats.toJson();
         const apiRequestHandlerFileName = statsJson.assetsByChunkName._api[0];
         const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
@@ -164,13 +155,13 @@ export function serveApi$(options: IAppConfig) {
                 .subscribe({
                     next: (response) => {
                         // tslint:disable-next-line:no-console
-                        console.log(`${httpRequest.method} ${httpRequest.url} => ${endpointName} => ${response && response.statusCode}`);
+                        console.log(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(response.statusCode)}`);
                         httpResponse.writeHead(response.statusCode, response.headers);
                         httpResponse.end(response.body);
                     },
                     error: (error) => {
                         // tslint:disable-next-line:no-console
-                        console.error(`${httpRequest.method} ${httpRequest.url} => ${endpointName} => 500\n${error}`);
+                        console.error(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(500)}\n${error}`);
                         httpResponse.writeHead(500, {
                             'Content-Type': 'text/plain',
                         });
@@ -230,4 +221,18 @@ function nodeRequestToLambdaRequest(request: http.IncomingMessage, resource: str
     return readStream(request).map((body) => ({
         ...baseRequest, body, isBase64Encoded: false,
     }));
+}
+
+function colorizeStatusCode(statusCode: HttpStatus): string {
+    const codeStr = String(statusCode);
+    if (statusCode >= 200 && statusCode < 300) {
+        return green(codeStr);
+    } else if (statusCode >= 300 && statusCode < 400) {
+        return cyan(codeStr);
+    } else if (statusCode >= 400 && statusCode < 500) {
+        return yellow(codeStr);
+    } else if (statusCode >= 500 && statusCode < 600) {
+        return red(codeStr);
+    }
+    return codeStr;
 }
