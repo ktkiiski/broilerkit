@@ -8,6 +8,7 @@ import * as WebpackDevServer from 'webpack-dev-server';
 import { IAppConfig } from './config';
 import { ApiRequestHandler, IApiEndpoint } from './endpoints';
 import { HttpMethod, IHttpRequest, IHttpRequestContext, IHttpResponse } from './http';
+import { readStream } from './node';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import isFunction = require('lodash/isFunction');
 import includes = require('lodash/includes');
@@ -226,13 +227,7 @@ function nodeRequestToLambdaRequest(request: http.IncomingMessage, resource: str
     if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
         return Observable.of(baseRequest);
     }
-    return Observable.fromEvent(request, 'data')
-        .takeUntil(Observable.fromEvent(request, 'end'))
-        .toArray()
-        .map((data) => ({
-            ...baseRequest,
-            body: data.join(''),
-            isBase64Encoded: false,
-        }))
-    ;
+    return readStream(request).map((body) => ({
+        ...baseRequest, body, isBase64Encoded: false,
+    }));
 }
