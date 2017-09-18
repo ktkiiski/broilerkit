@@ -1,14 +1,19 @@
 import * as http from 'http';
 import * as path from 'path';
 import { Observable } from 'rxjs';
+import * as url from 'url';
 import { URL } from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { IAppConfig } from './config';
-import { ApiRequestHandler } from './endpoints';
+import { ApiRequestHandler, IApiEndpoint } from './endpoints';
 import { HttpMethod, IHttpRequest, IHttpRequestContext, IHttpResponse } from './http';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import isFunction = require('lodash/isFunction');
+import includes = require('lodash/includes');
+import flatten = require('lodash/flatten');
+import filter = require('lodash/filter');
+import map = require('lodash/map');
 
 /**
  * Runs the Webpack development server.
@@ -96,58 +101,82 @@ export function serveApi$(options: IAppConfig) {
         const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
         // Ensure that module will be re-loaded
         delete require.cache[apiRequestHandlerFilePath];
-        const handler: ApiRequestHandler<any> = require(apiRequestHandlerFilePath);
+        const handler: ApiRequestHandler<{[endpoint: string]: IApiEndpoint<any>}> = require(apiRequestHandlerFilePath);
         if (!handler || !isFunction(handler.request)) {
             throw new Error(`The exported API module must have a 'request' callable!`);
         }
         return serveHttp$(serverPort, (httpRequest, httpResponse) => {
-            const context: IHttpRequestContext = {
-                accountId: '', // TODO
-                resourceId: '', // TODO
-                stage: '', // TODO
-                requestId: '', // TODO
-                identity: {
-                    cognitoIdentityPoolId: '', // TODO
-                    accountId: '', // TODO
-                    cognitoIdentityId: '', // TODO
-                    caller: '', // TODO
-                    apiKey: '', // TODO
-                    sourceIp: '', // TODO
-                    cognitoAuthenticationType: '', // TODO
-                    cognitoAuthenticationProvider: '', // TODO
-                    userArn: '', // TODO
-                    userAgent: '', // TODO
-                    user: '', // TODO
-                },
-                resourcePath: '', // TODO
-                httpMethod: httpRequest.method as HttpMethod, // TODO
-                apiId: '', // TODO
-            };
-            const request: IHttpRequest = {
-                resource: '', // TODO
-                httpMethod: httpRequest.method as HttpMethod,
-                path: httpRequest.url as string, // TODO: Remove GET parameters
-                queryStringParameters: {}, // TODO
-                pathParameters: {}, // TODO
-                headers: httpRequest.headers as any, // TODO: String values?
-                stageVariables: {}, // TODO
-                requestContext: context,
-            };
-            handler.request(request, context, (error?: Error | null, response?: IHttpResponse | null) => {
-                if (error) {
-                    // tslint:disable-next-line:no-console
-                    console.error(`${request.httpMethod} ${request.path} => 500\n${error}`);
-                    httpResponse.writeHead(500, {
-                        'Content-Type': 'text/plain',
-                    });
-                    httpResponse.end(`Internal server error:\n${error}`);
-                } else if (response) {
-                    // tslint:disable-next-line:no-console
-                    console.log(`${request.httpMethod} ${request.path} => ${response.statusCode}`);
-                    httpResponse.writeHead(response.statusCode, response.headers);
-                    httpResponse.end(response.body);
+            // Find a matching endpoint
+            const {endpoints} = handler;
+            let endpointName: string | null = null;
+            let pathParameters: {[key: string]: string} | null = null;
+            let resource: string | null = null;
+            // Find a matching endpoint
+            for (const name in endpoints) {
+                if (endpoints.hasOwnProperty(name)) {
+                    const {api} = endpoints[name];
+                    pathParameters = api.parseUrl(httpRequest.url as string);
+                    if (pathParameters) {
+                        if (httpRequest.method === 'OPTIONS') {
+                            // Respond with CORS headers
+                            const allowedMethods = flatten(
+                                map(
+                                    filter(handler.endpoints, (endpoint) => endpoint.api.url === api.url),
+                                    (endpoint) => endpoint.api.methods,
+                                ),
+                            );
+                            httpResponse.writeHead(200, {
+                                'Access-Control-Allow-Origin': options.siteOrigin,
+                                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
+                                'Access-Control-Allow-Methods': allowedMethods.join(','),
+                                'Access-Control-Allow-Credentials': 'true',
+                            });
+                            httpResponse.end();
+                            return;
+                        } else if (includes(api.methods, httpRequest.method)) {
+                            endpointName = name;
+                            resource = api.url;
+                            break;
+                        }
+                    }
                 }
-            });
+            }
+            if (!resource || !pathParameters) {
+                httpResponse.writeHead(404, {'Content-Type': 'text/plain'});
+                httpResponse.end(`Not Found`);
+                return;
+            }
+            nodeRequestToLambdaRequest(httpRequest, resource, pathParameters)
+                .switchMap((request) => new Observable<IHttpResponse>((subscriber) => {
+                    handler.request(request, request.requestContext, (error?: Error | null, response?: IHttpResponse | null) => {
+                        if (error) {
+                            subscriber.error(error);
+                        } else if (response) {
+                            subscriber.next(response);
+                            subscriber.complete();
+                        } else {
+                            subscriber.complete();
+                        }
+                    });
+                }))
+                .single()
+                .subscribe({
+                    next: (response) => {
+                        // tslint:disable-next-line:no-console
+                        console.log(`${httpRequest.method} ${httpRequest.url} => ${endpointName} => ${response && response.statusCode}`);
+                        httpResponse.writeHead(response.statusCode, response.headers);
+                        httpResponse.end(response.body);
+                    },
+                    error: (error) => {
+                        // tslint:disable-next-line:no-console
+                        console.error(`${httpRequest.method} ${httpRequest.url} => ${endpointName} => 500\n${error}`);
+                        httpResponse.writeHead(500, {
+                            'Content-Type': 'text/plain',
+                        });
+                        httpResponse.end(`Internal server error:\n${error}`);
+                    },
+                })
+            ;
         });
     });
 }
@@ -158,4 +187,52 @@ function serveHttp$(port: number, requestListener: (request: http.IncomingMessag
         server.listen(port);
         return () => server.close();
     });
+}
+
+function nodeRequestToLambdaRequest(request: http.IncomingMessage, resource: string, pathParameters: {[parameter: string]: string}): Observable<IHttpRequest> {
+    const requestUrlObj = url.parse(request.url as string, true);
+    const context: IHttpRequestContext = {
+        accountId: '', // TODO
+        resourceId: '', // TODO
+        stage: 'api',
+        requestId: '', // TODO
+        identity: {
+            cognitoIdentityPoolId: '', // TODO
+            accountId: '', // TODO
+            cognitoIdentityId: '', // TODO
+            caller: '', // TODO
+            apiKey: '', // TODO
+            sourceIp: '', // TODO
+            cognitoAuthenticationType: '', // TODO
+            cognitoAuthenticationProvider: '', // TODO
+            userArn: '', // TODO
+            userAgent: '', // TODO
+            user: '', // TODO
+        },
+        resourcePath: resource,
+        httpMethod: request.method as HttpMethod, // TODO
+        apiId: '', // TODO
+    };
+    const baseRequest = {
+        resource,
+        pathParameters,
+        httpMethod: request.method as HttpMethod,
+        path: requestUrlObj.pathname as string,
+        queryStringParameters: requestUrlObj.search ? requestUrlObj.query : undefined,
+        headers: request.headers as any, // TODO: String values?
+        stageVariables: {}, // TODO
+        requestContext: context,
+    };
+    if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+        return Observable.of(baseRequest);
+    }
+    return Observable.fromEvent(request, 'data')
+        .takeUntil(Observable.fromEvent(request, 'end'))
+        .toArray()
+        .map((data) => ({
+            ...baseRequest,
+            body: data.join(''),
+            isBase64Encoded: false,
+        }))
+    ;
 }
