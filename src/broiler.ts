@@ -1,20 +1,20 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
-import { map, partition } from 'lodash';
 import { difference, differenceBy, fromPairs, groupBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
+import { map, partition } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
+import { AmazonS3 } from './aws/s3';
+import { isDoesNotExistsError, isUpToDateError } from './aws/utils';
+import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './aws/utils';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
-import { AmazonS3 } from './s3';
 import { serve$, serveApi$ } from './server';
 import { dumpTemplate, mergeTemplates, readTemplate$ } from './templates';
-import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './utils/aws';
-import { isDoesNotExistsError, isUpToDateError } from './utils/aws';
 import { searchFiles$ } from './utils/fs';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';

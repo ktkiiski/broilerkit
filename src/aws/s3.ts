@@ -1,6 +1,6 @@
 import { AWSError, S3 } from 'aws-sdk';
 import { Observable } from 'rxjs';
-import { retrievePage$, sendRequest$ } from './utils/aws';
+import { retrievePage$, sendRequest$ } from './utils';
 
 /**
  * Wrapper class for Amazon S3 operations with a reactive interface.
