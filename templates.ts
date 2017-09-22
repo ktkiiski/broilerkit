@@ -8,7 +8,7 @@ import * as YAML from 'yamljs';
 export function readTemplate$(templateFiles: string[], placeholders: {[placeholder: string]: string} = {}) {
     return Observable
         .forkJoin(
-            map(templateFiles, (templateFile) => readFile$(path.resolve(__dirname, '../res/', templateFile))),
+            map(templateFiles, (templateFile) => readFile$(path.resolve(__dirname, './res/', templateFile))),
         )
         .concatMap((templates) => map(templates, (template) => deserializeTemplate(template, placeholders)))
         .reduce(mergeTemplates, {} as any)

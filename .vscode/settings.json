@@ -4,9 +4,17 @@
     "files.associations": {
         "*.tmpl": "html"
     },
+    "files.exclude": {
+        "**/*.js": { "when": "$(basename).ts"},
+        "**/*.js.map": true,
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true
+    },
     "html.format.endWithNewline": true,
     "tslint.autoFixOnSave": true,
-    "tslint.exclude": "./dist",
     "tslint.jsEnable": false,
     "typescript.tsdk": "./node_modules/typescript/lib"
 }

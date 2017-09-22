@@ -28,7 +28,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
     const scriptPaths = _.union(..._.map(pages, (page) => page.scripts));
     const buildDirPath = path.resolve(projectDirPath, buildDir);
     const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
-    const ownModulesDirPath = path.resolve(__dirname, '../node_modules');
+    const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
 
     const gitCommitHash = executeSync('git rev-parse HEAD');
     const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
@@ -319,7 +319,7 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
     const buildDirPath = path.resolve(projectDirPath, buildDir);
     const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
-    const ownModulesDirPath = path.resolve(__dirname, '../node_modules');
+    const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
 
     const gitCommitHash = executeSync('git rev-parse HEAD');
     const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');

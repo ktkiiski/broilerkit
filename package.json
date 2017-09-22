@@ -2,25 +2,19 @@
   "name": "broilerkit",
   "version": "0.1.1",
   "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "engines": {
     "node": ">=8.2"
   },
-  "files": [
-    "dist",
-    "res",
-    "src",
-    "types"
-  ],
   "bin": {
-    "broil": "./dist/broil.js"
+    "broil": "./broil.js"
   },
   "scripts": {
     "build": "npm run compile",
-    "clean": "rm -rf ./dist",
+    "clean": "find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.js.map' \\) -exec rm {} \\;",
     "clean-build": "npm run clean && npm run compile",
-    "compile": "tsc -p . && chmod +x ./dist/broil.js",
+    "compile": "tsc -p . && chmod +x ./broil.js",
     "prepare": "npm run clean-build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

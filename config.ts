@@ -40,7 +40,7 @@ export interface IAppConfig extends IAppConfigOptions {
 
 export function readAppConfig$(options: IAppConfigOptions): Observable<IAppConfig> {
     // Read the version of the BroikerKit itself
-    const { version } = require('../package.json');
+    const { version } = require('./package.json');
     const { stage, appConfigPath, debug } = options;
     const appConfig$ = readConfig$<any>(appConfigPath);
     const projectRoot = path.dirname(appConfigPath);
