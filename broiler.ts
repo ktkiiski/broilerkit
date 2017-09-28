@@ -69,7 +69,7 @@ export class Broiler {
     public deploy$() {
         const frontendCompile$ = this.compileFrontend$();
         const backendCompile$ = this.compileBackend$();
-        const ensureStack$ = this.ensureStackExists$();
+        const ensureStack$ = this.initialize$();
         const backendUploadPrepare$ = Observable.forkJoin(backendCompile$, ensureStack$);
         const backendUpload$ = backendUploadPrepare$.concat(this.uploadBackend$());
         const deploy$ = backendUpload$.concat(this.deployStack$());
@@ -81,6 +81,27 @@ export class Broiler {
         return this.clean$().concat(frontendUpload$, invalidate$).do({
             complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.options.siteOrigin}/`)}`),
         });
+    }
+
+    /**
+     * Ensures that the CloudFormation stack exists. If it does, this does
+     * nothing. If it doesn't, then it an initial stack will be created,
+     * containing just the deployment AWS S3 bucket.
+     */
+    public initialize$(): Observable<IStackWithResources> {
+        return this.checkStackExists$()
+            .switchMap((stackExists) => {
+                if (stackExists) {
+                    return this.describeStackWithResources$();
+                } else {
+                    this.log(`Creating a new stack...`);
+                    return this.createStack$().reduce(
+                        (oldStack, newStack) => this.logStackChanges(oldStack, newStack),
+                        {} as IStackWithResources,
+                    );
+                }
+            })
+        ;
     }
 
     /**
@@ -492,27 +513,6 @@ export class Broiler {
 
     private clean$() {
         return clean$(this.options.buildDir);
-    }
-
-    /**
-     * Ensures that the CloudFormation stack exists. If it does, this does
-     * nothing. If it doesn't, then it an initial stack will be created,
-     * containing just the deployment AWS S3 bucket.
-     */
-    private ensureStackExists$(): Observable<IStackWithResources> {
-        return this.checkStackExists$()
-            .switchMap((stackExists) => {
-                if (stackExists) {
-                    return this.describeStackWithResources$();
-                } else {
-                    this.log(`Creating a new stack...`);
-                    return this.createStack$().reduce(
-                        (oldStack, newStack) => this.logStackChanges(oldStack, newStack),
-                        {} as IStackWithResources,
-                    );
-                }
-            })
-        ;
     }
 
     private generateTemplate$() {

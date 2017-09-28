@@ -42,9 +42,19 @@ yargs
     .command({
         command: 'deploy <stage>',
         describe: 'Deploy the web app for the given stage.',
-        handler: (argv: IAppConfigOptions) => {
+        builder: (cmdYargs) => cmdYargs
+            .boolean('init')
+            .describe('init', 'Just create a stack without deploying')
+        ,
+        handler: (argv: IAppConfigOptions & {init: boolean}) => {
             readAppConfig$(argv)
-                .switchMap((config) => new Broiler(config).deploy$())
+                .switchMap((config) => {
+                    const broiler = new Broiler(config);
+                    if (argv.init) {
+                        return broiler.initialize$();
+                    }
+                    return broiler.deploy$();
+                })
                 .subscribe(errorHandler)
             ;
         },
