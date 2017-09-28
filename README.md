@@ -94,7 +94,9 @@ The web page is automatically reloaded when the app is re-built.
 
 #### Set up AWS credentials
 
-To deploy the web app, you first need to set up your AWS credentials.
+First, create a user and an access key from [AWS Identity and Access Management Console](https://console.aws.amazon.com/iam).
+
+Then you need to set up your AWS credentials to your development machine.
 This can be done with [`aws-cli` command line tool](https://github.com/aws/aws-cli), which you may need to [install first](http://docs.aws.amazon.com/cli/latest/userguide/installing.html):
 
 ```bash
