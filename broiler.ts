@@ -213,11 +213,10 @@ export class Broiler {
             .switchMap(([initStack, template, parameters]) =>
                 this.cloudFormation.createChangeSet(dumpTemplate(template), parameters)
                     .switchMap((changeSet) => {
+                        this.logChangeSet(changeSet);
                         if (!changeSet.Changes || !changeSet.Changes.length) {
-                            this.log('Stack is up-to-date! No updates are to be performed.');
                             return Observable.empty() as Observable<IStackWithResources>;
                         }
-                        this.log('Starting to apply the changes to the stack...');
                         return this.cloudFormation.executeChangeSet(changeSet.ChangeSetName as string);
                     })
                     .reduce((oldStack, newStack) => this.logStackChanges(oldStack, newStack), initStack),
@@ -460,6 +459,29 @@ export class Broiler {
     private log(message: any, ...params: any[]) {
         // tslint:disable-next-line:no-console
         console.log(message, ...params);
+    }
+
+    private logChangeSet(changeSet: CloudFormation.DescribeChangeSetOutput) {
+        if (!changeSet.Changes || !changeSet.Changes.length) {
+            this.log(`Stack is up to date! No changes are to be performed!`);
+            return;
+        }
+        this.log(`Changes to be performed to the stack:`);
+        for (const {ResourceChange} of changeSet.Changes) {
+            if (ResourceChange) {
+                const { Action, LogicalResourceId, Details } = ResourceChange;
+                const colorizeAction = Action === 'Add' ? green
+                    : Action === 'Modify' ? cyan : yellow;
+                this.log(`- ${colorizeAction(Action as string)}: ${bold(LogicalResourceId as string)}`);
+                if (Details) {
+                    for (const { Target } of Details) {
+                        if (Target) {
+                            this.log(`   · ${Target.Attribute}: ${Target.Name}`);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private logStackChanges(oldStack: IStackWithResources, newStack: IStackWithResources): IStackWithResources {
