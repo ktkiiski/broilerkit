@@ -1,15 +1,16 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { bold, cyan, green, underline, yellow } from 'chalk';
-import { difference, differenceBy, fromPairs, groupBy, sortBy } from 'lodash';
+import { difference, differenceBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
-import { map, partition } from 'lodash';
+import { map } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
 import { AmazonS3 } from './aws/s3';
-import { isDoesNotExistsError, isUpToDateError } from './aws/utils';
-import { convertStackParameters, formatS3KeyName, formatStatus, retrievePage$, sendRequest$ } from './aws/utils';
+import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
+import { isDoesNotExistsError } from './aws/utils';
+import { formatS3KeyName, formatStatus, sendRequest$ } from './aws/utils';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
@@ -22,16 +23,7 @@ import { zip } from './zip';
 import * as mime from 'mime';
 import * as File from 'vinyl';
 
-import { Api } from './api';
 import { HttpMethod } from './http';
-
-export interface IStackOutput {
-    [key: string]: string;
-}
-
-export interface IStackWithResources extends CloudFormation.Stack {
-    StackResources: CloudFormation.StackResource[];
-}
 
 export interface IFileUpload {
     file: File;
@@ -46,10 +38,9 @@ const staticHtmlCacheDuration = 3600;
 
 export class Broiler {
 
-    private cloudFormation = new CloudFormation({
-        region: this.options.region,
-        apiVersion: '2010-05-15',
-    });
+    private cloudFormation = new AmazonCloudFormation(
+        this.options.region, this.options.stackName,
+    );
     private cloudFront = new CloudFront({
         region: this.options.region,
         apiVersion: '2017-03-25',
@@ -75,7 +66,7 @@ export class Broiler {
         const deploy$ = backendUpload$.concat(this.deployStack$());
         const frontendUploadPrepare$ = Observable.forkJoin(deploy$, frontendCompile$);
         const frontendUpload$ = frontendUploadPrepare$.concat(this.deployFile$());
-        const invalidate$ = this.getStackOutput$().switchMap(
+        const invalidate$ = this.cloudFormation.getStackOutput().switchMap(
             (output) => this.invalidateCloudFront$(output.SiteCloudFrontDistributionId),
         );
         return this.clean$().concat(frontendUpload$, invalidate$).do({
@@ -89,17 +80,21 @@ export class Broiler {
      * containing just the deployment AWS S3 bucket.
      */
     public initialize$(): Observable<IStackWithResources> {
-        return this.checkStackExists$()
-            .switchMap((stackExists) => {
-                if (stackExists) {
-                    return this.describeStackWithResources$();
-                } else {
+        return this.cloudFormation.describeStackWithResources()
+            .catch((error: Error) => {
+                // Check if the message indicates that the stack was not found
+                if (isDoesNotExistsError(error)) {
                     this.log(`Creating a new stack...`);
-                    return this.createStack$().reduce(
-                        (oldStack, newStack) => this.logStackChanges(oldStack, newStack),
-                        {} as IStackWithResources,
-                    );
+                    return readTemplate$(['cloudformation-init.yml'])
+                        .switchMap((template) => this.cloudFormation.createStack(dumpTemplate(template), {}))
+                        .reduce(
+                            (oldStack, newStack) => this.logStackChanges(oldStack, newStack),
+                            {} as IStackWithResources,
+                        )
+                    ;
                 }
+                // Pass the error through
+                throw error;
             })
         ;
     }
@@ -109,7 +104,7 @@ export class Broiler {
      */
     public undeploy$(): Observable<CloudFormation.Stack> {
         this.log(`Removing the stack ${bold(this.options.stackName)} from region ${bold(this.options.region)}`);
-        return this.getStackOutput$()
+        return this.cloudFormation.getStackOutput()
             .switchMap((output) => Observable.merge(
                 this.s3.emptyBucket$(output.AssetsS3BucketName),
                 this.s3.emptyBucket$(output.SiteS3BucketName),
@@ -124,7 +119,9 @@ export class Broiler {
             })
             .count()
             .do((count) => this.log(`Deleted total of ${count} items`))
-            .switchMapTo(this.describeStackWithResources$().concat(this.deleteStack$()))
+            .switchMapTo(this.cloudFormation.describeStackWithResources().concat(
+                this.cloudFormation.deleteStack(),
+            ))
             .scan((oldStack, newStack) => this.logStackChanges(oldStack, newStack))
             .do({
                 complete: () => this.log(green('Undeployment complete!')),
@@ -176,7 +173,7 @@ export class Broiler {
      * Outputs information about the stack.
      */
     public printStack$(): Observable<IStackWithResources> {
-        return this.describeStackWithResources$()
+        return this.cloudFormation.describeStackWithResources()
             .do((stack) => {
                 this.log(`Stack ${bold(stack.StackName)}`);
                 this.log(`- Status: ${formatStatus(stack.StackStatus)}`);
@@ -208,9 +205,22 @@ export class Broiler {
      */
     public deployStack$(): Observable<IStackWithResources> {
         this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
-        return this.describeStackWithResources$()
-            .switchMap((initStack) => this.updateStack$()
-                .reduce((oldStack, newStack) => this.logStackChanges(oldStack, newStack), initStack),
+        return Observable.forkJoin(
+                this.cloudFormation.describeStackWithResources(),
+                this.generateTemplate$(),
+                this.getStackParameters$()
+            )
+            .switchMap(([initStack, template, parameters]) =>
+                this.cloudFormation.createChangeSet(dumpTemplate(template), parameters)
+                    .switchMap((changeSet) => {
+                        if (!changeSet.Changes || !changeSet.Changes.length) {
+                            this.log('Stack is up-to-date! No updates are to be performed.');
+                            return Observable.empty() as Observable<IStackWithResources>;
+                        }
+                        this.log('Starting to apply the changes to the stack...');
+                        return this.cloudFormation.executeChangeSet(changeSet.ChangeSetName as string);
+                    })
+                    .reduce((oldStack, newStack) => this.logStackChanges(oldStack, newStack), initStack),
             )
         ;
     }
@@ -222,7 +232,7 @@ export class Broiler {
     public deployFile$(): Observable<IFileUpload> {
         const asset$ = searchFiles$(this.options.buildDir, ['!**/*.html', '!_api*.js']);
         const page$ = searchFiles$(this.options.buildDir, ['**/*.html']);
-        return this.getStackOutput$().switchMap((output) =>
+        return this.cloudFormation.getStackOutput().switchMap((output) =>
             Observable.merge(
                 this.uploadFilesToS3Bucket$(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false),
                 this.uploadFilesToS3Bucket$(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true),
@@ -242,7 +252,7 @@ export class Broiler {
         const apiDomain = apiOriginUrl.hostname;
         return this.getCompiledApiFile$()
             .defaultIfEmpty<File | undefined>(undefined)
-            .map((apiFile) => convertStackParameters({
+            .map((apiFile) => ({
                 SiteOrigin: siteOriginUrl.origin,
                 SiteDomainName: siteDomain,
                 SiteHostedZoneName: getHostedZone(siteDomain),
@@ -253,189 +263,6 @@ export class Broiler {
                 ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),
             }))
         ;
-    }
-
-    /**
-     * Describes the CloudFormation stack, or fails if does not exist.
-     * @returns Observable for the stack description
-     */
-    public describeStack$(): Observable<CloudFormation.Stack> {
-        return sendRequest$(
-            this.cloudFormation.describeStacks({ StackName: this.options.stackName }),
-        ).map((stack) => (stack.Stacks || [])[0]);
-    }
-
-    /**
-     * Describes all the resources in the CloudFormation stack.
-     * @returns Observable for a list of stack resources
-     */
-    public describeStackResources$(): Observable<CloudFormation.StackResource> {
-        return retrievePage$(
-            this.cloudFormation.describeStackResources({ StackName: this.options.stackName }),
-            'StackResources',
-        )
-        .concatMap((resources) => resources || []);
-    }
-
-    /**
-     * Like describeStack$ but the stack will also contain the 'StackResources'
-     * attribute, containing all the resources of the stack, like from
-     * describeStackResources$.
-     * @returns Observable for a stack including its resources
-     */
-    public describeStackWithResources$(): Observable<IStackWithResources> {
-        return Observable.combineLatest(
-            this.describeStack$(),
-            this.describeStackResources$().toArray(),
-            (Stack, StackResources) => ({...Stack, StackResources}),
-        );
-    }
-
-    /**
-     * Retrieves the outputs of the CloudFormation stack.
-     * The outputs are represented as an object, where keys are the
-     * output keys, and values are the output values.
-     * @returns Observable for the stack output object
-     */
-    public getStackOutput$(): Observable<IStackOutput> {
-        return this.describeStack$()
-            .map((stack) => fromPairs(map(
-                stack.Outputs,
-                ({OutputKey, OutputValue}) => [OutputKey, OutputValue]),
-            ))
-        ;
-    }
-
-    /**
-     * Checks whether or not the CloudFormation stack exists,
-     * resulting to a boolean value.
-     * @returns Observable for a boolean value
-     */
-    public checkStackExists$(): Observable<boolean> {
-        return this.describeStack$()
-            .mapTo(true)
-            .catch<boolean, boolean>((error: Error) => {
-                // Check if the message indicates that the stack was not found
-                if (isDoesNotExistsError(error)) {
-                    return Observable.of(false);
-                }
-                // Pass the error through
-                throw error;
-            })
-        ;
-    }
-
-    /**
-     * Creating a new CloudFormation stack using the initialization template.
-     * This will fail if the stack already exists.
-     * @returns Observable for the starting of stack creation
-     */
-    public createStack$() {
-        return readTemplate$(['cloudformation-init.yml'])
-            .switchMap((template) => sendRequest$(
-                this.cloudFormation.createStack({
-                    StackName: this.options.stackName,
-                    TemplateBody: dumpTemplate(template),
-                    OnFailure: 'ROLLBACK',
-                    Capabilities: [
-                        'CAPABILITY_IAM',
-                        'CAPABILITY_NAMED_IAM',
-                    ],
-                }),
-            ))
-            .do(() => this.log('Stack creation has started.'))
-            .switchMapTo(this.waitForDeployment$(2000))
-        ;
-    }
-
-    /**
-     * Updating an existing CloudFormation stack using the given template.
-     * This will fail if the stack does not exist.
-     * NOTE: If no update is needed, the observable completes without emitting any value!
-     * @returns Observable for the starting of stack update
-     */
-    public updateStack$() {
-        return Observable.forkJoin(this.generateTemplate$(), this.getStackParameters$())
-            .switchMap(([template, parameters]) => sendRequest$(
-                this.cloudFormation.updateStack({
-                    StackName: this.options.stackName,
-                    TemplateBody: dumpTemplate(template),
-                    Capabilities: [
-                        'CAPABILITY_IAM',
-                        'CAPABILITY_NAMED_IAM',
-                    ],
-                    Parameters: parameters,
-                }),
-            ).catch((error: Error) => {
-                if (isUpToDateError(error)) {
-                    // Let's not consider this an error. Just do not emit anything.
-                    this.log('Stack is up-to-date! No updates are to be performed.');
-                    return Observable.empty() as Observable<CloudFormation.UpdateStackOutput>;
-                }
-                throw error;
-            }))
-            .do(() => this.log('Stack update has started.'))
-            .switchMapTo(this.waitForDeployment$(2000))
-        ;
-    }
-
-    /**
-     * Deletes the existing CloudFormation stack.
-     * This will fail if the stack does not exist.
-     */
-    public deleteStack$() {
-        return sendRequest$(
-            this.cloudFormation.deleteStack({ StackName: this.options.stackName }),
-        )
-        .do(() => this.log('Stack deletion has started.'))
-        .switchMapTo(this.waitForDeletion$(2000));
-    }
-
-    /**
-     * Polls the state of the CloudFormation stack until it changes to
-     * a complete state, or fails, in which case the observable fails.
-     * @returns Observable emitting the stack and its resources until complete
-     */
-    public waitForDeployment$(minInterval: number): Observable<IStackWithResources> {
-        return new Observable<IStackWithResources>((subscriber) =>
-            Observable.timer(0, minInterval)
-                .exhaustMap(() => this.describeStackWithResources$())
-                .subscribe((stack) => {
-                    const stackStatus = stack.StackStatus;
-                    if (/_IN_PROGRESS$/.test(stackStatus)) {
-                        subscriber.next(stack);
-                    } else if (/_FAILED$|ROLLBACK_COMPLETE$/.test(stackStatus)) {
-                        subscriber.next(stack);
-                        subscriber.error(new Error(`Stack deployment failed: ${stack.StackStatusReason}`));
-                    } else {
-                        subscriber.next(stack);
-                        subscriber.complete();
-                    }
-                }),
-        );
-    }
-
-    /**
-     * Polls the state of the CloudFormation stack until the stack no longer exists.
-     * @returns Observable emitting the stack and its resources until deleted
-     */
-    public waitForDeletion$(minInterval: number): Observable<IStackWithResources> {
-        return new Observable<IStackWithResources>((subscriber) =>
-            Observable.timer(0, minInterval)
-                .exhaustMap(() => this.describeStackWithResources$())
-                .subscribe((stack) => {
-                    const stackStatus = stack.StackStatus;
-                    if (stackStatus.endsWith('_IN_PROGRESS')) {
-                        subscriber.next(stack);
-                    } else if (stackStatus.endsWith('_FAILED')) {
-                        subscriber.next(stack);
-                        subscriber.error(new Error(`Stack deployment failed: ${stack.StackStatusReason}`));
-                    }
-                }, () => {
-                    // Error occurred: assume that the stack does not exist!
-                    subscriber.complete();
-                }),
-        );
     }
 
     /**
@@ -493,7 +320,7 @@ export class Broiler {
             .switchMap((file) => {
                 return Observable.forkJoin(
                     zip(file.contents, 'api.js'),
-                    this.getStackOutput$(),
+                    this.cloudFormation.getStackOutput(),
                 )
                 .switchMap(([zipFileData, output]) => {
                     const bucketName = output.DeploymentManagementS3BucketName;
@@ -683,29 +510,6 @@ function formatResourceDelete(resource: CloudFormation.StackResource): string {
         ResourceStatus: 'DELETE_COMPLETED',
         ResourceStatusReason: undefined,
     });
-}
-
-function buildApiResourceHierarchy(endpoints: Array<{api: Api<any>, path: string[]}>, parentPath: string[] = []): IApiResourceHierarchy[] {
-    const rootResources = groupBy(endpoints, (endpoint) => endpoint.path[0]);
-    return map(rootResources, (subEndpoints, pathPart) => {
-        const [descendants, children] = partition(subEndpoints, (endpoint) => endpoint.path.length > 1);
-        return {
-            pathPart,
-            parentPath,
-            endpoints: children,
-            subResources: buildApiResourceHierarchy(map(descendants, (endpoint) => ({
-                api: endpoint.api,
-                path: endpoint.path.slice(1),
-            })), parentPath.concat([pathPart])),
-        };
-    });
-}
-
-interface IApiResourceHierarchy {
-    pathPart: string;
-    parentPath: string[];
-    endpoints: Array<{api: Api<any>, path: string[]}>;
-    subResources: IApiResourceHierarchy[];
 }
 
 function getApiLambdaFunctionLogicalId(name: string) {
