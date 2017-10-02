@@ -81,6 +81,16 @@ yargs
         },
     })
     .command({
+        command: 'changes <stage>',
+        describe: 'Preview the changes that would be deployed without actually deploying them.',
+        handler: (argv) => {
+            readAppConfig$(argv)
+                .switchMap((config) => new Broiler(config).preview$())
+                .subscribe(errorHandler)
+            ;
+        }
+    })
+    .command({
         command: 'describe <stage>',
         describe: 'Describes the deployed resources of the given stage.',
         handler: (argv) => {

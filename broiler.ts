@@ -159,6 +159,24 @@ export class Broiler {
     }
 
     /**
+     * Preview the changes that would be deployed.
+     */
+    public preview$() {
+        return this.clean$().concat(
+            this.compileBackend$(),
+            Observable.forkJoin(
+                this.generateTemplate$(),
+                this.getStackParameters$()
+            )
+            .switchMap(([template, parameters]) =>
+                this.cloudFormation.createChangeSet(dumpTemplate(template), parameters)
+            )
+            .do((changeSet) => this.logChangeSet(changeSet))
+            .mergeMap((changeSet) => this.cloudFormation.deleteChangeSet(changeSet.ChangeSetName as string))
+        );
+    }
+
+    /**
      * Runs the local development server.
      */
     public serve$(): Observable<any> {
