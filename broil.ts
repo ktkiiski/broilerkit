@@ -81,7 +81,7 @@ yargs
         },
     })
     .command({
-        command: 'changes <stage>',
+        command: 'preview <stage>',
         describe: 'Preview the changes that would be deployed without actually deploying them.',
         handler: (argv) => {
             readAppConfig$(argv)
