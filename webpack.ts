@@ -289,6 +289,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
             // Look from this library's node modules!
             modules: [
                 ownModulesDirPath,
+                modulesDirPath,
             ],
         },
 
@@ -427,6 +428,7 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
             // Look from this library's node modules!
             modules: [
                 ownModulesDirPath,
+                modulesDirPath,
             ],
         },
 
