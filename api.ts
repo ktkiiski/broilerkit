@@ -1,4 +1,5 @@
 // tslint:disable:max-classes-per-file
+import { Dictionary } from 'lodash';
 import { Observable } from 'rxjs';
 import { ajax } from 'rxjs/observable/dom/ajax';
 import { Field } from './fields';
@@ -25,7 +26,7 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
     public abstract readonly methods: HttpMethod[];
     public readonly auth: boolean;
     public readonly url: string;
-    public readonly params: { [P in keyof I]: Field<I[P]> };
+    public readonly params: { [P in keyof I & string]: Field<I[P]> };
 
     protected readonly pathComponents: string[];
     protected readonly urlParams: Array<keyof I>;
@@ -44,7 +45,7 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
     }
 
     public parseUrl(url: string): Partial<I> | null {
-        const input: Partial<I> = {};
+        const input: {[key: string]: any} = {};
         const patternComponents = this.pathComponents;
         const splittedUrl = url.split('/');
         if (patternComponents.length !== splittedUrl.length) {
@@ -60,7 +61,7 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
                 return null;
             }
         }
-        return input;
+        return input as Partial<I>;
     }
 
     public getUrl(input: {[key: string]: any}): string {
@@ -74,8 +75,11 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
         return `${__API_ORIGIN__}${path}`;
     }
 
-    public validate(input: {[key: string]: any}): I {
-        return mapValues(this.params, (field, name) => field.validate(input[name])) as I;
+    public deserialize(input: {[key: string]: any}): I {
+        return mapValues(
+            this.params as Dictionary<Field<any>>,
+            (field, name) => field.deserialize(input[name]),
+        ) as I;
     }
 }
 
