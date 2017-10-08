@@ -3,7 +3,6 @@ import * as path from 'path';
 import { Observable } from 'rxjs';
 import * as File from 'vinyl';
 import { src, SrcOptions } from 'vinyl-fs';
-import * as YAML from 'yamljs';
 
 /**
  * Creates an observable that emits all entries matching the given
@@ -54,28 +53,4 @@ export function readFile$(filename: string): Observable<string> {
             }
         });
     });
-}
-
-function require$<T>(id: string): Observable<T> {
-    return call$(() => require(id));
-}
-
-function call$<T>(callback: () => T): Observable<T> {
-    return new Observable<T>((subscriber) => {
-        try {
-            subscriber.next(callback() as T);
-            subscriber.complete();
-        } catch (error) {
-            subscriber.error(error);
-        }
-    });
-}
-
-export function readConfig$<T>(configFile: string): Observable<T> {
-    const cwd = process.cwd();
-    const configPath = path.resolve(cwd, configFile);
-    if (/\.(ya?ml)$/.test(configPath)) {
-        return readFile$(configPath).map((data) => YAML.parse(data));
-    }
-    return require$<T>(configPath);
 }
