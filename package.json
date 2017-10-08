@@ -14,7 +14,7 @@
     "build": "npm run compile",
     "clean": "find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.js.map' \\) -exec rm {} \\;",
     "clean-build": "npm run clean && npm run compile",
-    "compile": "tsc -p . && chmod +x ./broil.js",
+    "compile": "tsc -p .",
     "prepare": "npm run clean-build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
