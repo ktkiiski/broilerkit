@@ -7,9 +7,6 @@
   "engines": {
     "node": ">=8.2"
   },
-  "bin": {
-    "broil": "./broil.js"
-  },
   "scripts": {
     "build": "npm run compile",
     "clean": "find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.js.map' \\) -exec rm {} \\;",
