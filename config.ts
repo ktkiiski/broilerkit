@@ -16,6 +16,7 @@ export interface IAppConfig extends IAppConfigOptions {
     name: string;
     broilerKitVersion: string;
     assetsOrigin: string;
+    assetsUseCDN?: boolean;
     apiOrigin: string;
     buildDir: string;
     debug: boolean;
@@ -28,6 +29,7 @@ export interface IAppConfig extends IAppConfigOptions {
     projectRoot: string;
     region: string;
     siteOrigin: string;
+    siteUseCDN?: boolean;
     sourceDir: string;
     stackName: string;
     apiPath?: string;

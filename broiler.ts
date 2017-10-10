@@ -7,8 +7,8 @@ import { map } from 'lodash';
 import { Observable } from 'rxjs';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
-import { AmazonS3 } from './aws/s3';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
+import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName, formatStatus, sendRequest$ } from './aws/utils';
 import { clean$ } from './clean';
@@ -67,7 +67,10 @@ export class Broiler {
         const frontendUploadPrepare$ = Observable.forkJoin(deploy$, frontendCompile$);
         const frontendUpload$ = frontendUploadPrepare$.concat(this.deployFile$());
         const invalidate$ = this.cloudFormation.getStackOutput().switchMap(
-            (output) => this.invalidateCloudFront$(output.SiteCloudFrontDistributionId),
+            (output) => output.SiteCloudFrontDistributionId
+                ? this.invalidateCloudFront$(output.SiteCloudFrontDistributionId)
+                : Observable.empty()
+            ,
         );
         return this.clean$().concat(frontendUpload$, invalidate$).do({
             complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.options.siteOrigin}/`)}`),
@@ -166,13 +169,13 @@ export class Broiler {
             this.compileBackend$(),
             Observable.forkJoin(
                 this.generateTemplate$(),
-                this.getStackParameters$()
+                this.getStackParameters$(),
             )
             .switchMap(([template, parameters]) =>
-                this.cloudFormation.createChangeSet(dumpTemplate(template), parameters)
+                this.cloudFormation.createChangeSet(dumpTemplate(template), parameters),
             )
             .do((changeSet) => this.logChangeSet(changeSet))
-            .mergeMap((changeSet) => this.cloudFormation.deleteChangeSet(changeSet.ChangeSetName as string))
+            .mergeMap((changeSet) => this.cloudFormation.deleteChangeSet(changeSet.ChangeSetName as string)),
         );
     }
 
@@ -226,7 +229,7 @@ export class Broiler {
         return Observable.forkJoin(
                 this.cloudFormation.describeStackWithResources(),
                 this.generateTemplate$(),
-                this.getStackParameters$()
+                this.getStackParameters$(),
             )
             .switchMap(([initStack, template, parameters]) =>
                 this.cloudFormation.createChangeSet(dumpTemplate(template), parameters)
@@ -261,6 +264,7 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public getStackParameters$() {
+        const { assetsUseCDN = true, siteUseCDN = true } = this.options;
         const siteOriginUrl = new URL(this.options.siteOrigin);
         const siteDomain = siteOriginUrl.hostname;
         const assetsOriginUrl = new URL(this.options.assetsOrigin);
@@ -273,8 +277,10 @@ export class Broiler {
                 SiteOrigin: siteOriginUrl.origin,
                 SiteDomainName: siteDomain,
                 SiteHostedZoneName: getHostedZone(siteDomain),
+                SiteUseCDN: siteUseCDN ? 'true' : 'false',
                 AssetsDomainName: assetsDomain,
                 AssetsHostedZoneName: getHostedZone(assetsDomain),
+                AssetsUseCDN: assetsUseCDN ? 'true' : 'false',
                 ApiHostedZoneName: getHostedZone(apiDomain),
                 ApiDomainName: apiDomain,
                 ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),

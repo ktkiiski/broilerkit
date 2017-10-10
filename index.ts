@@ -29,6 +29,18 @@ export interface IStageConfig {
      * - "http://localhost:8081"
      */
     apiOrigin?: string;
+    /**
+     * Whether or not to use content delivery network (CDN) for your website HTML pages.
+     * Enabling will slow down the deployment, but increase the availability of the files
+     * by distributing them globally. Recommended for production.
+     */
+    assetsUseCDN?: boolean;
+    /**
+     * Whether or not to use content delivery network (CDN) for your website HTML pages.
+     * Enabling will slow down the deployment, but increase the availability of the files
+     * by distributing them globally. Recommended for production.
+     */
+    siteUseCDN?: boolean;
 }
 
 export interface IWebPageConfig {
