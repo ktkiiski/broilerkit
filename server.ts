@@ -12,10 +12,11 @@ import { ApiRequestHandler, IApiEndpoint } from './endpoints';
 import { HttpMethod, HttpStatus, IHttpRequest, IHttpRequestContext, IHttpResponse } from './http';
 import { readStream } from './node';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
-import isFunction = require('lodash/isFunction');
-import includes = require('lodash/includes');
-import flatten = require('lodash/flatten');
+
 import filter = require('lodash/filter');
+import flatten = require('lodash/flatten');
+import includes = require('lodash/includes');
+import isFunction = require('lodash/isFunction');
 import map = require('lodash/map');
 
 /**

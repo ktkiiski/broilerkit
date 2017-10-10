@@ -1,6 +1,6 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { bold, cyan, green, underline, yellow } from 'chalk';
+import { bold, cyan, dim, green, red, underline, yellow } from 'chalk';
 import { difference, differenceBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
 import { map } from 'lodash';
@@ -494,15 +494,24 @@ export class Broiler {
         for (const {ResourceChange} of changeSet.Changes) {
             if (ResourceChange) {
                 const { Action, LogicalResourceId, Details } = ResourceChange;
-                const colorizeAction = Action === 'Add' ? green
-                    : Action === 'Modify' ? cyan : yellow;
-                this.log(`- ${colorizeAction(Action as string)}: ${bold(LogicalResourceId as string)}`);
-                if (Details) {
-                    for (const { Target } of Details) {
+                const colorize = Action === 'Add' ? green
+                    : Action === 'Modify' ? cyan
+                    : red
+                ;
+                const icon = Action === 'Add' ? '+'
+                    : Action === 'Modify' ? '●'
+                    : '-'
+                ;
+                if (Details && Details.length) {
+                    for (const { Target, CausingEntity, ChangeSource } of Details) {
+                        const cause = CausingEntity || ChangeSource;
+                        const suffix = cause ? ` ${dim(`← ${cause}`)}` : '';
                         if (Target) {
-                            this.log(`   · ${Target.Attribute}: ${Target.Name}`);
+                            this.log(`[${colorize(icon)}] ${colorize(LogicalResourceId as string)}.${Target.Attribute}.${Target.Name}${suffix}`);
                         }
                     }
+                } else {
+                    this.log(`[${colorize(icon)}] ${colorize(LogicalResourceId as string)}`);
                 }
             }
         }
