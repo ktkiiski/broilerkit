@@ -1,21 +1,15 @@
 {
     "extends": "tslint:recommended",
     "rules": {
-        "max-line-length": [
-            false
-        ],
-        "triple-equals": [
-            true,
-            "allow-null-check"
-        ],
-        "quotemark": [
-            true,
-            "single"
-        ],
+        "interface-name": false,
+        "max-classes-per-file": false,
+        "max-line-length": false,
         "no-bitwise": false,
         "no-require-imports": false,
         "no-var-requires": false,
-        "object-literal-sort-keys": false
+        "object-literal-sort-keys": false,
+        "quotemark": [true, "single"],
+        "triple-equals": [true, "allow-null-check"]
     },
     "rulesDirectory": []
 }
