@@ -1,37 +1,28 @@
-import { Subscribable } from 'rxjs/Observable';
-import { defer } from 'rxjs/observable/defer';
-import { of } from 'rxjs/observable/of';
-import { Api } from './api';
-import { Field } from './fields';
-import { HttpCallback, HttpHandler, HttpStatus } from './http';
-import { IHttpHeaders, IHttpResponse } from './http';
-import { IHttpRequest, IHttpRequestContext } from './http';
-import { isReadHttpMethod, isWriteHttpMethod } from './http';
+import forEach = require('lodash/forEach');
 import includes = require('lodash/includes');
 import isNumber = require('lodash/isNumber');
 import isObject = require('lodash/isObject');
 import isString = require('lodash/isString');
 import mapValues = require('lodash/mapValues');
-import forEach = require('lodash/forEach');
-// tslint:disable:max-classes-per-file
+import { Subscribable } from 'rxjs/Observable';
+import { defer } from 'rxjs/observable/defer';
+import { of } from 'rxjs/observable/of';
+import { Api } from './api';
+import { Field } from './fields';
+import { isReadHttpMethod, isWriteHttpMethod } from './http';
+import { HttpHeaders, HttpResponse } from './http';
+import { HttpCallback, HttpHandler, HttpStatus } from './http';
+import { HttpRequest, HttpRequestContext } from './http';
+import { ExceptionResponse, SuccesfulResponse } from './http';
 
 declare const __SITE_ORIGIN__: string;
 
-export interface IApiResponse<T> {
-    statusCode: HttpStatus;
-    data?: T;
-    headers: IHttpHeaders;
-}
+export type ApiResponse<O> = SuccesfulResponse<O> | ExceptionResponse;
+export type ApiEndpointHandler<I extends object, O> = (input: I, event: HttpRequest, context: HttpRequestContext) => Subscribable<ApiResponse<O>> | Promise<ApiResponse<O>>;
 
-export class ApiResponse<T> implements IApiResponse<T> {
-    constructor(public readonly statusCode: HttpStatus, public readonly data?: T, public readonly headers: IHttpHeaders = {}) {}
-}
-
-export type ApiEndpointHandler<I extends object, O> = (input: I, event: IHttpRequest, context: IHttpRequestContext) => Subscribable<IApiResponse<O>>;
-
-class ApiError extends Error implements IHttpResponse {
+class ApiError extends Error implements HttpResponse {
     public readonly body: string;
-    constructor(public statusCode: HttpStatus, message: string, public headers: IHttpHeaders = {}) {
+    constructor(public statusCode: HttpStatus, message: string, public headers: HttpHeaders = {}) {
         super(message);
         this.body = JSON.stringify({message});
     }
@@ -50,7 +41,7 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
         this.path = api.url.replace(/^\/|\/$/, '').split('/');
     }
 
-    public deserialize(event: IHttpRequest): Subscribable<I> {
+    public deserialize(event: HttpRequest): Subscribable<I> {
         const {httpMethod, queryStringParameters, body, pathParameters} = event;
         const decodedPathParameters = mapValues(pathParameters, (value) => {
             if (!value) {
@@ -92,7 +83,7 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
         );
     }
 
-    public execute(event: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback) {
+    public execute(event: HttpRequest, context: HttpRequestContext, callback: HttpCallback) {
         defer(() => this.deserialize(event))
             .switchMap((input) => this.run(input, event, context))
             .map(({statusCode, data, headers}) => {
@@ -104,7 +95,7 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
                         'Content-Type': 'application/json',
                         'Content-Length': String(body.length),
                     },
-                } as IHttpResponse;
+                } as HttpResponse;
             })
             .catch((error) => {
                 // Determine if the error was a HTTP response
@@ -112,7 +103,7 @@ export class ApiEndpoint<I extends object, O> implements IApiEndpoint<I> {
                 if (isNumber(statusCode) && isString(body) && isObject(headers)) {
                     // This was an intentional HTTP error, so it should be considered
                     // a successful execution of the lambda function.
-                    return of(error as IHttpResponse);
+                    return of(error as HttpResponse);
                 }
                 throw error;
             })
@@ -154,7 +145,7 @@ export class ApiRequestHandler<T extends {[endpoint: string]: IApiEndpoint<any>}
         });
     }
 
-    public request: HttpHandler = (request: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback) => {
+    public request: HttpHandler = (request: HttpRequest, context: HttpRequestContext, callback: HttpCallback) => {
         request = this.normalizeRequest(request);
         const endpoint = this.endpointMapping[`${request.httpMethod} ${request.resource}`];
         if (endpoint) {
@@ -179,7 +170,7 @@ export class ApiRequestHandler<T extends {[endpoint: string]: IApiEndpoint<any>}
         }
     }
 
-    protected normalizeRequest(request: IHttpRequest): IHttpRequest {
+    protected normalizeRequest(request: HttpRequest): HttpRequest {
         let {httpMethod} = request;
         const {queryStringParameters} = request;
         const {method = null} = queryStringParameters || {};

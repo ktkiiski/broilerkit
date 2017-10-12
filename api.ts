@@ -1,13 +1,13 @@
 // tslint:disable:max-classes-per-file
 import { Dictionary } from 'lodash';
-import { Observable } from 'rxjs';
-import { ajax } from 'rxjs/observable/dom/ajax';
-import { Field } from './fields';
-import { HttpMethod } from './http';
 import filter = require('lodash/filter');
 import map = require('lodash/map');
 import mapValues = require('lodash/mapValues');
 import omit = require('lodash/omit');
+import { Observable } from 'rxjs';
+import { ajax } from 'rxjs/observable/dom/ajax';
+import { Field } from './fields';
+import { HttpMethod } from './http';
 
 declare const __API_ORIGIN__: string;
 

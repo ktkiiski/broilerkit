@@ -22,29 +22,33 @@ export const enum HttpStatus {
     Gone = 410,
 }
 
+export type HttpSuccessStatus = 200 | 201 | 202 | 204;
+export type HttpRedirectStatus = 301 | 302;
+export type HttpClientErrorStatus = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 409 | 410;
+
 /**
  * Any supported HTTP method.
  */
 export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
-export interface IHttpHeaders {
+export interface HttpHeaders {
     [header: string]: string;
 }
 
-export interface IHttpResponse {
+export interface HttpResponse {
     statusCode: HttpStatus;
-    headers: IHttpHeaders;
+    headers: HttpHeaders;
     body: string;
 }
 
-export interface ILambdaCallback<R> {
+export interface LambdaCallback<R> {
     (error: null | undefined, result: R): void;
     (error: Error, result?: null): void;
 }
 
-export type HttpCallback = ILambdaCallback<IHttpResponse>;
+export type HttpCallback = LambdaCallback<HttpResponse>;
 
-export interface IHttpRequestContext {
+export interface HttpRequestContext {
     accountId: string;
     resourceId: string;
     stage: string;
@@ -67,20 +71,20 @@ export interface IHttpRequestContext {
     apiId: string;
 }
 
-export interface IHttpRequest {
+export interface HttpRequest {
     resource: string;
     httpMethod: HttpMethod;
     path: string;
     queryStringParameters: {[parameter: string]: string};
     pathParameters: {[parameter: string]: string};
-    headers: IHttpHeaders;
+    headers: HttpHeaders;
     stageVariables: {[variable: string]: string};
-    requestContext: IHttpRequestContext;
+    requestContext: HttpRequestContext;
     body?: string;
     isBase64Encoded?: boolean;
 }
 
-export type HttpHandler = (request: IHttpRequest, context: IHttpRequestContext, callback: HttpCallback) => void;
+export type HttpHandler = (request: HttpRequest, context: HttpRequestContext, callback: HttpCallback) => void;
 
 export function isReadHttpMethod(method: string): method is 'GET' | 'HEAD' {
     return method === 'GET' || method === 'HEAD';
@@ -88,4 +92,39 @@ export function isReadHttpMethod(method: string): method is 'GET' | 'HEAD' {
 
 export function isWriteHttpMethod(method: string): method is 'POST' | 'PUT' | 'PATCH' | 'DELETE' {
     return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+}
+
+/**
+ * Represents a response from an API endpoint function.
+ * Unlike in IHttpResponse, the data should be a response object
+ * that is not yet encoded as JSON string.
+ */
+export interface ApiResponse<T> {
+    readonly statusCode: HttpStatus;
+    readonly data?: T;
+    readonly headers: HttpHeaders;
+}
+
+export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
+    public readonly abstract statusCode: HttpSuccessStatus;
+    constructor(public readonly data: T, public readonly headers: HttpHeaders = {}) {}
+}
+
+export abstract class ExceptionResponse extends Error implements ApiResponse<any> {
+    public readonly abstract statusCode: HttpRedirectStatus | HttpClientErrorStatus;
+    constructor(message: string, public readonly data: any = {message}, public readonly headers: HttpHeaders = {}) {
+        super(message);
+    }
+}
+
+export class OK<T> extends SuccesfulResponse<T> {
+    public readonly statusCode = HttpStatus.OK;
+}
+
+export class Created<T> extends SuccesfulResponse<T> {
+    public readonly statusCode = HttpStatus.Created;
+}
+
+export class NotFound extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.NotFound;
 }

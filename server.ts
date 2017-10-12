@@ -9,7 +9,7 @@ import * as WebpackDevServer from 'webpack-dev-server';
 import { watch$ } from './compile';
 import { IAppConfig } from './config';
 import { ApiRequestHandler, IApiEndpoint } from './endpoints';
-import { HttpMethod, HttpStatus, IHttpRequest, IHttpRequestContext, IHttpResponse } from './http';
+import { HttpMethod, HttpRequest, HttpRequestContext, HttpResponse, HttpStatus } from './http';
 import { readStream } from './node';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
@@ -140,8 +140,8 @@ export function serveApi$(options: IAppConfig) {
                 return;
             }
             nodeRequestToLambdaRequest(httpRequest, resource, pathParameters)
-                .switchMap((request) => new Observable<IHttpResponse>((subscriber) => {
-                    handler.request(request, request.requestContext, (error?: Error | null, response?: IHttpResponse | null) => {
+                .switchMap((request) => new Observable<HttpResponse>((subscriber) => {
+                    handler.request(request, request.requestContext, (error?: Error | null, response?: HttpResponse | null) => {
                         if (error) {
                             subscriber.error(error);
                         } else if (response) {
@@ -182,9 +182,9 @@ function serveHttp$(port: number, requestListener: (request: http.IncomingMessag
     });
 }
 
-function nodeRequestToLambdaRequest(request: http.IncomingMessage, resource: string, pathParameters: {[parameter: string]: string}): Observable<IHttpRequest> {
+function nodeRequestToLambdaRequest(request: http.IncomingMessage, resource: string, pathParameters: {[parameter: string]: string}): Observable<HttpRequest> {
     const requestUrlObj = url.parse(request.url as string, true);
-    const context: IHttpRequestContext = {
+    const context: HttpRequestContext = {
         accountId: '', // TODO
         resourceId: '', // TODO
         stage: 'api',
