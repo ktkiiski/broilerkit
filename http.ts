@@ -112,8 +112,10 @@ export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
 
 export abstract class ExceptionResponse extends Error implements ApiResponse<any> {
     public readonly abstract statusCode: HttpRedirectStatus | HttpClientErrorStatus;
-    constructor(message: string, public readonly data: any = {message}, public readonly headers: HttpHeaders = {}) {
+    public readonly data: any;
+    constructor(message: string, data?: object, public readonly headers: HttpHeaders = {}) {
         super(message);
+        this.data = {...data, message};
     }
 }
 
@@ -127,4 +129,12 @@ export class Created<T> extends SuccesfulResponse<T> {
 
 export class NotFound extends ExceptionResponse {
     public readonly statusCode = HttpStatus.NotFound;
+}
+
+export class BadRequest extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.BadRequest;
+}
+
+export class MethodNotAllowed extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.MethodNotAllowed;
 }

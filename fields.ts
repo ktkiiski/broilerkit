@@ -1,6 +1,6 @@
+import isBoolean = require('lodash/isBoolean');
 import isFinite = require('lodash/isFinite');
 import isString = require('lodash/isString');
-import isBoolean = require('lodash/isBoolean');
 // tslint:disable:max-classes-per-file
 
 export interface IField<T> {
