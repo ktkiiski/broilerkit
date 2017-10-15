@@ -71,6 +71,9 @@ Resources:
     Type: "AWS::CloudFront::Distribution"
     Properties:
       DistributionConfig:
+        # Use a cheaper price class for now.
+        # TODO: Make this configurable, as 'PriceClass_All' is better for production
+        PriceClass: PriceClass_100
         Aliases:
           - Ref: AssetsDomainName
         Origins:
@@ -101,6 +104,9 @@ Resources:
     Type: "AWS::CloudFront::Distribution"
     Properties:
       DistributionConfig:
+        # Use a cheaper price class for now.
+        # TODO: Make this configurable, as 'PriceClass_All' is better for production
+        PriceClass: PriceClass_100
         Aliases:
           - Ref: SiteDomainName
         Origins:
