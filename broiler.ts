@@ -67,10 +67,7 @@ export class Broiler {
         const frontendUploadPrepare$ = Observable.forkJoin(deploy$, frontendCompile$);
         const frontendUpload$ = frontendUploadPrepare$.concat(this.deployFile$());
         const invalidate$ = this.cloudFormation.getStackOutput().switchMap(
-            (output) => output.SiteCloudFrontDistributionId
-                ? this.invalidateCloudFront$(output.SiteCloudFrontDistributionId)
-                : Observable.empty()
-            ,
+            (output) => this.invalidateCloudFront$(output.SiteCloudFrontDistributionId),
         );
         return this.clean$().concat(frontendUpload$, invalidate$).do({
             complete: () => this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.options.siteOrigin}/`)}`),
@@ -264,7 +261,6 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public getStackParameters$() {
-        const { assetsUseCDN = true, siteUseCDN = true } = this.options;
         const siteOriginUrl = new URL(this.options.siteOrigin);
         const siteDomain = siteOriginUrl.hostname;
         const assetsOriginUrl = new URL(this.options.assetsOrigin);
@@ -277,10 +273,8 @@ export class Broiler {
                 SiteOrigin: siteOriginUrl.origin,
                 SiteDomainName: siteDomain,
                 SiteHostedZoneName: getHostedZone(siteDomain),
-                SiteUseCDN: siteUseCDN ? 'true' : 'false',
                 AssetsDomainName: assetsDomain,
                 AssetsHostedZoneName: getHostedZone(assetsDomain),
-                AssetsUseCDN: assetsUseCDN ? 'true' : 'false',
                 ApiHostedZoneName: getHostedZone(apiDomain),
                 ApiDomainName: apiDomain,
                 ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),
