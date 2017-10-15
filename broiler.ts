@@ -541,7 +541,7 @@ function formatResourceChange(resource: CloudFormation.StackResource): string {
     const colorizedStatus = formatStatus(status);
     const statusReason = resource.ResourceStatusReason;
     let msg = `Resource ${bold(id)} => ${colorizedStatus}`;
-    if (statusReason) {
+    if (status.endsWith('_FAILED') && statusReason) {
         msg += ` (${statusReason})`;
     }
     if (id === 'DomainCertificate' && status === 'CREATE_IN_PROGRESS') {
