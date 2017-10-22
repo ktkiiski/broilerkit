@@ -8,8 +8,9 @@ import { Field, string } from './fields';
 import { HttpMethod } from './http';
 import { ListSerializer, ResourceFieldSet, Serializer } from './resources';
 
+export { Field };
+
 declare const __API_ORIGIN__: string;
-export let ___: Field<any, any>; // TODO: Just using Field
 
 export interface Endpoint<IE, II, PE, PI, OE, OI, RI, RE> {
     methods: HttpMethod[];
