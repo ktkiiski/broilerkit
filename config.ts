@@ -1,5 +1,3 @@
-import { ApiRequestHandler } from './endpoints';
-
 export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
@@ -25,5 +23,4 @@ export interface IAppConfig extends IAppConfigOptions {
     sourceDir: string;
     stackName: string;
     apiPath?: string;
-    api?: ApiRequestHandler;
 }

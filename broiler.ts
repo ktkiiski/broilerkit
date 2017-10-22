@@ -21,8 +21,10 @@ import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
 import * as mime from 'mime';
+import * as path from 'path';
 import * as File from 'vinyl';
 
+import { ApiRequestHandler } from './endpoints';
 import { HttpMethod } from './http';
 
 export interface IFileUpload {
@@ -149,7 +151,7 @@ export class Broiler {
      * Compiles the backend code with Webpack to the build directory.
      */
     public compileBackend$(): Observable<WebpackStats> {
-        if (!this.options.api) {
+        if (!this.importApi()) {
             return Observable.empty();
         }
         this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.options.stage)}...`);
@@ -330,7 +332,7 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     private uploadBackend$(): Observable<S3.PutObjectOutput> {
-        if (!this.options.api) {
+        if (!this.importApi()) {
             return Observable.empty();
         }
         return this.getCompiledApiFile$()
@@ -360,7 +362,7 @@ export class Broiler {
     }
 
     private generateTemplate$() {
-        const apiConfig = this.options.api;
+        const apiConfig = this.importApi();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const endpoints = sortBy(
             map(apiConfig && apiConfig.apiFunctions, ({endpoint}, name) => ({
@@ -463,7 +465,7 @@ export class Broiler {
     }
 
     private getCompiledApiFile$() {
-        if (this.options.api) {
+        if (this.importApi()) {
             return searchFiles$(this.options.buildDir, ['_api*.js']).single();
         } else {
             return Observable.empty<File>();
@@ -530,6 +532,15 @@ export class Broiler {
             this.log(resourceState);
         }
         return newStack;
+    }
+
+    private importApi(): ApiRequestHandler | null {
+        const { apiPath, projectRoot } = this.options;
+        if (apiPath) {
+            const api = require(path.resolve(projectRoot, apiPath));
+            return api.config || api;
+        }
+        return null;
     }
 }
 
