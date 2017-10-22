@@ -127,6 +127,13 @@ export class Created<T> extends SuccesfulResponse<T> {
     public readonly statusCode = HttpStatus.Created;
 }
 
+export class NoContent extends SuccesfulResponse<void> {
+    public readonly statusCode = HttpStatus.NoContent;
+    constructor(headers?: HttpHeaders) {
+        super(undefined, headers);
+    }
+}
+
 export class NotFound extends ExceptionResponse {
     public readonly statusCode = HttpStatus.NotFound;
 }

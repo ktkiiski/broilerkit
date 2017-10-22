@@ -1,15 +1,9 @@
-import { IApiDefinition } from './api';
-import { ApiRequestHandler, IApiEndpoint } from './endpoints';
-import { HttpMethod } from './http';
+import { ApiRequestHandler } from './endpoints';
 
 export interface IAppConfigOptions {
     appConfigPath: string;
     stage: string;
     debug: boolean;
-}
-
-export interface IAppApiEndpointConfig<T> extends IApiDefinition<T> {
-    methods: HttpMethod[];
 }
 
 export interface IAppConfig extends IAppConfigOptions {
@@ -31,5 +25,5 @@ export interface IAppConfig extends IAppConfigOptions {
     sourceDir: string;
     stackName: string;
     apiPath?: string;
-    api?: ApiRequestHandler<{[endpoint: string]: IApiEndpoint<any>}>;
+    api?: ApiRequestHandler;
 }

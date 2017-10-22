@@ -1,20 +1,26 @@
 // tslint:disable:max-classes-per-file
-import { Dictionary } from 'lodash';
-import filter = require('lodash/filter');
-import map = require('lodash/map');
-import mapValues = require('lodash/mapValues');
+import keys = require('lodash/keys');
 import omit = require('lodash/omit');
+import pick = require('lodash/pick');
 import { Observable } from 'rxjs';
 import { ajax } from 'rxjs/observable/dom/ajax';
-import { Field } from './fields';
+import { Field, string } from './fields';
 import { HttpMethod } from './http';
+import { ListSerializer, ResourceFieldSet, Serializer } from './resources';
 
 declare const __API_ORIGIN__: string;
+export let ___: Field<any, any>; // TODO: Just using Field
 
-export interface IApiDefinition<I> {
+export interface Endpoint<IE, II, PE, PI, OE, OI, RI, RE> {
+    methods: HttpMethod[];
     auth: boolean;
     url: string;
-    params: { [P in keyof I]: Field<I[P]> };
+    identifier: ResourceFieldSet<IE, II>;
+    requiredPayload: ResourceFieldSet<PE, PI>;
+    optionalPayload: ResourceFieldSet<OE, OI>;
+    attrs: ResourceFieldSet<RE, RI>;
+    parseUrl(url: string): IE | null;
+    getUrl(url: IE): string;
 }
 
 export interface IApiListPage<T> {
@@ -22,29 +28,19 @@ export interface IApiListPage<T> {
     results: T[];
 }
 
-export abstract class Api<I extends object> implements IApiDefinition<I> {
+export abstract class Api<ClientInput, ServerInput> {
     public abstract readonly methods: HttpMethod[];
-    public readonly auth: boolean;
-    public readonly url: string;
-    public readonly params: { [P in keyof I & string]: Field<I[P]> };
 
-    protected readonly pathComponents: string[];
-    protected readonly urlParams: Array<keyof I>;
+    protected readonly pathComponents: string[] = this.url.split('/');
+    protected readonly urlParams = keys(this.identifier);
 
-    constructor(options: IApiDefinition<I>) {
-        this.auth = options.auth;
-        this.url = options.url;
-        this.params = options.params;
-        this.pathComponents = this.url.split('/');
-        this.urlParams = filter(
-            map(this.pathComponents, (component) => {
-                const keywordMatch = /^{(\w+)}$/.exec(component);
-                return (keywordMatch && keywordMatch[1]) as keyof I;
-            }),
-        );
-    }
+    constructor(
+        public readonly identifier: ResourceFieldSet<ClientInput, ServerInput>,
+        public readonly url: string,
+        public readonly auth: boolean,
+    ) {}
 
-    public parseUrl(url: string): Partial<I> | null {
+    public parseUrl(url: string): ClientInput | null {
         const input: {[key: string]: any} = {};
         const patternComponents = this.pathComponents;
         const splittedUrl = url.split('/');
@@ -61,12 +57,12 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
                 return null;
             }
         }
-        return input as Partial<I>;
+        return input as ClientInput;
     }
 
-    public getUrl(input: {[key: string]: any}): string {
+    public getUrl(input: ClientInput): string {
         const path = this.url.replace(/{(\w+)}/g, (_, key) => {
-            const value = input[key];
+            const value = (input as any)[key];
             if (value == null) {
                 throw Error(`URL component "${key}" is missing a value.`);
             }
@@ -74,83 +70,262 @@ export abstract class Api<I extends object> implements IApiDefinition<I> {
         });
         return `${__API_ORIGIN__}${path}`;
     }
+}
 
-    public deserialize(input: {[key: string]: any}): I {
-        return mapValues(
-            this.params as Dictionary<Field<any>>,
-            (field, name) => field.deserialize(input[name]),
-        ) as I;
+export abstract class ResponseApi<ClientInput, ServerInput, ServerResponse, ClientResponse> extends Api<ClientInput, ServerInput> {
+
+    constructor(
+        public readonly attrs: ResourceFieldSet<ClientResponse, ServerResponse>,
+        identifier: ResourceFieldSet<ClientInput, ServerInput>, url: string, auth: boolean,
+    ) {
+        super(identifier, url, auth);
     }
 }
 
-export class RetrieveApi<I extends object, O> extends Api<I> {
+export abstract class PayloadApi<IE, II, PE, PI, OE, OI, ResI, ResE> extends ResponseApi<IE, II, ResI, ResE> {
+
+    constructor(
+        public readonly requiredPayload: ResourceFieldSet<PE, PI>,
+        public readonly optionalPayload: ResourceFieldSet<OE, OI>,
+        attrs: ResourceFieldSet<ResE, ResI>,
+        identifier: ResourceFieldSet<IE, II>, url: string, auth: boolean,
+    ) {
+        super(attrs, identifier, url, auth);
+    }
+
+    public deserialize(input: any): IE & PE & OE {
+        // return mapValues(
+        //     this.params as Dictionary<Field<any, any>>,
+        //     (field, name) => field.input(input[name]),
+        // ) as II & PI & OI;
+        return input as any; // TODO
+    }
+}
+
+export class RetrieveApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
+    extends ResponseApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
+    implements Endpoint<ClientInput, ServerInput, void, void, void, void, ServerResponse, ClientResponse> {
 
     public methods = ['GET', 'HEAD'] as HttpMethod[];
 
-    public get(input: I): Observable<O> {
+    public readonly requiredPayload: ResourceFieldSet<void, void>;
+    public readonly optionalPayload: ResourceFieldSet<void, void>;
+
+    public get(input: ClientInput): Observable<ClientResponse> {
         // TODO: Validate
         const method = 'GET';
         const url = this.getUrl(input);
-        return ajax({method, url}).map((response) => response.response as O);
+        return ajax({method, url}).map((response) => response.response as ClientResponse);
     }
 }
 
-export class ListApi<I extends object, O> extends RetrieveApi<I, IApiListPage<O>> {
+export class ListApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
+    extends RetrieveApi<ClientInput, ServerInput, IApiListPage<ServerResponse>, IApiListPage<ClientResponse>> {
 
-    public list(input: I): Observable<O> {
+    public list(input: ClientInput): Observable<ClientResponse> {
         return this.get(input)
             .expand((page) => {
                 if (page.next) {
-                    return ajax({method: 'GET', url: page.next}).map((response) => response.response as IApiListPage<O>);
+                    return ajax({method: 'GET', url: page.next}).map((response) => response.response as IApiListPage<ClientResponse>);
                 }
-                return Observable.empty<IApiListPage<O>>();
+                return Observable.empty<IApiListPage<ClientResponse>>();
             })
             .concatMap((page) => page.results)
         ;
     }
 }
 
-export class CreateApi<I extends object, O> extends Api<I> {
+export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
+    extends PayloadApi<IE, II, PE, PI, OE, OI, ResI, ResE>
+    implements Endpoint<IE, II, PE, PI, OE, OI, ResI, ResE> {
 
     public methods = ['POST'] as HttpMethod[];
 
-    public post(input: I): Observable<O> {
+    public post(input: IE & PE & Partial<OE>): Observable<ResE> {
         // TODO: Validate
         const method = 'POST';
         const url = this.getUrl(input);
         const body = JSON.stringify(omit(input, this.urlParams));
-        return ajax({method, url, body}).map((response) => response.response as O);
+        return ajax({method, url, body}).map((response) => response.response as ResE);
+    }
+
+    public payload<K extends keyof ResI & keyof ResE>(...requiredKeys: K[]) {
+        type PE2 = Pick<ResE, K>;
+        type PI2 = Pick<ResI, K>;
+        return new CreateApi<IE, II, PE & PE2, PI & PI2, OE, OI, ResI, ResE>(
+            {...this.requiredPayload as object, ...pick(this.attrs, requiredKeys) as object} as any,
+            this.optionalPayload, this.attrs, this.identifier, this.url, this.auth,
+        );
+    }
+
+    public optional<K extends keyof ResI & keyof ResE>(...optionalKeys: K[]) {
+        type OE2 = Pick<ResE, K>;
+        type OI2 = Pick<ResI, K>;
+        return new CreateApi<IE, II, PE, PI, OE & OE2, OI & OI2, ResI, ResE>(
+            this.requiredPayload,
+            {...this.optionalPayload as object, ...pick(this.attrs, optionalKeys) as object} as any,
+            this.attrs, this.identifier, this.url, this.auth,
+        );
     }
 }
 
-export class UpdateApi<I extends object, O> extends Api<I> {
+export class UpdateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
+    extends PayloadApi<IE, II, PE, PI, OE, OI, ResI, ResE>
+    implements Endpoint<IE, II, PE, PI, OE, OI, ResI, ResE> {
 
     public methods = ['PUT', 'PATCH'] as HttpMethod[];
 
-    public put(input: I): Observable<O> {
+    public put(input: IE & PE & Partial<OE>): Observable<ResE> {
         // TODO: Validate
         const method = 'PUT';
         const url = this.getUrl(input);
         const body = JSON.stringify(omit(input, this.urlParams));
-        return ajax({method, url, body}).map((response) => response.response as O);
+        return ajax({method, url, body}).map((response) => response.response as ResE);
     }
 
-    public patch(input: Partial<I>): Observable<O> {
+    public patch(input: IE & Partial<PE> & Partial<OE>): Observable<ResE> {
         // TODO: Validate
         const method = 'PATCH';
         const url = this.getUrl(input);
         const body = JSON.stringify(omit(input, this.urlParams));
-        return ajax({method, url, body}).map((response) => response.response as O);
+        return ajax({method, url, body}).map((response) => response.response as ResE);
+    }
+
+    public payload<K extends keyof ResI & keyof ResE>(...requiredKeys: K[]) {
+        type PE2 = Pick<ResE, K>;
+        type PI2 = Pick<ResI, K>;
+        return new UpdateApi<IE, II, PE & PE2, PI & PI2, OE, OI, ResI, ResE>(
+            {...this.requiredPayload as object, ...pick(this.attrs, requiredKeys) as object} as any,
+            this.optionalPayload, this.attrs, this.identifier, this.url, this.auth,
+        );
+    }
+
+    public optional<K extends keyof ResI & keyof ResE>(...optionalKeys: K[]) {
+        type OE2 = Pick<ResE, K>;
+        type OI2 = Pick<ResI, K>;
+        return new UpdateApi<IE, II, PE, PI, OE & OE2, OI & OI2, ResI, ResE>(
+            this.requiredPayload,
+            {...this.optionalPayload as object, ...pick(this.attrs, optionalKeys) as object} as any,
+            this.attrs, this.identifier, this.url, this.auth,
+        );
     }
 }
 
-export class DeleteApi<I extends object> extends Api<I> {
+export class DestroyApi<ClientInput, ServerInput>
+    extends Api<ClientInput, ServerInput>
+    implements Endpoint<ClientInput, ServerInput, void, void, void, void, void, void> {
     public methods = ['DELETE'] as HttpMethod[];
 
-    public delete(input: Partial<I>): Observable<never> {
+    public readonly requiredPayload: ResourceFieldSet<void, void>;
+    public readonly optionalPayload: ResourceFieldSet<void, void>;
+    public readonly attrs: ResourceFieldSet<void, void>;
+
+    public delete(input: ClientInput): Observable<never> {
         // TODO: Validate
         const method = 'DELETE';
         const url = this.getUrl(input);
         return ajax({method, url}).ignoreElements() as Observable<never>;
     }
+}
+
+export function retrieve() {
+    return {
+        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+            function urlToApi(strings: TemplateStringsArray): RetrieveApi<{}, {}, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): RetrieveApi<Pick<E, K>, Pick<I, K>, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+                type IE = Pick<E, K>;
+                type II = Pick<I, K>;
+                // TODO: If only one string was given, then parse any '{...}' placeholders from it!
+                const url = buildUrl(strings, keywords);
+                // TODO: Fail if the keywords were not found from the resource
+                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+                return new RetrieveApi(resource, identifier, url, false);
+            }
+            return {url: urlToApi};
+        },
+    };
+}
+
+export function list() {
+    return {
+        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+            function urlToApi(strings: TemplateStringsArray): ListApi<{}, {}, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): ListApi<Pick<E, K>, Pick<I, K>, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+                type IE = Pick<E, K>;
+                type II = Pick<I, K>;
+                const url = buildUrl(strings, keywords);
+                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+                const pageResource = {
+                    next: string(),
+                    results: new ListSerializer<E, I, R, Serializer<E, I, R>>(new Serializer<E, I, R>(resource)),
+                };
+                return new ListApi(pageResource, identifier, url, false);
+            }
+            return {url: urlToApi};
+        },
+    };
+}
+
+export function create() {
+    return {
+        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray): CreateApi<{}, {}, {}, {}, {}, {}, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): CreateApi<Pick<E, K>, Pick<I, K>, {}, {}, {}, {}, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+                type IE = Pick<E, K>;
+                type II = Pick<I, K>;
+                const url = buildUrl(strings, keywords);
+                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+                return new CreateApi({}, {}, resource, identifier, url, false);
+            }
+            return {url: urlToApi};
+        },
+    };
+}
+
+export function update() {
+    return {
+        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray): UpdateApi<{}, {}, {}, {}, {}, {}, I, E>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): UpdateApi<Pick<E, K>, Pick<I, K>, {}, {}, {}, {}, I, E>;
+            function urlToApi<K1 extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K1[]) {
+                type IE = Pick<E, K1>;
+                type II = Pick<I, K1>;
+                const url = buildUrl(strings, keywords);
+                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+                return new UpdateApi({}, {}, resource, identifier, url, false);
+            }
+            return {url: urlToApi};
+        },
+    };
+}
+
+export function destroy() {
+    return {
+        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+            function urlToApi(strings: TemplateStringsArray): DestroyApi<{}, {}>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): DestroyApi<Pick<E, K>, Pick<I, K>>;
+            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+                type IE = Pick<E, K>;
+                type II = Pick<I, K>;
+                const url = buildUrl(strings, keywords);
+                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+                return new DestroyApi(identifier, url, false);
+            }
+            return {url: urlToApi};
+        },
+    };
+}
+
+function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
+    const components: string[] = [];
+    for (let i = 0; i < strings.length; i ++) {
+        components.push(strings[i]);
+        if (i < keywords.length) {
+            components.push(`{${keywords[i]}}`);
+        }
+    }
+    return components.join('');
 }

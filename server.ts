@@ -8,7 +8,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch$ } from './compile';
 import { IAppConfig } from './config';
-import { ApiRequestHandler, IApiEndpoint } from './endpoints';
+import { ApiRequestHandler } from './endpoints';
 import { HttpMethod, HttpRequest, HttpRequestContext, HttpResponse, HttpStatus } from './http';
 import { readStream } from './node';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -94,28 +94,28 @@ export function serveApi$(options: IAppConfig) {
         const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
         // Ensure that module will be re-loaded
         delete require.cache[apiRequestHandlerFilePath];
-        const handler: ApiRequestHandler<{[endpoint: string]: IApiEndpoint<any>}> = require(apiRequestHandlerFilePath);
+        const handler: ApiRequestHandler = require(apiRequestHandlerFilePath);
         if (!handler || !isFunction(handler.request)) {
             throw new Error(`The exported API module must have a 'request' callable!`);
         }
         return serveHttp$(serverPort, (httpRequest, httpResponse) => {
             // Find a matching endpoint
-            const {endpoints} = handler;
+            const {apiFunctions} = handler;
             let endpointName: string | null = null;
             let pathParameters: {[key: string]: string} | null = null;
             let resource: string | null = null;
             // Find a matching endpoint
-            for (const name in endpoints) {
-                if (endpoints.hasOwnProperty(name)) {
-                    const {api} = endpoints[name];
-                    pathParameters = api.parseUrl(httpRequest.url as string);
+            for (const name in apiFunctions) {
+                if (apiFunctions.hasOwnProperty(name)) {
+                    const {endpoint} = apiFunctions[name];
+                    pathParameters = endpoint.parseUrl(httpRequest.url as string);
                     if (pathParameters) {
                         if (httpRequest.method === 'OPTIONS') {
                             // Respond with CORS headers
                             const allowedMethods = flatten(
                                 map(
-                                    filter(handler.endpoints, (endpoint) => endpoint.api.url === api.url),
-                                    (endpoint) => endpoint.api.methods,
+                                    filter(handler.apiFunctions, (apiFunction) => apiFunction.endpoint.url === endpoint.url),
+                                    (apiFunction) => apiFunction.endpoint.methods,
                                 ),
                             );
                             httpResponse.writeHead(200, {
@@ -126,9 +126,9 @@ export function serveApi$(options: IAppConfig) {
                             });
                             httpResponse.end();
                             return;
-                        } else if (includes(api.methods, httpRequest.method)) {
+                        } else if (includes(endpoint.methods, httpRequest.method)) {
                             endpointName = name;
-                            resource = api.url;
+                            resource = endpoint.url;
                             break;
                         }
                     }

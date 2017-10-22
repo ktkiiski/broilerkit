@@ -363,8 +363,11 @@ export class Broiler {
         const apiConfig = this.options.api;
         // TODO: At this point validate that the endpoint configuration looks legit?
         const endpoints = sortBy(
-            map(apiConfig && apiConfig.endpoints, ({api, path}, name) => ({api, name, path})),
-            ({api}) => api.url,
+            map(apiConfig && apiConfig.apiFunctions, ({endpoint}, name) => ({
+                endpoint, name,
+                path: endpoint.url.replace(/^\/|\/$/g, '').split('/'),
+            })),
+            ({endpoint}) => endpoint.url,
         );
         const baseTemplate$ = readTemplate$([
             'cloudformation-init.yml',
@@ -403,7 +406,7 @@ export class Broiler {
             ;
             // Build templates for every HTTP method, for every endpoint
             const apiMethods$ = Observable.from(endpoints)
-                .concatMap(({api, path, name}) => map(api.methods, (method) => ({method, path, name})))
+                .concatMap(({endpoint, path, name}) => map(endpoint.methods, (method) => ({method, path, name})))
                 .concatMap(({method, path, name}) => readTemplate$(['cloudformation-api-method.yml'], {
                     ApiMethodName: getApiMethodLogicalId(path, method),
                     ApiFunctionName: getApiLambdaFunctionLogicalId(name),
@@ -414,7 +417,7 @@ export class Broiler {
             ;
             // Enable CORS for every endpoint URL
             const apiCors$ = Observable.from(endpoints)
-                .groupBy(({path}) => path.join('/'), ({api}) => api.methods)
+                .groupBy(({path}) => path.join('/'), ({endpoint}) => endpoint.methods)
                 .mergeMap((methods$) => methods$
                     .concatMap((methods) => methods)
                     .distinct()
