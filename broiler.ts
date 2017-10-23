@@ -14,7 +14,7 @@ import { formatS3KeyName, formatStatus, sendRequest$ } from './aws/utils';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
-import { serve$, serveApi$ } from './local';
+import { serveBackEnd, serveFrontEnd } from './local';
 import { dumpTemplate, mergeTemplates, readTemplate$ } from './templates';
 import { searchFiles$ } from './utils/fs';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -183,9 +183,9 @@ export class Broiler {
      */
     public serve$(): Observable<any> {
         this.log(`Starting the local development server...`);
-        return serve$(this.options)
+        return serveFrontEnd(this.options)
             .do((opts) => this.log(`Serving the local development website at ${underline(`${opts.siteOrigin}/`)}`))
-            .merge(serveApi$(this.options))
+            .merge(serveBackEnd(this.options))
         ;
     }
 

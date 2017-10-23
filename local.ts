@@ -22,7 +22,7 @@ import map = require('lodash/map');
 /**
  * Runs the Webpack development server.
  */
-export function serve$(options: IAppConfig): Observable<IAppConfig> {
+export function serveFrontEnd(options: IAppConfig): Observable<IAppConfig> {
     const assetsOriginUrl = new URL(options.siteOrigin);
     const assetsProtocol = assetsOriginUrl.protocol;
     const siteOriginUrl = new URL(options.siteOrigin);
@@ -64,7 +64,7 @@ export function serve$(options: IAppConfig): Observable<IAppConfig> {
 /**
  * Runs the REST API development server.
  */
-export function serveApi$(options: IAppConfig) {
+export function serveBackEnd(options: IAppConfig) {
     const {apiOrigin} = options;
     const apiOriginUrl = new URL(apiOrigin);
     const apiProtocol = apiOriginUrl.protocol;
