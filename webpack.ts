@@ -74,6 +74,14 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
             // Allow using the GIT branch name
             '__BRANCH__': JSON.stringify(gitBranch),
         }),
+        /**
+         * Prevent all the MomentJS locales to be imported by default.
+         */
+        new webpack.ContextReplacementPlugin(
+            /\bmoment[\/\\]locale\b/,
+            // Regular expression to match the files that should be imported
+            /\ben.js/,
+        ),
     ];
     /**
      * If icon source file is provided, generate icons for the app.
@@ -345,6 +353,14 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
             // Allow using the GIT branch name
             __BRANCH__: JSON.stringify(gitBranch),
         }),
+        /**
+         * Prevent all the MomentJS locales to be imported by default.
+         */
+        new webpack.ContextReplacementPlugin(
+            /\bmoment[\/\\]locale\b/,
+            // Regular expression to match the files that should be imported
+            /\ben.js/,
+        ),
     ];
     return {
         // Build for running in node environment, instead of web browser
