@@ -8,9 +8,9 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch$ } from './compile';
 import { IAppConfig } from './config';
-import { ApiRequestHandler } from './endpoints';
 import { HttpMethod, HttpRequest, HttpRequestContext, HttpResponse, HttpStatus } from './http';
 import { readStream } from './node';
+import { ApiRequestHandler } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import filter = require('lodash/filter');

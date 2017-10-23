@@ -14,7 +14,9 @@ import { formatS3KeyName, formatStatus, sendRequest$ } from './aws/utils';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
+import { HttpMethod } from './http';
 import { serveBackEnd, serveFrontEnd } from './local';
+import { ApiRequestHandler } from './server';
 import { dumpTemplate, mergeTemplates, readTemplate$ } from './templates';
 import { searchFiles$ } from './utils/fs';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -23,9 +25,6 @@ import { zip } from './zip';
 import * as mime from 'mime';
 import * as path from 'path';
 import * as File from 'vinyl';
-
-import { ApiRequestHandler } from './endpoints';
-import { HttpMethod } from './http';
 
 export interface IFileUpload {
     file: File;
