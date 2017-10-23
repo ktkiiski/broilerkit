@@ -18,11 +18,6 @@ declare const __SITE_ORIGIN__: string;
 
 export type ApiFunctionHandler<I, P, O> = (identifier: I, payload: P, event: HttpRequest, context: HttpRequestContext) => Promise<SuccesfulResponse<O>>;
 
-export interface IPage<T> {
-    next: string | null;
-    results: T[];
-}
-
 export interface ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
     (request: HttpRequest, context: HttpRequestContext): Promise<HttpResponse>;
     endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>;
