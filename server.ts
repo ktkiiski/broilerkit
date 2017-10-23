@@ -24,10 +24,10 @@ export interface ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
 }
 export type GenericApiFunction = ApiFunction<any, any, any, any, any, any, any, any>;
 
-export function implement<IE, II>(endpoint: DestroyApi<IE, II>, handler: ApiFunctionHandler<II, void, void>): ApiFunction<IE, II, void, void, void, void, void, void>;
-export function implement<IE, II, RI, RE>(endpoint: RetrieveApi<IE, II, RI, RE>, handler: ApiFunctionHandler<II, void, RI>): ApiFunction<IE, II, void, void, void, void, RI, RE>;
-export function implement<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: PayloadApi<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE>;
-export function implement<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
+export function implementApi<IE, II>(endpoint: DestroyApi<IE, II>, handler: ApiFunctionHandler<II, void, void>): ApiFunction<IE, II, void, void, void, void, void, void>;
+export function implementApi<IE, II, RI, RE>(endpoint: RetrieveApi<IE, II, RI, RE>, handler: ApiFunctionHandler<II, void, RI>): ApiFunction<IE, II, void, void, void, void, RI, RE>;
+export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: PayloadApi<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE>;
+export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
     const { methods, identifier, requiredPayload, optionalPayload, attrs } = endpoint;
 
     async function execute(request: HttpRequest, context: HttpRequestContext) {
