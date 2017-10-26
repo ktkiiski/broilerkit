@@ -10,7 +10,7 @@ import { watch$ } from './compile';
 import { IAppConfig } from './config';
 import { HttpMethod, HttpRequest, HttpStatus } from './http';
 import { readStream } from './node';
-import { ApiRequestHandler } from './server';
+import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import filter = require('lodash/filter');
@@ -96,7 +96,7 @@ export function serveBackEnd(options: IAppConfig) {
         const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
         // Ensure that module will be re-loaded
         delete require.cache[apiRequestHandlerFilePath];
-        const handler: ApiRequestHandler = require(apiRequestHandlerFilePath);
+        const handler: ApiService = require(apiRequestHandlerFilePath);
         if (!handler || !isFunction(handler.request)) {
             throw new Error(`The exported API module must have a 'request' callable!`);
         }

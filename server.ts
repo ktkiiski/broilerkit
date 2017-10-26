@@ -129,7 +129,7 @@ function convertApiResponse(response: ApiResponse<any> | HttpResponse): HttpResp
     };
 }
 
-export class ApiRequestHandler {
+export class ApiService {
 
     private readonly apiFunctionMapping: {[url: string]: GenericApiFunction};
 

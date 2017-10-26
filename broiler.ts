@@ -16,7 +16,7 @@ import { compile$ } from './compile';
 import { IAppConfig } from './config';
 import { HttpMethod } from './http';
 import { serveBackEnd, serveFrontEnd } from './local';
-import { ApiRequestHandler } from './server';
+import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplate$ } from './templates';
 import { searchFiles$ } from './utils/fs';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -533,7 +533,7 @@ export class Broiler {
         return newStack;
     }
 
-    private importApi(): ApiRequestHandler | null {
+    private importApi(): ApiService | null {
         const { apiPath, projectRoot } = this.options;
         if (apiPath) {
             const api = require(path.resolve(projectRoot, apiPath));
