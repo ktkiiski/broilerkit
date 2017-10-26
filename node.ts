@@ -17,14 +17,15 @@ export function readStreamChunks(stream: Readable): Observable<string> {
 }
 
 /**
- * Converts a NodeJS readable stream to an Observable that reads all the
+ * Converts a NodeJS readable stream to an Promise that reads all the
  * data from the stream an then emits them as a single concatenated string.
  *
  * @param stream A readable NodeJS stream
  */
-export function readStream(stream: Readable): Observable<string> {
+export async function readStream(stream: Readable): Promise<string> {
     return readStreamChunks(stream)
         .toArray()
         .map((chunks) => chunks.join(''))
+        .toPromise()
     ;
 }

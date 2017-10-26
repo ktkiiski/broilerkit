@@ -35,56 +35,49 @@ export interface HttpHeaders {
     [header: string]: string;
 }
 
+export interface HttpRequest {
+    /**
+     * URL path of the request, starting with a leading trail.
+     */
+    path: string;
+    /**
+     * URL path pattern for the matching endpoint.
+     */
+    endpoint: string;
+    /**
+     * Mapping of endpoint parameters in the URL path.
+     */
+    endpointParameters: {
+        [parameter: string]: string;
+    };
+    /**
+     * HTTP method that was used. If the HTTP method switch was used with query
+     * parameters, then this is the switched HTTP method.
+     */
+    method: HttpMethod;
+    /**
+     * Body of the request, or undefined if the HTTP method was either
+     * HEAD, GET, OPTIONS or DELETE.
+     */
+    body?: string;
+    /**
+     * HTTP headers as an object.
+     */
+    headers: HttpHeaders;
+    /**
+     * Query parameters parsed from the URL.
+     * This is an empty object if the URL did not contain any query.
+     */
+    queryParameters: {
+        [parameter: string]: string;
+    };
+}
+
 export interface HttpResponse {
     statusCode: HttpStatus;
     headers: HttpHeaders;
     body: string;
 }
-
-export interface LambdaCallback<R> {
-    (error: null | undefined, result: R): void;
-    (error: Error, result?: null): void;
-}
-
-export type HttpCallback = LambdaCallback<HttpResponse>;
-
-export interface HttpRequestContext {
-    accountId: string;
-    resourceId: string;
-    stage: string;
-    requestId: string;
-    identity: {
-        cognitoIdentityPoolId: string;
-        accountId: string;
-        cognitoIdentityId: string;
-        caller: string;
-        apiKey: string;
-        sourceIp: string;
-        cognitoAuthenticationType: string;
-        cognitoAuthenticationProvider: string;
-        userArn: string;
-        userAgent: string;
-        user: string;
-    };
-    resourcePath: string;
-    httpMethod: string;
-    apiId: string;
-}
-
-export interface HttpRequest {
-    resource: string;
-    httpMethod: HttpMethod;
-    path: string;
-    queryStringParameters: {[parameter: string]: string};
-    pathParameters: {[parameter: string]: string};
-    headers: HttpHeaders;
-    stageVariables: {[variable: string]: string};
-    requestContext: HttpRequestContext;
-    body?: string;
-    isBase64Encoded?: boolean;
-}
-
-export type HttpHandler = (request: HttpRequest, context: HttpRequestContext, callback: HttpCallback) => void;
 
 export function isReadHttpMethod(method: string): method is 'GET' | 'HEAD' {
     return method === 'GET' || method === 'HEAD';

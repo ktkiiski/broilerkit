@@ -10,16 +10,15 @@ import { DestroyApi, Endpoint, PayloadApi, RetrieveApi } from './api';
 import { Field } from './fields';
 import { BadRequest, MethodNotAllowed } from './http';
 import { isReadHttpMethod, isWriteHttpMethod } from './http';
-import { HttpCallback, HttpHandler, HttpResponse } from './http';
-import { HttpRequest, HttpRequestContext } from './http';
-import { ApiResponse, SuccesfulResponse } from './http';
+import { ApiResponse, HttpRequest, HttpResponse, SuccesfulResponse } from './http';
+import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 
 declare const __SITE_ORIGIN__: string;
 
-export type ApiFunctionHandler<I, P, O> = (identifier: I, payload: P, event: HttpRequest, context: HttpRequestContext) => Promise<SuccesfulResponse<O>>;
+export type ApiFunctionHandler<I, P, O> = (identifier: I, payload: P, request: HttpRequest) => Promise<SuccesfulResponse<O>>;
 
 export interface ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
-    (request: HttpRequest, context: HttpRequestContext): Promise<HttpResponse>;
+    (request: HttpRequest): Promise<HttpResponse>;
     endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>;
 }
 export type GenericApiFunction = ApiFunction<any, any, any, any, any, any, any, any>;
@@ -30,12 +29,12 @@ export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: PayloadAp
 export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
     const { methods, identifier, requiredPayload, optionalPayload, attrs } = endpoint;
 
-    async function execute(request: HttpRequest, context: HttpRequestContext) {
-        const {httpMethod} = request;
+    async function execute(request: HttpRequest) {
+        const {method} = request;
         try {
             // Check that the API function was called with an accepted HTTP method
-            if (!includes(methods, httpMethod)) {
-                throw new MethodNotAllowed(`Method ${httpMethod} is not allowed`);
+            if (!includes(methods, method)) {
+                throw new MethodNotAllowed(`Method ${method} is not allowed`);
             }
             const input = await convertInput(request, {
                 ...identifier as object,
@@ -44,7 +43,7 @@ export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<
             });
             const id = pick(input, keys(identifier)) as II;
             const payload = pick(input, keys(requiredPayload).concat(keys(optionalPayload))) as PI & Partial<OI>;
-            const response = await handler(id, payload, request, context);
+            const response = await handler(id, payload, request);
             if (!response.data) {
                 return convertApiResponse(response);
             }
@@ -69,9 +68,9 @@ export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<
     return Object.assign(execute, { endpoint });
 }
 
-async function convertInput(event: HttpRequest, fields: {[name: string]: Field<any, any>}) {
-    const {queryStringParameters, body, pathParameters} = event;
-    const decodedPathParameters = mapValues(pathParameters, (value) => {
+async function convertInput(request: HttpRequest, fields: {[name: string]: Field<any, any>}) {
+    const {queryParameters, body, endpointParameters} = request;
+    const decodedEndpointParameters = mapValues(endpointParameters, (value) => {
         if (!value) {
             return value;
         }
@@ -81,7 +80,7 @@ async function convertInput(event: HttpRequest, fields: {[name: string]: Field<a
             throw new BadRequest(`Invalid URL component`);
         }
     });
-    let input = {...queryStringParameters, ...decodedPathParameters};
+    let input = {...queryParameters, ...decodedEndpointParameters};
     if (body) {
         let payload;
         try {
@@ -143,35 +142,33 @@ export class ApiRequestHandler {
         });
     }
 
-    public request: HttpHandler = (request: HttpRequest, context: HttpRequestContext, callback: HttpCallback) => {
-        request = this.normalizeRequest(request);
-        const endpoint = this.apiFunctionMapping[`${request.httpMethod} ${request.resource}`];
+    public async execute(request: HttpRequest): Promise<HttpResponse> {
+        const endpoint = this.apiFunctionMapping[`${request.method} ${request.endpoint}`];
         if (endpoint) {
-            endpoint(request, context).then(
-                (result) => callback(null, result),
-                (error) => callback(error),
-            );
-        } else {
-            // This should not be possible if API gateway was configured correctly
-            callback(null, {
-                statusCode: 404,
-                body: JSON.stringify({
-                    message: 'API endpoint not found.',
-                    request: {
-                        resource: request.resource,
-                        path: request.path,
-                        httpMethod: request.httpMethod,
-                        queryStringParameters: request.queryStringParameters,
-                    },
-                }),
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
+            return await endpoint(request);
         }
+        // This should not be possible with API gateway, but possible with the local server
+        return {
+            statusCode: 404,
+            body: JSON.stringify({
+                message: 'API endpoint not found.',
+                request,
+            }),
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        };
     }
 
-    protected normalizeRequest(request: HttpRequest): HttpRequest {
+    public request: LambdaHttpHandler = (lambdaRequest: LambdaHttpRequest, context: LambdaHttpRequestContext, callback: LambdaCallback) => {
+        const request = this.fromLambdaToApiRequest(lambdaRequest, context);
+        this.execute(request).then(
+            (result) => callback(null, result),
+            (error) => callback(error),
+        );
+    }
+
+    protected fromLambdaToApiRequest(request: LambdaHttpRequest, _: LambdaHttpRequestContext): HttpRequest {
         let {httpMethod} = request;
         const {queryStringParameters} = request;
         const {method = null} = queryStringParameters || {};
@@ -185,7 +182,13 @@ export class ApiRequestHandler {
                 throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
             }
         }
-        // Return with possible changed HTTP method
-        return { ...request, httpMethod };
+        return {
+            method: httpMethod,
+            path: request.path,
+            endpoint: request.resource,
+            endpointParameters: request.pathParameters || {},
+            queryParameters: request.queryStringParameters || {},
+            headers: request.headers || {},
+        };
     }
 }

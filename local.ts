@@ -8,7 +8,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch$ } from './compile';
 import { IAppConfig } from './config';
-import { HttpMethod, HttpRequest, HttpRequestContext, HttpResponse, HttpStatus } from './http';
+import { HttpMethod, HttpRequest, HttpStatus } from './http';
 import { readStream } from './node';
 import { ApiRequestHandler } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -16,8 +16,10 @@ import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import filter = require('lodash/filter');
 import flatten = require('lodash/flatten');
 import includes = require('lodash/includes');
+import isArray = require('lodash/isArray');
 import isFunction = require('lodash/isFunction');
 import map = require('lodash/map');
+import mapValues = require('lodash/mapValues');
 
 /**
  * Runs the Webpack development server.
@@ -98,7 +100,7 @@ export function serveBackEnd(options: IAppConfig) {
         if (!handler || !isFunction(handler.request)) {
             throw new Error(`The exported API module must have a 'request' callable!`);
         }
-        return serveHttp$(serverPort, (httpRequest, httpResponse) => {
+        return serveHttp$(serverPort, async (httpRequest, httpResponse) => {
             // Find a matching endpoint
             const {apiFunctions} = handler;
             let endpointName: string | null = null;
@@ -139,37 +141,21 @@ export function serveBackEnd(options: IAppConfig) {
                 httpResponse.end(`Not Found`);
                 return;
             }
-            nodeRequestToLambdaRequest(httpRequest, resource, pathParameters)
-                .switchMap((request) => new Observable<HttpResponse>((subscriber) => {
-                    handler.request(request, request.requestContext, (error?: Error | null, response?: HttpResponse | null) => {
-                        if (error) {
-                            subscriber.error(error);
-                        } else if (response) {
-                            subscriber.next(response);
-                            subscriber.complete();
-                        } else {
-                            subscriber.complete();
-                        }
-                    });
-                }))
-                .single()
-                .subscribe({
-                    next: (response) => {
-                        // tslint:disable-next-line:no-console
-                        console.log(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(response.statusCode)}`);
-                        httpResponse.writeHead(response.statusCode, response.headers);
-                        httpResponse.end(response.body);
-                    },
-                    error: (error) => {
-                        // tslint:disable-next-line:no-console
-                        console.error(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(500)}\n${error}`);
-                        httpResponse.writeHead(500, {
-                            'Content-Type': 'text/plain',
-                        });
-                        httpResponse.end(`Internal server error:\n${error}`);
-                    },
-                })
-            ;
+            try {
+                const request = await nodeRequestToApiRequest(httpRequest, resource, pathParameters);
+                const response = await handler.execute(request);
+                // tslint:disable-next-line:no-console
+                console.log(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(response.statusCode)}`);
+                httpResponse.writeHead(response.statusCode, response.headers);
+                httpResponse.end(response.body);
+            } catch (error) {
+                // tslint:disable-next-line:no-console
+                console.error(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(500)}\n${error}`);
+                httpResponse.writeHead(500, {
+                    'Content-Type': 'text/plain',
+                });
+                httpResponse.end(`Internal server error:\n${error}`);
+            }
         });
     });
 }
@@ -182,46 +168,20 @@ function serveHttp$(port: number, requestListener: (request: http.IncomingMessag
     });
 }
 
-function nodeRequestToLambdaRequest(request: http.IncomingMessage, resource: string, pathParameters: {[parameter: string]: string}): Observable<HttpRequest> {
-    const requestUrlObj = url.parse(request.url as string, true);
-    const context: HttpRequestContext = {
-        accountId: '', // TODO
-        resourceId: '', // TODO
-        stage: 'api',
-        requestId: '', // TODO
-        identity: {
-            cognitoIdentityPoolId: '', // TODO
-            accountId: '', // TODO
-            cognitoIdentityId: '', // TODO
-            caller: '', // TODO
-            apiKey: '', // TODO
-            sourceIp: '', // TODO
-            cognitoAuthenticationType: '', // TODO
-            cognitoAuthenticationProvider: '', // TODO
-            userArn: '', // TODO
-            userAgent: '', // TODO
-            user: '', // TODO
-        },
-        resourcePath: resource,
-        httpMethod: request.method as HttpMethod, // TODO
-        apiId: '', // TODO
-    };
-    const baseRequest = {
-        resource,
-        pathParameters,
-        httpMethod: request.method as HttpMethod,
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, endpoint: string, endpointParameters: {[parameter: string]: string}): Promise<HttpRequest> {
+    const requestUrlObj = url.parse(nodeRequest.url as string, true);
+    const request: HttpRequest = {
+        endpoint,
+        endpointParameters,
+        method: nodeRequest.method as HttpMethod,
         path: requestUrlObj.pathname as string,
-        queryStringParameters: requestUrlObj.search ? requestUrlObj.query : undefined,
-        headers: request.headers as any, // TODO: String values?
-        stageVariables: {}, // TODO
-        requestContext: context,
+        queryParameters: requestUrlObj.query || {},
+        headers: mapValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers),
     };
     if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
-        return Observable.of(baseRequest);
+        return request;
     }
-    return readStream(request).map((body) => ({
-        ...baseRequest, body, isBase64Encoded: false,
-    }));
+    return {...request, body: await readStream(nodeRequest)};
 }
 
 function colorizeStatusCode(statusCode: HttpStatus): string {
