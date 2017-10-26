@@ -97,8 +97,10 @@ export function serveBackEnd(options: IAppConfig) {
         // Ensure that module will be re-loaded
         delete require.cache[apiRequestHandlerFilePath];
         const handler: ApiService = require(apiRequestHandlerFilePath);
-        if (!handler || !isFunction(handler.request)) {
-            throw new Error(`The exported API module must have a 'request' callable!`);
+        if (!handler || !isFunction(handler.execute)) {
+            // tslint:disable-next-line:no-console
+            console.error(red(`The exported API module must have a 'execute' callable!`));
+            return [];
         }
         return serveHttp$(serverPort, async (httpRequest, httpResponse) => {
             // Find a matching endpoint
