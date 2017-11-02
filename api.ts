@@ -311,91 +311,71 @@ export class DestroyApi<ClientInput, ServerInput>
     }
 }
 
-export function retrieve() {
-    return {
-        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
-            function urlToApi(strings: TemplateStringsArray): RetrieveApi<{}, {}, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): RetrieveApi<Pick<E, K>, Pick<I, K>, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
-                type IE = Pick<E, K>;
-                type II = Pick<I, K>;
-                // TODO: If only one string was given, then parse any '{...}' placeholders from it!
-                const url = buildUrl(strings, keywords);
-                // TODO: Fail if the keywords were not found from the resource
-                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
-                return new RetrieveApi(resource, identifier, url, false);
-            }
-            return {url: urlToApi};
-        },
-    };
+export function retrieve<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+    function urlToApi(strings: TemplateStringsArray): RetrieveApi<{}, {}, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): RetrieveApi<Pick<E, K>, Pick<I, K>, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+        type IE = Pick<E, K>;
+        type II = Pick<I, K>;
+        // TODO: If only one string was given, then parse any '{...}' placeholders from it!
+        const url = buildUrl(strings, keywords);
+        // TODO: Fail if the keywords were not found from the resource
+        const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+        return new RetrieveApi(resource, identifier, url, false);
+    }
+    return {url: urlToApi};
 }
 
-export function list() {
-    return {
-        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
-            function urlToApi(strings: TemplateStringsArray): ListApi<{}, {}, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): ListApi<Pick<E, K>, Pick<I, K>, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
-                type IE = Pick<E, K>;
-                type II = Pick<I, K>;
-                const url = buildUrl(strings, keywords);
-                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
-                return new ListApi(resource, identifier, url, false);
-            }
-            return {url: urlToApi};
-        },
-    };
+export function list<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+    function urlToApi(strings: TemplateStringsArray): ListApi<{}, {}, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): ListApi<Pick<E, K>, Pick<I, K>, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+        type IE = Pick<E, K>;
+        type II = Pick<I, K>;
+        const url = buildUrl(strings, keywords);
+        const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+        return new ListApi(resource, identifier, url, false);
+    }
+    return {url: urlToApi};
 }
 
-export function create() {
-    return {
-        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray): CreateApi<{}, {}, {}, {}, {}, {}, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): CreateApi<Pick<E, K>, Pick<I, K>, {}, {}, {}, {}, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
-                type IE = Pick<E, K>;
-                type II = Pick<I, K>;
-                const url = buildUrl(strings, keywords);
-                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
-                return new CreateApi({}, {}, resource, identifier, url, false);
-            }
-            return {url: urlToApi};
-        },
-    };
+export function create<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray): CreateApi<{}, {}, {}, {}, {}, {}, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): CreateApi<Pick<E, K>, Pick<I, K>, {}, {}, {}, {}, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+        type IE = Pick<E, K>;
+        type II = Pick<I, K>;
+        const url = buildUrl(strings, keywords);
+        const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+        return new CreateApi({}, {}, resource, identifier, url, false);
+    }
+    return {url: urlToApi};
 }
 
-export function update() {
-    return {
-        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray): UpdateApi<{}, {}, {}, {}, {}, {}, I, E>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): UpdateApi<Pick<E, K>, Pick<I, K>, {}, {}, {}, {}, I, E>;
-            function urlToApi<K1 extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K1[]) {
-                type IE = Pick<E, K1>;
-                type II = Pick<I, K1>;
-                const url = buildUrl(strings, keywords);
-                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
-                return new UpdateApi({}, {}, resource, identifier, url, false);
-            }
-            return {url: urlToApi};
-        },
-    };
+export function update<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray): UpdateApi<{}, {}, {}, {}, {}, {}, I, E>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): UpdateApi<Pick<E, K>, Pick<I, K>, {}, {}, {}, {}, I, E>;
+    function urlToApi<K1 extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K1[]) {
+        type IE = Pick<E, K1>;
+        type II = Pick<I, K1>;
+        const url = buildUrl(strings, keywords);
+        const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+        return new UpdateApi({}, {}, resource, identifier, url, false);
+    }
+    return {url: urlToApi};
 }
 
-export function destroy() {
-    return {
-        resource<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
-            function urlToApi(strings: TemplateStringsArray): DestroyApi<{}, {}>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): DestroyApi<Pick<E, K>, Pick<I, K>>;
-            function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
-                type IE = Pick<E, K>;
-                type II = Pick<I, K>;
-                const url = buildUrl(strings, keywords);
-                const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
-                return new DestroyApi(identifier, url, false);
-            }
-            return {url: urlToApi};
-        },
-    };
+export function destroy<E, I, R extends ResourceFieldSet<E, I>>(resource: ResourceFieldSet<E, I> & R) {
+    function urlToApi(strings: TemplateStringsArray): DestroyApi<{}, {}>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]): DestroyApi<Pick<E, K>, Pick<I, K>>;
+    function urlToApi<K extends keyof E & keyof I>(strings: TemplateStringsArray, ...keywords: K[]) {
+        type IE = Pick<E, K>;
+        type II = Pick<I, K>;
+        const url = buildUrl(strings, keywords);
+        const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
+        return new DestroyApi(identifier, url, false);
+    }
+    return {url: urlToApi};
 }
 
 function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
