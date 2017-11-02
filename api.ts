@@ -37,7 +37,7 @@ export interface IApiListPage<T> {
 export interface ListParams<K extends keyof R, R> {
     ordering: K;
     direction: 'asc' | 'desc';
-    since: R[K];
+    since?: R[K];
 }
 
 export abstract class Api<ClientInput, ServerInput> {
@@ -211,12 +211,11 @@ export class PaginatedListApi<OrderingKeys extends keyof ClientResponse & keyof 
 }
 
 function paginatedInput<K extends keyof RE & keyof RI, IE, II, RI, RE>(key: K, input: ResourceFieldSet<IE, II>, attrs: ResourceFieldSet<RE, RI>): ResourceFieldSet<IE & ListParams<K, RE>, II & ListParams<K, RI>> {
-    const x: ResourceFieldSet<IE, II> & ResourceFieldSet<ListParams<K, RE>, ListParams<K, RI>> = Object.assign({}, input, {
+    return Object.assign({}, input, {
         ordering: choice([key]),
         direction: choice(['asc', 'desc']),
-        since: (attrs as any)[key] as Field<RE[K], RI[K]>,
-    });
-    return x as any; // TODO
+        since: optional((attrs as any)[key]),
+    }) as ResourceFieldSet<IE & ListParams<K, RE>, II & ListParams<K, RI>>;
 }
 
 export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
