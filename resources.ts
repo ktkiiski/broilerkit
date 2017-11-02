@@ -10,8 +10,8 @@ export type ExternalFieldSet<E> = {
 
 export type ResourceFieldSet<E, I> = ExternalFieldSet<E> & InternalFieldSet<I>;
 
-export class Serializer<E, I, R extends ResourceFieldSet<E, I>> implements Field<E, I> {
-    constructor(public readonly fields: R) {}
+export class Serializer<E, I> implements Field<E, I> {
+    constructor(public readonly fields: ResourceFieldSet<E, I>) {}
 
     public input(data: any): I {
         return data as I; // TODO
@@ -22,8 +22,10 @@ export class Serializer<E, I, R extends ResourceFieldSet<E, I>> implements Field
     }
 }
 
-export class ListSerializer<E, I, R extends ResourceFieldSet<E, I>, S extends Serializer<E, I, R>> implements Field<E[], I[]> {
-    constructor(public readonly serializer: Serializer<E, I, ResourceFieldSet<E, I>> & S) {}
+export class ListSerializer<E, I> implements Field<E[], I[]> {
+    private readonly serializer = new Serializer(this.fields);
+
+    constructor(public readonly fields: ResourceFieldSet<E, I>) {}
 
     public input(data: any): I[] {
         // TODO: Ensure that array

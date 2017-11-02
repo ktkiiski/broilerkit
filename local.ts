@@ -1,4 +1,4 @@
-import { bold, cyan, green, red, yellow } from 'chalk';
+import { cyan, green, red, yellow } from 'chalk';
 import * as http from 'http';
 import * as path from 'path';
 import { Observable } from 'rxjs';
@@ -13,12 +13,8 @@ import { readStream } from './node';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
-import filter = require('lodash/filter');
-import flatten = require('lodash/flatten');
-import includes = require('lodash/includes');
 import isArray = require('lodash/isArray');
 import isFunction = require('lodash/isFunction');
-import map = require('lodash/map');
 import mapValues = require('lodash/mapValues');
 
 /**
@@ -103,56 +99,16 @@ export function serveBackEnd(options: IAppConfig) {
             return [];
         }
         return serveHttp$(serverPort, async (httpRequest, httpResponse) => {
-            // Find a matching endpoint
-            const {apiFunctions} = handler;
-            let endpointName: string | null = null;
-            let pathParameters: {[key: string]: string} | null = null;
-            let resource: string | null = null;
-            // Find a matching endpoint
-            for (const name in apiFunctions) {
-                if (apiFunctions.hasOwnProperty(name)) {
-                    const {endpoint} = apiFunctions[name];
-                    pathParameters = endpoint.parseUrl(httpRequest.url as string);
-                    if (pathParameters) {
-                        if (httpRequest.method === 'OPTIONS') {
-                            // Respond with CORS headers
-                            const allowedMethods = flatten(
-                                map(
-                                    filter(handler.apiFunctions, (apiFunction) => apiFunction.endpoint.url === endpoint.url),
-                                    (apiFunction) => apiFunction.endpoint.methods,
-                                ),
-                            );
-                            httpResponse.writeHead(200, {
-                                'Access-Control-Allow-Origin': options.siteOrigin,
-                                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
-                                'Access-Control-Allow-Methods': allowedMethods.join(','),
-                                'Access-Control-Allow-Credentials': 'true',
-                            });
-                            httpResponse.end();
-                            return;
-                        } else if (includes(endpoint.methods, httpRequest.method)) {
-                            endpointName = name;
-                            resource = endpoint.url;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (!resource || !pathParameters) {
-                httpResponse.writeHead(404, {'Content-Type': 'text/plain'});
-                httpResponse.end(`Not Found`);
-                return;
-            }
             try {
-                const request = await nodeRequestToApiRequest(httpRequest, resource, pathParameters);
+                const request = await nodeRequestToApiRequest(httpRequest);
                 const response = await handler.execute(request);
                 // tslint:disable-next-line:no-console
-                console.log(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(response.statusCode)}`);
+                console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
                 httpResponse.writeHead(response.statusCode, response.headers);
                 httpResponse.end(response.body);
             } catch (error) {
                 // tslint:disable-next-line:no-console
-                console.error(`${httpRequest.method} ${httpRequest.url} → ${bold(endpointName as string)} → ${colorizeStatusCode(500)}\n${error}`);
+                console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${error}`);
                 httpResponse.writeHead(500, {
                     'Content-Type': 'text/plain',
                 });
@@ -170,11 +126,11 @@ function serveHttp$(port: number, requestListener: (request: http.IncomingMessag
     });
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, endpoint: string, endpointParameters: {[parameter: string]: string}): Promise<HttpRequest> {
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promise<HttpRequest> {
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
     const request: HttpRequest = {
-        endpoint,
-        endpointParameters,
+        endpoint: '',
+        endpointParameters: {},
         method: nodeRequest.method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: requestUrlObj.query || {},

@@ -1,12 +1,14 @@
 // tslint:disable:max-classes-per-file
+import filter = require('lodash/filter');
 import keys = require('lodash/keys');
 import omit = require('lodash/omit');
 import pick = require('lodash/pick');
 import { Observable } from 'rxjs';
 import { ajax } from 'rxjs/observable/dom/ajax';
-import { Field, string } from './fields';
+import { choice, Field, string } from './fields';
 import { HttpMethod } from './http';
-import { ListSerializer, ResourceFieldSet, Serializer } from './resources';
+import { ListSerializer, ResourceFieldSet } from './resources';
+import { makeUrlRegexp } from './url';
 
 export { Field };
 
@@ -16,6 +18,8 @@ export interface Endpoint<IE, II, PE, PI, OE, OI, RI, RE> {
     methods: HttpMethod[];
     auth: boolean;
     url: string;
+    urlRegexp: RegExp;
+    urlKeys: string[];
     identifier: ResourceFieldSet<IE, II>;
     requiredPayload: ResourceFieldSet<PE, PI>;
     optionalPayload: ResourceFieldSet<OE, OI>;
@@ -29,11 +33,22 @@ export interface IApiListPage<T> {
     results: T[];
 }
 
+export interface ListParams<K extends keyof R, R> {
+    ordering: K;
+    direction: 'asc' | 'desc';
+    since: R[K];
+}
+
 export abstract class Api<ClientInput, ServerInput> {
     public abstract readonly methods: HttpMethod[];
 
-    protected readonly pathComponents: string[] = this.url.split('/');
-    protected readonly urlParams = keys(this.identifier);
+    public readonly pathComponents: string[] = this.url.split('/');
+    public readonly identifierKeys = keys(this.identifier);
+    public readonly urlKeys = filter(
+        this.identifierKeys,
+        (key) => this.pathComponents.indexOf(`{${key}}`) >= 0,
+    );
+    public readonly urlRegexp = makeUrlRegexp(this.url);
 
     constructor(
         public readonly identifier: ResourceFieldSet<ClientInput, ServerInput>,
@@ -42,9 +57,11 @@ export abstract class Api<ClientInput, ServerInput> {
     ) {}
 
     public parseUrl(url: string): ClientInput | null {
+        const identifier: {[key: string]: Field<any, any>} = this.identifier;
         const input: {[key: string]: any} = {};
         const patternComponents = this.pathComponents;
-        const splittedUrl = url.split('/');
+        const [path, query] = url.split('?');
+        const splittedUrl = path.split('/');
         if (patternComponents.length !== splittedUrl.length) {
             return null;
         }
@@ -58,10 +75,30 @@ export abstract class Api<ClientInput, ServerInput> {
                 return null;
             }
         }
+        if (query) {
+            for (const queryPart of query.split('&')) {
+                const [key, value] = queryPart.split('=');
+                if (key != null && value != null && key in identifier && this.urlKeys.indexOf(key) < 0) {
+                    const field = identifier[key] as Field<any, any>;
+                    let decodedKey: string;
+                    let decodedValue: string;
+                    try {
+                        decodedKey = decodeURIComponent(key);
+                        decodedValue = decodeURIComponent(value);
+                    } catch {
+                        // Incorrectly encoded URI components. Ignore them.
+                        continue;
+                    }
+                    // TODO: Deserialization instead of 'input'
+                    input[decodedKey] = field.input(decodedValue);
+                }
+            }
+        }
         return input as ClientInput;
     }
 
-    public getUrl(input: ClientInput): string {
+    public getUrl(input: ClientInput | ServerInput): string {
+        const identifier: {[key: string]: Field<any, any>} = this.identifier;
         const path = this.url.replace(/{(\w+)}/g, (_, key) => {
             const value = (input as any)[key];
             if (value == null) {
@@ -69,7 +106,17 @@ export abstract class Api<ClientInput, ServerInput> {
             }
             return encodeURIComponent(value);
         });
-        return `${__API_ORIGIN__}${path}`;
+        const queryParams = [];
+        for (const key in this.identifier) {
+            if (identifier.hasOwnProperty(key) && this.urlKeys.indexOf(key) < 0 && (input as any)[key] != null) {
+                const value = (input as any)[key]; // TODO
+                const field = identifier[key];
+                // TODO: Serialization instead of 'output'
+                queryParams.push(`${encodeURIComponent(key)}=${encodeURIComponent(field.output(value))}`);
+            }
+        }
+        const query = queryParams.length ? `?${queryParams.join('&')}` : '';
+        return `${__API_ORIGIN__}${path}${query}`;
     }
 }
 
@@ -112,7 +159,7 @@ export class RetrieveApi<ClientInput, ServerInput, ServerResponse, ClientRespons
     public readonly requiredPayload: ResourceFieldSet<void, void>;
     public readonly optionalPayload: ResourceFieldSet<void, void>;
 
-    public get(input: ClientInput): Observable<ClientResponse> {
+    public get(input: ServerInput): Observable<ClientResponse> {
         // TODO: Validate
         const method = 'GET';
         const url = this.getUrl(input);
@@ -123,7 +170,17 @@ export class RetrieveApi<ClientInput, ServerInput, ServerResponse, ClientRespons
 export class ListApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
     extends RetrieveApi<ClientInput, ServerInput, IApiListPage<ServerResponse>, IApiListPage<ClientResponse>> {
 
-    public list(input: ClientInput): Observable<ClientResponse> {
+    constructor(
+        public readonly itemAttrs: ResourceFieldSet<ClientResponse, ServerResponse>,
+        identifier: ResourceFieldSet<ClientInput, ServerInput>, url: string, auth: boolean,
+    ) {
+        super({
+            next: string(),
+            results: new ListSerializer(itemAttrs) as Field<ClientResponse[], ServerResponse[]>,
+        }, identifier, url, auth);
+    }
+
+    public list(input: ServerInput): Observable<ClientResponse> {
         return this.get(input)
             .expand((page) => {
                 if (page.next) {
@@ -134,6 +191,31 @@ export class ListApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
             .concatMap((page) => page.results)
         ;
     }
+
+    public paginated<K extends keyof ClientResponse & keyof ServerResponse>(orderingKey: K) {
+        return new PaginatedListApi(orderingKey, this.itemAttrs, this.identifier, this.url, this.auth);
+    }
+}
+
+export class PaginatedListApi<OrderingKeys extends keyof ClientResponse & keyof ServerResponse, ClientInput, ServerInput, ServerResponse, ClientResponse>
+    extends ListApi<ClientInput & ListParams<OrderingKeys, ClientResponse>, ServerInput & ListParams<OrderingKeys, ServerResponse>, ServerResponse, ClientResponse> {
+
+    constructor(
+        public readonly orderingKey: OrderingKeys,
+        itemAttrs: ResourceFieldSet<ClientResponse, ServerResponse>,
+        identifier: ResourceFieldSet<ClientInput, ServerInput>, url: string, auth: boolean,
+    ) {
+        super(itemAttrs, paginatedInput(orderingKey, identifier, itemAttrs), url, auth);
+    }
+}
+
+function paginatedInput<K extends keyof RE & keyof RI, IE, II, RI, RE>(key: K, input: ResourceFieldSet<IE, II>, attrs: ResourceFieldSet<RE, RI>): ResourceFieldSet<IE & ListParams<K, RE>, II & ListParams<K, RI>> {
+    const x: ResourceFieldSet<IE, II> & ResourceFieldSet<ListParams<K, RE>, ListParams<K, RI>> = Object.assign({}, input, {
+        ordering: choice([key]),
+        direction: choice(['asc', 'desc']),
+        since: (attrs as any)[key] as Field<RE[K], RI[K]>,
+    });
+    return x as any; // TODO
 }
 
 export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
@@ -146,7 +228,7 @@ export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
         // TODO: Validate
         const method = 'POST';
         const url = this.getUrl(input);
-        const body = JSON.stringify(omit(input, this.urlParams));
+        const body = JSON.stringify(omit(input, this.identifierKeys));
         return ajax({method, url, body}).map((response) => response.response as ResE);
     }
 
@@ -180,7 +262,7 @@ export class UpdateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
         // TODO: Validate
         const method = 'PUT';
         const url = this.getUrl(input);
-        const body = JSON.stringify(omit(input, this.urlParams));
+        const body = JSON.stringify(omit(input, this.identifierKeys));
         return ajax({method, url, body}).map((response) => response.response as ResE);
     }
 
@@ -188,7 +270,7 @@ export class UpdateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
         // TODO: Validate
         const method = 'PATCH';
         const url = this.getUrl(input);
-        const body = JSON.stringify(omit(input, this.urlParams));
+        const body = JSON.stringify(omit(input, this.identifierKeys));
         return ajax({method, url, body}).map((response) => response.response as ResE);
     }
 
@@ -258,11 +340,7 @@ export function list() {
                 type II = Pick<I, K>;
                 const url = buildUrl(strings, keywords);
                 const identifier = pick(resource, keywords) as ResourceFieldSet<IE, II>;
-                const pageResource = {
-                    next: string(),
-                    results: new ListSerializer<E, I, R, Serializer<E, I, R>>(new Serializer<E, I, R>(resource)),
-                };
-                return new ListApi(pageResource, identifier, url, false);
+                return new ListApi(resource, identifier, url, false);
             }
             return {url: urlToApi};
         },

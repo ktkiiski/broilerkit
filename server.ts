@@ -1,4 +1,5 @@
 import forEach = require('lodash/forEach');
+import fromPairs = require('lodash/fromPairs');
 import includes = require('lodash/includes');
 import isNumber = require('lodash/isNumber');
 import isObject = require('lodash/isObject');
@@ -6,11 +7,13 @@ import isString = require('lodash/isString');
 import keys = require('lodash/keys');
 import mapValues = require('lodash/mapValues');
 import pick = require('lodash/pick');
-import { DestroyApi, Endpoint, PayloadApi, RetrieveApi } from './api';
+import values = require('lodash/values');
+import zip = require('lodash/zip');
+import { DestroyApi, Endpoint, IApiListPage, ListApi, ListParams, PayloadApi, RetrieveApi } from './api';
 import { Field } from './fields';
 import { BadRequest, MethodNotAllowed } from './http';
 import { isReadHttpMethod, isWriteHttpMethod } from './http';
-import { ApiResponse, HttpRequest, HttpResponse, SuccesfulResponse } from './http';
+import { ApiResponse, HttpMethod, HttpRequest, HttpResponse, OK, SuccesfulResponse } from './http';
 import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 
 declare const __SITE_ORIGIN__: string;
@@ -68,6 +71,32 @@ export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<
     return Object.assign(execute, { endpoint });
 }
 
+export function implementList<KE extends keyof RE, KI extends keyof RI, IE extends ListParams<KE, RE>, II extends ListParams<KI, RI>, RI, RE>(endpoint: ListApi<IE, II, RI, RE>, handler: (identifier: II) => Promise<RI[]>): ApiFunction<IE, II, void, void, void, void, IApiListPage<RI>, IApiListPage<RE>> {
+    async function list(identifier: II) {
+        const {ordering} = identifier;
+        const results = await handler(identifier);
+        const {length} = results;
+        if (!length) {
+            return new OK({next: null, results});
+        }
+        const last = results[length - 1];
+        const nextIdentifier = Object.assign({}, identifier, {
+            since: last[ordering],
+        });
+        const nextUrl = endpoint.getUrl(nextIdentifier);
+        return new OK({
+            next: nextUrl,
+            results,
+        }, {
+            Link: `${nextUrl}; rel="next"`,
+        });
+    }
+    return implementApi<IE, II, IApiListPage<RI>, IApiListPage<RE>>(
+        endpoint as RetrieveApi<IE, II, IApiListPage<RI>, IApiListPage<RE>>,
+        list as ApiFunctionHandler<II, void, IApiListPage<RI>>,
+    );
+}
+
 async function convertInput(request: HttpRequest, fields: {[name: string]: Field<any, any>}) {
     const {queryParameters, body, endpointParameters} = request;
     const decodedEndpointParameters = mapValues(endpointParameters, (value) => {
@@ -93,14 +122,15 @@ async function convertInput(request: HttpRequest, fields: {[name: string]: Field
         }
         input = {...input, ...payload};
     }
-    const validationErrors: Array<{key: string, message: string}> = [];
+    const validationErrors: Array<{key: string, message: string, value: any}> = [];
     const validatedInput: {[key: string]: any} = {};
     forEach(fields, (field, name) => {
+        const value = input[name];
         try {
-            validatedInput[name] = field.input(input[name]);
+            validatedInput[name] = field.input(value);
         } catch (error) {
             if (error.invalid) {
-                validationErrors.push({message: error.message, key: name});
+                validationErrors.push({message: error.message, key: name, value});
             } else {
                 throw error;
             }
@@ -131,21 +161,39 @@ function convertApiResponse(response: ApiResponse<any> | HttpResponse): HttpResp
 
 export class ApiService {
 
-    private readonly apiFunctionMapping: {[url: string]: GenericApiFunction};
-
-    constructor(public readonly apiFunctions: {[endpoint: string]: GenericApiFunction}) {
-        this.apiFunctionMapping = {};
-        forEach(apiFunctions, (apiFunction) => {
-            forEach(apiFunction.endpoint.methods, (method) => {
-                this.apiFunctionMapping[`${method} ${apiFunction.endpoint.url}`] = apiFunction;
-            });
-        });
-    }
+    constructor(public readonly apiFunctions: {[endpointName: string]: GenericApiFunction}) {}
 
     public async execute(request: HttpRequest): Promise<HttpResponse> {
-        const endpoint = this.apiFunctionMapping[`${request.method} ${request.endpoint}`];
-        if (endpoint) {
-            return await endpoint(request);
+        if (request.method === 'OPTIONS') {
+            // Get all the methods supported by the endpoint
+            const allowedMethods = new Array<HttpMethod>();
+            this.matchEndpoints(request.path, (apiFunction) => {
+                allowedMethods.push(...apiFunction.endpoint.methods);
+            });
+            // Respond with the CORS headers
+            return {
+                statusCode: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': __SITE_ORIGIN__,
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
+                    'Access-Control-Allow-Methods': allowedMethods.join(','),
+                    'Access-Control-Allow-Credentials': 'true',
+                },
+                body: '',
+            };
+        }
+        // Otherwise find a matching endpoint that allows the given method, and execute it
+        const execution = this.matchEndpoints(request.path, (apiFunction, pathParams) => {
+            if (apiFunction.endpoint.methods.indexOf(request.method) >= 0) {
+                return apiFunction({
+                    ...request,
+                    endpoint: apiFunction.endpoint.url,
+                    endpointParameters: pathParams,
+                });
+            }
+        });
+        if (execution) {
+            return await execution;
         }
         // This should not be possible with API gateway, but possible with the local server
         return {
@@ -189,6 +237,22 @@ export class ApiService {
             endpointParameters: request.pathParameters || {},
             queryParameters: request.queryStringParameters || {},
             headers: request.headers || {},
+            body: request.body,
         };
+    }
+
+    private matchEndpoints<T>(path: string, callback: (endpoint: GenericApiFunction, pathParameters: {[key: string]: string}) => T | void): T | undefined {
+        for (const apiFunction of values(this.apiFunctions)) {
+            const {urlRegexp, urlKeys} = apiFunction.endpoint;
+            const match = urlRegexp.exec(path);
+            if (match) {
+                // TODO: Decode URI components
+                const pathParameters = fromPairs(zip(urlKeys, match.slice(1)));
+                const result = callback(apiFunction, pathParameters);
+                if (result != null) {
+                    return result;
+                }
+            }
+        }
     }
 }

@@ -13,9 +13,25 @@ export class ValidationError extends Error {
     public readonly invalid = true;
 }
 
+class ChoiceField<K> implements Field<K, K> {
+    constructor(private options: K[]) {}
+    public input(value: any): K {
+        if (this.options.indexOf(value) >= 0) {
+            return value;
+        }
+        throw new ValidationError(`Value is not one of the valid options`);
+    }
+    public output(value: K): K {
+        return value;
+    }
+}
+
 class StringField implements Field<string, string> {
     public input(value: any): string {
-        return value == null ? value : String(value);
+        if (value == null) {
+            throw new ValidationError(`Missing string value`);
+        }
+        return String(value);
     }
     public output(value: string): string {
         return value;
@@ -25,7 +41,7 @@ class StringField implements Field<string, string> {
 class IntegerField implements Field<number, number> {
     public input(value: any): number {
         if (value == null) {
-            return value;
+            throw new ValidationError(`Missing integer value`);
         } else if (isFinite(value)) {
             return Math.floor(value);
         } else if (isString(value)) {
@@ -69,6 +85,10 @@ class DateTimeField implements Field<string, Moment> {
 
 export function string(): Field<string, string> {
     return new StringField();
+}
+
+export function choice<K extends string>(options: K[]): Field<K, K> {
+    return new ChoiceField<K>(options);
 }
 
 export function integer(): Field<number, number> {
