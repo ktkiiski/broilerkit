@@ -115,6 +115,20 @@ class NullableField<E, I> implements Field<E | null, I> {
     }
 }
 
+/**
+ * Wraps another field allowing its inputs to be undefined, but
+ * in those cases returns the given default value.
+ */
+class DefaultValueField<E, I> implements Field<E | undefined, I> {
+    constructor(public readonly field: Field<E, I>, public readonly defaultValue: I) {}
+    public input(value: any): I {
+        return value === undefined ? this.defaultValue : this.field.input(value);
+    }
+    public output(value: I): E {
+        return this.field.output(value);
+    }
+}
+
 export function string(): Field<string, string> {
     return new StringField();
 }
@@ -135,10 +149,14 @@ export function datetime(): Field<string, Moment> {
     return new DateTimeField();
 }
 
-export function optional<E, I>(field: Field<E, I>): Field<E | undefined, I> {
+export function optional<E, I>(field: Field<E, I>): Field<E | undefined, I | undefined> {
     return new OptionalField(field);
 }
 
-export function nullable<E, I>(field: Field<E, I>): Field<E | null, I> {
+export function nullable<E, I>(field: Field<E, I>): Field<E | null, I | null> {
     return new NullableField(field);
+}
+
+export function withDefault<E, I>(field: Field<E, I>, defaultValue: I): Field<E | undefined, I> {
+    return new DefaultValueField(field, defaultValue);
 }
