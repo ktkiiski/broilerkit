@@ -1,11 +1,12 @@
 // tslint:disable:max-classes-per-file
 import filter = require('lodash/filter');
 import keys = require('lodash/keys');
+import mapValues = require('lodash/mapValues');
 import omit = require('lodash/omit');
 import pick = require('lodash/pick');
 import { Observable } from 'rxjs';
 import { ajax } from 'rxjs/observable/dom/ajax';
-import { choice, Field, string } from './fields';
+import { choice, Field, optional, string } from './fields';
 import { HttpMethod } from './http';
 import { ListSerializer, ResourceFieldSet } from './resources';
 import { makeUrlRegexp } from './url';
@@ -235,8 +236,9 @@ export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
     public payload<K extends keyof ResI & keyof ResE>(...requiredKeys: K[]) {
         type PE2 = Pick<ResE, K>;
         type PI2 = Pick<ResI, K>;
-        return new CreateApi<IE, II, PE & PE2, PI & PI2, OE, OI, ResI, ResE>(
-            {...this.requiredPayload as object, ...pick(this.attrs, requiredKeys) as object} as any,
+        const requiredPayload = pick(this.attrs, requiredKeys) as object;
+        return new CreateApi<IE, II, PE2, PI2, OE, OI, ResI, ResE>(
+            {...this.requiredPayload as object, ...requiredPayload} as any,
             this.optionalPayload, this.attrs, this.identifier, this.url, this.auth,
         );
     }
@@ -244,9 +246,13 @@ export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
     public optional<K extends keyof ResI & keyof ResE>(...optionalKeys: K[]) {
         type OE2 = Pick<ResE, K>;
         type OI2 = Pick<ResI, K>;
+        const optionalPayload = mapValues(
+            pick(this.attrs, optionalKeys),
+            (field: Field<any, any>) => optional(field),
+        );
         return new CreateApi<IE, II, PE, PI, OE & OE2, OI & OI2, ResI, ResE>(
             this.requiredPayload,
-            {...this.optionalPayload as object, ...pick(this.attrs, optionalKeys) as object} as any,
+            {...this.optionalPayload as object, ...optionalPayload} as any,
             this.attrs, this.identifier, this.url, this.auth,
         );
     }

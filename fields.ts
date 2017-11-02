@@ -31,7 +31,10 @@ class StringField implements Field<string, string> {
         if (value == null) {
             throw new ValidationError(`Missing string value`);
         }
-        return String(value);
+        if (isString(value) || isFinite(value)) {
+            return String(value);
+        }
+        throw new ValidationError(`Invalid string value`);
     }
     public output(value: string): string {
         return value;
@@ -57,6 +60,9 @@ class IntegerField implements Field<number, number> {
 
 class BooleanField implements Field<boolean, boolean> {
     public input(value: any): boolean {
+        if (value == null) {
+            throw new ValidationError(`Missing boolean value`);
+        }
         if (isBoolean(value)) {
             return value;
         }
@@ -83,6 +89,32 @@ class DateTimeField implements Field<string, Moment> {
     }
 }
 
+/**
+ * Wraps another field allowing its values to be undefined.
+ */
+class OptionalField<E, I> implements Field<E | undefined, I> {
+    constructor(public readonly field: Field<E, I>) {}
+    public input(value: any): I {
+        return value === undefined ? value : this.field.input(value);
+    }
+    public output(value: I): E {
+        return this.field.output(value);
+    }
+}
+
+/**
+ * Wraps another field allowing its values to be null.
+ */
+class NullableField<E, I> implements Field<E | null, I> {
+    constructor(public readonly field: Field<E, I>) {}
+    public input(value: any): I {
+        return value === null ? value : this.field.input(value);
+    }
+    public output(value: I): E {
+        return this.field.output(value);
+    }
+}
+
 export function string(): Field<string, string> {
     return new StringField();
 }
@@ -101,4 +133,12 @@ export function boolean(): Field<boolean, boolean> {
 
 export function datetime(): Field<string, Moment> {
     return new DateTimeField();
+}
+
+export function optional<E, I>(field: Field<E, I>): Field<E | undefined, I> {
+    return new OptionalField(field);
+}
+
+export function nullable<E, I>(field: Field<E, I>): Field<E | null, I> {
+    return new NullableField(field);
 }
