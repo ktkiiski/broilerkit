@@ -4,12 +4,23 @@ import keys = require('lodash/keys');
 import mapValues = require('lodash/mapValues');
 import omit = require('lodash/omit');
 import pick = require('lodash/pick');
-import { Observable } from 'rxjs';
-import { ajax } from 'rxjs/observable/dom/ajax';
 import { choice, Field, optional, string, withDefault } from './fields';
 import { HttpMethod } from './http';
 import { ListSerializer, ResourceFieldSet } from './resources';
 import { makeUrlRegexp } from './url';
+
+import { Observable } from 'rxjs/Observable';
+import { ajax } from 'rxjs/observable/dom/ajax';
+import { empty } from 'rxjs/observable/empty';
+
+import 'rxjs/add/operator/concat';
+import 'rxjs/add/operator/concatMap';
+import 'rxjs/add/operator/expand';
+import 'rxjs/add/operator/filter';
+import 'rxjs/add/operator/ignoreElements';
+import 'rxjs/add/operator/map';
+import 'rxjs/add/operator/merge';
+import 'rxjs/add/operator/toArray';
 
 export { Field };
 
@@ -187,7 +198,7 @@ export class ListApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
                 if (page.next) {
                     return ajax({method: 'GET', url: page.next}).map((response) => response.response as IApiListPage<ClientResponse>);
                 }
-                return Observable.empty<IApiListPage<ClientResponse>>();
+                return empty<IApiListPage<ClientResponse>>();
             })
             .concatMap((page) => page.results)
         ;

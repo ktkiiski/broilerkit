@@ -1,7 +1,7 @@
 import { cyan, green, red } from 'chalk';
 import { filter, map } from 'lodash';
 import * as path from 'path';
-import { Observable } from 'rxjs';
+import { Observable } from 'rxjs/Observable';
 
 /**
  * Converts an object of parameter key-values to an

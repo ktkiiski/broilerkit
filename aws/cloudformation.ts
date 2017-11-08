@@ -1,8 +1,8 @@
 import { CloudFormation } from 'aws-sdk';
-import { Observable } from 'rxjs';
-import { retrievePage$, sendRequest$, convertStackParameters } from './utils';
 import fromPairs = require('lodash/fromPairs');
 import map = require('lodash/map');
+import { Observable } from 'rxjs';
+import { convertStackParameters, retrievePage$, sendRequest$ } from './utils';
 
 export interface IStackWithResources extends CloudFormation.Stack {
     StackResources: CloudFormation.StackResource[];
@@ -220,9 +220,9 @@ export class AmazonCloudFormation {
                 retrievePage$(this.cloudFormation.describeChangeSet(request), 'Changes')
                     .concatMap((changes) => changes || [])
                     .toArray()
-                    .map((Changes) => ({...changeSet, Changes}))
+                    .map((Changes) => ({...changeSet, Changes})),
             )
-            .first(({Status}) => Status && Status.endsWith('_COMPLETE') || Status == 'FAILED')
+            .first(({Status}) => Status && Status.endsWith('_COMPLETE') || Status === 'FAILED')
             .map((changeSet) => {
                 // Check if the change set creation has actually failed
                 // NOTE: If the change set would not result in changes, then this is NOT considered a failure
