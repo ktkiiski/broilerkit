@@ -29,7 +29,7 @@ export function serveFrontEnd(options: IAppConfig): Observable<IAppConfig> {
     const enableHttps = assetsProtocol === 'https:' || siteProtocol === 'https:';
     // TODO: Is this configuration for the inline livereloading still required?
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
-    return Observable.of({...options, debug: true, devServer: true})
+    return Observable.of({...options, debug: true, devServer: true, analyze: false})
         .map((config) => webpack(getFrontendWebpackConfig(config)))
         .map((compiler) => new WebpackDevServer(compiler, {
             allowedHosts: [
@@ -71,7 +71,7 @@ export function serveBackEnd(options: IAppConfig) {
     if (enableHttps) {
         throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiOrigin.replace(/^https/, 'http')} instead!`);
     }
-    return watch$(getBackendWebpackConfig({...options, debug: true, devServer: true}))
+    return watch$(getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false}))
     .filter((stats) => {
         if (stats.hasErrors()) {
             // tslint:disable-next-line:no-console

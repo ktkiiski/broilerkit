@@ -59,8 +59,8 @@ export class Broiler {
      * and uploading all the files to S3 buckets.
      */
     public deploy$() {
-        const frontendCompile$ = this.compileFrontend$();
-        const backendCompile$ = this.compileBackend$();
+        const frontendCompile$ = this.compileFrontend$(false);
+        const backendCompile$ = this.compileBackend$(false);
         const ensureStack$ = this.initialize$();
         const backendUploadPrepare$ = Observable.forkJoin(backendCompile$, ensureStack$);
         const backendUpload$ = backendUploadPrepare$.concat(this.uploadBackend$());
@@ -132,16 +132,16 @@ export class Broiler {
 
     public compile$(): Observable<WebpackStats> {
         return this.clean$().switchMapTo(
-            this.compileBackend$().merge(this.compileFrontend$()),
+            this.compileBackend$(true).merge(this.compileFrontend$(true)),
         );
     }
 
     /**
      * Compiles the assets with Webpack to the build directory.
      */
-    public compileFrontend$(): Observable<WebpackStats> {
+    public compileFrontend$(analyze: boolean): Observable<WebpackStats> {
         this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.options.stage)}...`);
-        return compile$(getFrontendWebpackConfig({...this.options, devServer: false}))
+        return compile$(getFrontendWebpackConfig({...this.options, devServer: false, analyze}))
             .do((stats) => this.log(stats.toString({colors: true})))
         ;
     }
@@ -149,12 +149,12 @@ export class Broiler {
     /**
      * Compiles the backend code with Webpack to the build directory.
      */
-    public compileBackend$(): Observable<WebpackStats> {
+    public compileBackend$(analyze: boolean): Observable<WebpackStats> {
         if (!this.importApi()) {
             return Observable.empty();
         }
         this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.options.stage)}...`);
-        return compile$(getBackendWebpackConfig({...this.options, devServer: false}))
+        return compile$(getBackendWebpackConfig({...this.options, devServer: false, analyze}))
             .do((stats) => this.log(stats.toString({colors: true})))
         ;
     }
@@ -164,7 +164,7 @@ export class Broiler {
      */
     public preview$() {
         return this.clean$().concat(
-            this.compileBackend$(),
+            this.compileBackend$(false),
             Observable.forkJoin(
                 this.generateTemplate$(),
                 this.getStackParameters$(),
