@@ -48,6 +48,7 @@
     "awesome-typescript-loader": "^3.2.3",
     "aws-sdk": "^2.130.0",
     "chalk": "^2.1.0",
+    "core-js": "^2.5.1",
     "css-loader": "^0.28.7",
     "del": "^3.0.0",
     "eslint": "^4.8.0",
