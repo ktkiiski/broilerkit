@@ -1,9 +1,3 @@
-import isBoolean = require('lodash/isBoolean');
-import isFinite = require('lodash/isFinite');
-import isString = require('lodash/isString');
-import { Moment } from 'moment';
-import * as moment from 'moment';
-
 export interface Field<E, I> {
     input(value: E): I;
     output(value: I): E;
@@ -31,7 +25,7 @@ class StringField implements Field<string, string> {
         if (value == null) {
             throw new ValidationError(`Missing string value`);
         }
-        if (isString(value) || isFinite(value)) {
+        if (typeof value === 'string' || (typeof value === 'number' && isFinite(value))) {
             return String(value);
         }
         throw new ValidationError(`Invalid string value`);
@@ -45,13 +39,15 @@ class IntegerField implements Field<number, number> {
     public input(value: any): number {
         if (value == null) {
             throw new ValidationError(`Missing integer value`);
-        } else if (isFinite(value)) {
-            return Math.floor(value);
-        } else if (isString(value)) {
-            return parseInt(value, 10);
-        } else {
-            throw new ValidationError(`Invalid integer value`);
         }
+        // Try to parse from a string to an integer
+        if (typeof value === 'string') {
+            value = parseInt(value, 10);
+        }
+        if (typeof value === 'number' && isFinite(value)) {
+            return Math.floor(value);
+        }
+        throw new ValidationError(`Invalid integer value`);
     }
     public output(value: number): number {
         return value;
@@ -63,7 +59,7 @@ class BooleanField implements Field<boolean, boolean> {
         if (value == null) {
             throw new ValidationError(`Missing boolean value`);
         }
-        if (isBoolean(value)) {
+        if (typeof value === 'boolean') {
             return value;
         }
         throw new ValidationError(`Invalid boolean value`);
@@ -73,18 +69,22 @@ class BooleanField implements Field<boolean, boolean> {
     }
 }
 
-class DateTimeField implements Field<string, Moment> {
-    public input(value: any): Moment {
-        if (isString(value) || isFinite(value)) {
-            const internalValue = moment(value);
-            if (internalValue.isValid()) {
-                return internalValue;
-            }
-            throw new ValidationError(`Invalid date/time format`);
+class DateTimeField implements Field<string, Date> {
+    public input(value: any): Date {
+        if (typeof value === 'string') {
+            // Try to parse the date from the string
+            value = Date.parse(value);
         }
-        throw new ValidationError(`Invalid string or integer type`);
+        if (typeof value !== 'number') {
+            throw new ValidationError(`Invalid string or integer type`);
+        }
+        if (isFinite(value)) {
+            // Accept the number of milliseconds from epoch
+            return new Date(value);
+        }
+        throw new ValidationError(`Invalid date/time format`);
     }
-    public output(value: Moment): string {
+    public output(value: Date): string {
         return value.toISOString();
     }
 }
@@ -145,7 +145,7 @@ export function boolean(): Field<boolean, boolean> {
     return new BooleanField();
 }
 
-export function datetime(): Field<string, Moment> {
+export function datetime(): Field<string, Date> {
     return new DateTimeField();
 }
 
