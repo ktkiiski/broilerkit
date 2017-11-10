@@ -89,6 +89,30 @@ class DateTimeField implements Field<string, Date> {
     }
 }
 
+class RegexpField extends StringField {
+    constructor(
+        private readonly regexp: RegExp,
+        private readonly errorMessage = `String not matching regular expression ${regexp}`) {
+        super();
+    }
+    public input(value: any): string {
+        const strValue = super.input(value);
+        if (this.regexp.test(strValue)) {
+            return strValue;
+        }
+        throw new ValidationError(this.errorMessage);
+    }
+}
+
+class UUIDField extends RegexpField {
+    constructor(version?: 1 | 4 | 5) {
+        super(
+            new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-[${version || '145'}][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, 'i'),
+            version ? `Value is not a valid UUID` : `Value is not a valid UUID version ${version}`,
+        );
+    }
+}
+
 /**
  * Wraps another field allowing its values to be undefined.
  */
@@ -147,6 +171,10 @@ export function boolean(): Field<boolean, boolean> {
 
 export function datetime(): Field<string, Date> {
     return new DateTimeField();
+}
+
+export function uuid(version?: 1 | 4 | 5): Field<string, string> {
+    return new UUIDField(version);
 }
 
 export function optional<E, I>(field: Field<E, I>): Field<E | undefined, I | undefined> {
