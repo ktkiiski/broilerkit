@@ -10,7 +10,7 @@ import { Stats as WebpackStats } from 'webpack';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError } from './aws/utils';
-import { formatS3KeyName, formatStatus, sendRequest$ } from './aws/utils';
+import { formatS3KeyName, sendRequest$ } from './aws/utils';
 import { clean$ } from './clean';
 import { compile$ } from './compile';
 import { IAppConfig } from './config';
@@ -591,4 +591,14 @@ function formatPathForLogicalId(urlPath: string[]) {
         const match = /^{(.*)}$/.exec(path);
         return match ? upperFirst(match[1]) : upperFirst(path);
     }).join('');
+}
+
+function formatStatus(status: string): string {
+    if (status.endsWith('_FAILED')) {
+        return red(status);
+    } else if (status.endsWith('_COMPLETE')) {
+        return green(status);
+    } else {
+        return cyan(status);
+    }
 }

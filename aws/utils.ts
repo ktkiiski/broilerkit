@@ -1,4 +1,3 @@
-import { cyan, green, red } from 'chalk';
 import { filter, map } from 'lodash';
 import * as path from 'path';
 import { Observable } from 'rxjs/Observable';
@@ -48,16 +47,6 @@ export function retrievePage$<D, E, T extends keyof D>(request: AWS.Request<D, E
             return !subscriber.closed;
         });
     });
-}
-
-export function formatStatus(status: string): string {
-    if (status.endsWith('_FAILED')) {
-        return red(status);
-    } else if (status.endsWith('_COMPLETE')) {
-        return green(status);
-    } else {
-        return cyan(status);
-    }
 }
 
 export function formatS3KeyName(filename: string, extension?: string): string {
