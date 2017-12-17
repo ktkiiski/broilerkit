@@ -1,6 +1,10 @@
+import padStart = require('lodash/padStart');
+
 export interface Field<E, I> {
     input(value: E): I;
     output(value: I): E;
+    encodeSortable(value: I): string;
+    decodeSortable(value: string): I;
 }
 
 export class ValidationError extends Error {
@@ -18,6 +22,15 @@ class ChoiceField<K> implements Field<K, K> {
     public output(value: K): K {
         return value;
     }
+    public encodeSortable(value: K): string {
+        if (typeof value === 'string') {
+            return value;
+        }
+        throw new Error(`Choice field does not support encoding for non-string values`);
+    }
+    public decodeSortable(value: any): K {
+        return this.input(value);
+    }
 }
 
 class StringField implements Field<string, string> {
@@ -31,6 +44,12 @@ class StringField implements Field<string, string> {
         throw new ValidationError(`Invalid string value`);
     }
     public output(value: string): string {
+        return value;
+    }
+    public encodeSortable(value: string): string {
+        return value;
+    }
+    public decodeSortable(value: string): string {
         return value;
     }
 }
@@ -52,6 +71,13 @@ class IntegerField implements Field<number, number> {
     public output(value: number): number {
         return value;
     }
+    public encodeSortable(value: number): string {
+        const paddedValue = padStart(value.toFixed(0), 23, '0');
+        return value < 0 ? `-${paddedValue}` : `0${paddedValue}`;
+    }
+    public decodeSortable(value: string): number {
+        return parseInt(value, 10);
+    }
 }
 
 class BooleanField implements Field<boolean, boolean> {
@@ -66,6 +92,12 @@ class BooleanField implements Field<boolean, boolean> {
     }
     public output(value: boolean): boolean {
         return value;
+    }
+    public encodeSortable(value: boolean): string {
+        return value ? 'true' : 'false';
+    }
+    public decodeSortable(value: string): boolean {
+        return value === 'true';
     }
 }
 
@@ -86,6 +118,12 @@ class DateTimeField implements Field<string, Date> {
     }
     public output(value: Date): string {
         return value.toISOString();
+    }
+    public encodeSortable(value: Date): string {
+        return this.output(value);
+    }
+    public decodeSortable(value: string): Date {
+        return this.input(value);
     }
 }
 
@@ -113,6 +151,12 @@ class UUIDField extends RegexpField {
     }
 }
 
+class ULIDField extends RegexpField {
+    constructor() {
+        super(/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/);
+    }
+}
+
 /**
  * Wraps another field allowing its values to be undefined.
  */
@@ -123,6 +167,12 @@ class OptionalField<E, I> implements Field<E | undefined, I> {
     }
     public output(value: I): E {
         return this.field.output(value);
+    }
+    public encodeSortable(value: I): string {
+        return this.field.encodeSortable(value);
+    }
+    public decodeSortable(value: string): I {
+        return this.field.decodeSortable(value);
     }
 }
 
@@ -137,6 +187,12 @@ class NullableField<E, I> implements Field<E | null, I> {
     public output(value: I): E {
         return this.field.output(value);
     }
+    public encodeSortable(value: I): string {
+        return this.field.encodeSortable(value);
+    }
+    public decodeSortable(value: string): I {
+        return this.field.decodeSortable(value);
+    }
 }
 
 /**
@@ -150,6 +206,12 @@ class DefaultValueField<E, I> implements Field<E | undefined, I> {
     }
     public output(value: I): E {
         return this.field.output(value);
+    }
+    public encodeSortable(value: I): string {
+        return this.field.encodeSortable(value);
+    }
+    public decodeSortable(value: string): I {
+        return this.field.decodeSortable(value);
     }
 }
 
@@ -175,6 +237,10 @@ export function datetime(): Field<string, Date> {
 
 export function uuid(version?: 1 | 4 | 5): Field<string, string> {
     return new UUIDField(version);
+}
+
+export function ulid(): Field<string, string> {
+    return new ULIDField();
 }
 
 export function optional<E, I>(field: Field<E, I>): Field<E | undefined, I | undefined> {

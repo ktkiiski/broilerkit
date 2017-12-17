@@ -363,6 +363,20 @@ export class Broiler {
     private generateTemplate$() {
         const apiConfig = this.importApi();
         // TODO: At this point validate that the endpoint configuration looks legit?
+        let template$ = readTemplate$([
+            'cloudformation-init.yml',
+            'cloudformation-app.yml',
+        ]);
+        if (apiConfig) {
+            template$ = template$.concat(
+                this.generateApiTemplate$(apiConfig),
+                this.generateDbTemplate$(apiConfig),
+            );
+        }
+        // Merge everything together
+        return template$.reduce(mergeTemplates, {} as any);
+    }
+    private generateApiTemplate$(apiConfig: ApiService) {
         const endpoints = sortBy(
             map(apiConfig && apiConfig.apiFunctions, ({endpoint}, name) => ({
                 endpoint, name,
@@ -370,13 +384,6 @@ export class Broiler {
             })),
             ({endpoint}) => endpoint.url,
         );
-        const baseTemplate$ = readTemplate$([
-            'cloudformation-init.yml',
-            'cloudformation-app.yml',
-        ]);
-        if (!apiConfig) {
-            return baseTemplate$;
-        }
         return this.getApiHash$().switchMap((hash) => {
             // Build templates for API Lambda functions
             const apiFunctions$ = Observable.from(endpoints)
@@ -434,17 +441,53 @@ export class Broiler {
                     }),
                 )
             ;
-            return baseTemplate$
-                .concat(readTemplate$(['cloudformation-api.yml'], {
+            return readTemplate$(['cloudformation-api.yml'], {
                     ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
-                }))
-                .concat(apiFunctions$)
-                .concat(apiResources$)
-                .concat(apiMethods$)
-                .concat(apiCors$)
-                // Merge everything together
-                .reduce(mergeTemplates, {} as any)
+                })
+                .concat(
+                    apiFunctions$,
+                    apiResources$,
+                    apiMethods$,
+                    apiCors$,
+                )
             ;
+        });
+    }
+
+    private generateDbTemplate$(service: ApiService): Observable<any> {
+        return Observable.from(sortBy(service.dbTables, 'name')).map((table) => {
+            const logicalId = `SimpleDBTable${upperFirst(table.name)}`;
+            const domainNameVar = `${logicalId}DomainName`;
+            return {
+                AWSTemplateFormatVersion: '2010-09-09',
+                // Create the domain for the SimpleDB table
+                Resources: {
+                    [logicalId]: {
+                        Type : 'AWS::SDB::Domain',
+                        Properties : {
+                            Description: `SimpleDB domain for "${table.name}"`,
+                        },
+                    },
+                    // Make the domain name available for Lambda functions as a stage variable
+                    ApiGatewayStage: {
+                        Properties: {
+                            Variables: {
+                                [domainNameVar]: {
+                                    Ref: logicalId,
+                                },
+                            },
+                        },
+                    },
+                },
+                // Output the name for the created SimpleDB domain
+                Outputs: {
+                    [domainNameVar]: {
+                        Value: {
+                            Ref: logicalId,
+                        },
+                    },
+                },
+            };
         });
     }
 

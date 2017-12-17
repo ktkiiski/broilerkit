@@ -31,3 +31,14 @@ declare const __VERSION__: string;
  * The GIT branch that was used to build the app.
  */
 declare const __BRANCH__: string;
+
+/**
+ * The AWS region to which the app is deployed,
+ * and in which it is running.
+ */
+declare const __AWS_REGION__: string;
+
+/**
+ * The AWS stack name to which the app is deployed.
+ */
+declare const __AWS_STACK_NAME__: string;

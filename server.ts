@@ -1,3 +1,4 @@
+import upperFirst = require('lodash');
 import forEach = require('lodash/forEach');
 import fromPairs = require('lodash/fromPairs');
 import includes = require('lodash/includes');
@@ -10,6 +11,7 @@ import pick = require('lodash/pick');
 import values = require('lodash/values');
 import zip = require('lodash/zip');
 import { DestroyApi, Endpoint, IApiListPage, ListApi, ListParams, PayloadApi, RetrieveApi } from './api';
+import { Model, Table } from './db';
 import { Field } from './fields';
 import { BadRequest, MethodNotAllowed } from './http';
 import { isReadHttpMethod, isWriteHttpMethod } from './http';
@@ -17,23 +19,31 @@ import { ApiResponse, HttpMethod, HttpRequest, HttpResponse, OK, SuccesfulRespon
 import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 
 declare const __SITE_ORIGIN__: string;
+declare const __AWS_REGION__: string;
 
-export type ApiFunctionHandler<I, P, O> = (identifier: I, payload: P, request: HttpRequest) => Promise<SuccesfulResponse<O>>;
+export type ApiFunctionHandler<I, P, M, O> = (identifier: I, payload: P, models: M, request: HttpRequest) => Promise<SuccesfulResponse<O>>;
 
 export interface ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
     (request: HttpRequest): Promise<HttpResponse>;
     endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>;
 }
 export type GenericApiFunction = ApiFunction<any, any, any, any, any, any, any, any>;
+export interface Models {
+    [name: string]: Model<any, any, any, any>;
+}
+export type Tables<T> = {
+    [P in keyof T]: Table<T[P]>;
+};
 
-export function implementApi<IE, II>(endpoint: DestroyApi<IE, II>, handler: ApiFunctionHandler<II, void, void>): ApiFunction<IE, II, void, void, void, void, void, void>;
-export function implementApi<IE, II, RI, RE>(endpoint: RetrieveApi<IE, II, RI, RE>, handler: ApiFunctionHandler<II, void, RI>): ApiFunction<IE, II, void, void, void, void, RI, RE>;
-export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: PayloadApi<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE>;
-export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>, handler: ApiFunctionHandler<II, PI & Partial<OI>, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
+export function implementApi<M, IE, II>(endpoint: DestroyApi<IE, II>, db: Tables<M>, handler: ApiFunctionHandler<II, void, M, void>): ApiFunction<IE, II, void, void, void, void, void, void>;
+export function implementApi<M, IE, II, RI, RE>(endpoint: RetrieveApi<IE, II, RI, RE>, db: Tables<M>, handler: ApiFunctionHandler<II, void, M, RI>): ApiFunction<IE, II, void, void, void, void, RI, RE>;
+export function implementApi<M, IE, II, PE, PI, OE, OI, RI, RE>(endpoint: PayloadApi<IE, II, PE, PI, OE, OI, RI, RE>, db: Tables<M>, handler: ApiFunctionHandler<II, PI & Partial<OI>, M, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE>;
+export function implementApi<M, IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>, db: Tables<M>, handler: ApiFunctionHandler<II, PI & Partial<OI>, M, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
     const { methods, identifier, requiredPayload, optionalPayload, attrs } = endpoint;
 
     async function execute(request: HttpRequest) {
         const {method} = request;
+        const models = getModels(db, request);
         try {
             // Check that the API function was called with an accepted HTTP method
             if (!includes(methods, method)) {
@@ -46,7 +56,7 @@ export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<
             });
             const id = pick(input, keys(identifier)) as II;
             const payload = pick(input, keys(requiredPayload).concat(keys(optionalPayload))) as PI & Partial<OI>;
-            const response = await handler(id, payload, request);
+            const response = await handler(id, payload, models, request);
             if (!response.data) {
                 return convertApiResponse(response);
             }
@@ -71,10 +81,10 @@ export function implementApi<IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<
     return Object.assign(execute, { endpoint });
 }
 
-export function implementList<KE extends keyof RE, KI extends keyof RI, IE extends ListParams<KE, RE>, II extends ListParams<KI, RI>, RI, RE>(endpoint: ListApi<IE, II, RI, RE>, handler: (identifier: II) => Promise<RI[]>): ApiFunction<IE, II, void, void, void, void, IApiListPage<RI>, IApiListPage<RE>> {
-    async function list(identifier: II) {
+export function implementList<M, KE extends keyof RE, KI extends keyof RI, IE extends ListParams<KE, RE>, II extends ListParams<KI, RI>, RI, RE>(endpoint: ListApi<IE, II, RI, RE>, db: Tables<M>, handler: (identifier: II, models: M) => Promise<RI[]>): ApiFunction<IE, II, void, void, void, void, IApiListPage<RI>, IApiListPage<RE>> {
+    async function list(identifier: II, _: any, models: M) {
         const {ordering} = identifier;
-        const results = await handler(identifier);
+        const results = await handler(identifier, models);
         const {length} = results;
         if (!length) {
             return new OK({next: null, results});
@@ -91,9 +101,10 @@ export function implementList<KE extends keyof RE, KI extends keyof RI, IE exten
             Link: `${nextUrl}; rel="next"`,
         });
     }
-    return implementApi<IE, II, IApiListPage<RI>, IApiListPage<RE>>(
+    return implementApi<M, IE, II, IApiListPage<RI>, IApiListPage<RE>>(
         endpoint as RetrieveApi<IE, II, IApiListPage<RI>, IApiListPage<RE>>,
-        list as ApiFunctionHandler<II, void, IApiListPage<RI>>,
+        db,
+        list as ApiFunctionHandler<II, void, M, IApiListPage<RI>>,
     );
 }
 
@@ -161,7 +172,10 @@ function convertApiResponse(response: ApiResponse<any> | HttpResponse): HttpResp
 
 export class ApiService {
 
-    constructor(public readonly apiFunctions: {[endpointName: string]: GenericApiFunction}) {}
+    constructor(
+        public readonly apiFunctions: {[endpointName: string]: GenericApiFunction},
+        public readonly dbTables: Tables<Models>,
+    ) {}
 
     public async execute(request: HttpRequest): Promise<HttpResponse> {
         if (request.method === 'OPTIONS') {
@@ -238,6 +252,8 @@ export class ApiService {
             queryParameters: request.queryStringParameters || {},
             headers: request.headers || {},
             body: request.body,
+            environment: request.stageVariables || {},
+            region: __AWS_REGION__,
         };
     }
 
@@ -255,4 +271,16 @@ export class ApiService {
             }
         }
     }
+}
+
+function getModels<M>(db: Tables<M>, request: HttpRequest): M {
+    return mapValues(
+        db,
+        (table: Table<any>) => {
+            // TODO: Get this from a method/property of the table?
+            const logicalId = `SimpleDBTable${upperFirst(table.name)}`;
+            const domainName = request.environment[`${logicalId}DomainName`];
+            return table.getModel(request.region, domainName);
+        },
+    ) as M;
 }

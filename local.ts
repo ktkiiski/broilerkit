@@ -135,6 +135,8 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promi
         path: requestUrlObj.pathname as string,
         queryParameters: requestUrlObj.query || {},
         headers: mapValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers),
+        region: 'local',
+        environment: {}, // TODO
     };
     if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
         return request;

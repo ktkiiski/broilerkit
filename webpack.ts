@@ -52,7 +52,7 @@ export interface IWebpackConfigOptions extends IAppConfig {
  */
 export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRoot, stage, analyze} = config;
-    const {apiOrigin, assetsOrigin, siteOrigin} = config;
+    const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const projectDirPath = path.resolve(process.cwd(), projectRoot);
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
@@ -104,6 +104,8 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
             '__VERSION__': JSON.stringify(gitVersion),
             // Allow using the GIT branch name
             '__BRANCH__': JSON.stringify(gitBranch),
+            // AWS region to which the app is deployed
+            '__AWS_REGION__': JSON.stringify(region),
         }),
         /**
          * Prevent all the MomentJS locales to be imported by default.
@@ -387,7 +389,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
  */
 export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
     const {apiPath, sourceDir, buildDir, projectRoot} = config;
-    const {apiOrigin, assetsOrigin, siteOrigin} = config;
+    const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const projectDirPath = path.resolve(process.cwd(), projectRoot);
     const sourceDirPath = path.resolve(projectDirPath, sourceDir);
@@ -417,6 +419,8 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
             __VERSION__: JSON.stringify(gitVersion),
             // Allow using the GIT branch name
             __BRANCH__: JSON.stringify(gitBranch),
+            // AWS region to which the app is deployed
+            __AWS_REGION__: JSON.stringify(region),
         }),
         /**
          * Prevent all the MomentJS locales to be imported by default.

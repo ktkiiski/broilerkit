@@ -37,7 +37,7 @@ export interface LambdaHttpRequest {
     queryStringParameters: {[parameter: string]: string};
     pathParameters: {[parameter: string]: string};
     headers: HttpHeaders;
-    stageVariables: {[variable: string]: string};
+    stageVariables: {[variable: string]: string} | void;
     requestContext: LambdaHttpRequestContext;
     body?: string;
     isBase64Encoded?: boolean;

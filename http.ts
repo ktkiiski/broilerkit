@@ -71,6 +71,16 @@ export interface HttpRequest {
     queryParameters: {
         [parameter: string]: string;
     };
+    /**
+     * Region in which the request is being executed.
+     */
+    region: string; // TODO: Literal typing for the region
+    /**
+     * Environment or staging variables.
+     */
+    environment: {
+        [variable: string]: string;
+    };
 }
 
 export interface HttpResponse {

@@ -40,6 +40,19 @@ Resources:
             - logs:PutLogEvents
             Resource:
             - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*:*
+          # Allow access to any SimpleDB domains related to this stack
+          # NOTE: We assume that auto-generated domain names start with the stack name
+          - Effect: Allow
+            Action:
+            - sdb:BatchDeleteAttributes
+            - sdb:BatchPutAttributes
+            - sdb:DeleteAttributes
+            - sdb:DomainMetadata
+            - sdb:GetAttributes
+            - sdb:PutAttributes
+            - sdb:Select
+            Resource:
+            - Fn::Sub: arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-*
       Path: "/"
       RoleName:
         Fn::Sub: "${AWS::StackName}-${AWS::Region}-lambdaRole"
