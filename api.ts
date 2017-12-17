@@ -21,6 +21,7 @@ import 'rxjs/add/operator/ignoreElements';
 import 'rxjs/add/operator/map';
 import 'rxjs/add/operator/merge';
 import 'rxjs/add/operator/toArray';
+import 'rxjs/add/operator/toPromise';
 
 export { Field };
 
@@ -192,7 +193,11 @@ export class ListApi<ClientInput, ServerInput, ServerResponse, ClientResponse>
         }, identifier, url, auth);
     }
 
-    public list(input: ServerInput): Observable<ClientResponse> {
+    public list(input: ServerInput): Promise<ClientResponse[]> {
+        return this.list$(input).toArray().toPromise();
+    }
+
+    public list$(input: ServerInput): Observable<ClientResponse> {
         return this.get(input)
             .expand((page) => {
                 if (page.next) {
@@ -235,7 +240,11 @@ export class CreateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
 
     public methods = ['POST'] as HttpMethod[];
 
-    public post(input: IE & PE & Partial<OE>): Observable<ResE> {
+    public post(input: IE & PE & Partial<OE>): Promise<ResE> {
+        return this.post$(input).toPromise();
+    }
+
+    public post$(input: IE & PE & Partial<OE>): Observable<ResE> {
         // TODO: Validate
         const method = 'POST';
         const url = this.getUrl(input);
@@ -288,7 +297,11 @@ export class UpdateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
 
     public methods = ['PUT', 'PATCH'] as HttpMethod[];
 
-    public put(input: IE & PE & Partial<OE>): Observable<ResE> {
+    public put(input: IE & PE & Partial<OE>): Promise<ResE> {
+        return this.put$(input).toPromise();
+    }
+
+    public put$(input: IE & PE & Partial<OE>): Observable<ResE> {
         // TODO: Validate
         const method = 'PUT';
         const url = this.getUrl(input);
@@ -296,7 +309,11 @@ export class UpdateApi<IE, II, PE, PI, OE, OI, ResI, ResE>
         return ajax({method, url, body}).map((response) => response.response as ResE);
     }
 
-    public patch(input: IE & Partial<PE> & Partial<OE>): Observable<ResE> {
+    public patch(input: IE & Partial<PE> & Partial<OE>): Promise<ResE> {
+        return this.patch$(input).toPromise();
+    }
+
+    public patch$(input: IE & Partial<PE> & Partial<OE>): Observable<ResE> {
         // TODO: Validate
         const method = 'PATCH';
         const url = this.getUrl(input);
@@ -352,7 +369,11 @@ export class DestroyApi<ClientInput, ServerInput>
     public readonly optionalPayload: ResourceFieldSet<void, void>;
     public readonly attrs: ResourceFieldSet<void, void>;
 
-    public delete(input: ClientInput): Observable<never> {
+    public delete(input: ClientInput): Promise<undefined> {
+        return this.delete$(input).toPromise();
+    }
+
+    public delete$(input: ClientInput): Observable<never> {
         // TODO: Validate
         const method = 'DELETE';
         const url = this.getUrl(input);
