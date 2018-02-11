@@ -1,40 +1,20 @@
 import padStart = require('lodash/padStart');
+import {ValidationError} from './http';
 
-export interface Field<E, I> {
-    input(value: E): I;
-    output(value: I): E;
+export interface Field<I, E = I> {
+    validate(value: I): I;
+    serialize(value: I): E;
+    deserialize(value: any): I;
+    encode(value: I): string;
     encodeSortable(value: I): string;
-    decodeSortable(value: string): I;
+    decode(value: string): I;
 }
 
-export class ValidationError extends Error {
-    public readonly invalid = true;
-}
-
-class ChoiceField<K> implements Field<K, K> {
-    constructor(private options: K[]) {}
-    public input(value: any): K {
-        if (this.options.indexOf(value) >= 0) {
-            return value;
-        }
-        throw new ValidationError(`Value is not one of the valid options`);
-    }
-    public output(value: K): K {
+class StringField implements Field<string> {
+    public validate(value: string): string {
         return value;
     }
-    public encodeSortable(value: K): string {
-        if (typeof value === 'string') {
-            return value;
-        }
-        throw new Error(`Choice field does not support encoding for non-string values`);
-    }
-    public decodeSortable(value: any): K {
-        return this.input(value);
-    }
-}
-
-class StringField implements Field<string, string> {
-    public input(value: any): string {
+    public deserialize(value: any): string {
         if (value == null) {
             throw new ValidationError(`Missing string value`);
         }
@@ -43,19 +23,59 @@ class StringField implements Field<string, string> {
         }
         throw new ValidationError(`Invalid string value`);
     }
-    public output(value: string): string {
-        return value;
+    public serialize(value: string): string {
+        return this.validate(value);
+    }
+    public encode(value: string): string {
+        return this.validate(value);
     }
     public encodeSortable(value: string): string {
-        return value;
+        return this.encode(value);
     }
-    public decodeSortable(value: string): string {
-        return value;
+    public decode(value: string): string {
+        return this.validate(value);
     }
 }
 
-class IntegerField implements Field<number, number> {
-    public input(value: any): number {
+class ChoiceField<K extends string> extends StringField implements Field<K> {
+    constructor(private options: K[]) {
+        super();
+    }
+    public validate(value: string): K {
+        const v = super.validate(value) as K;
+        if (this.options.indexOf(v) >= 0) {
+            return v;
+        }
+        throw new ValidationError(`Value is not one of the valid options`);
+    }
+    public serialize(value: K): K {
+        return this.validate(value);
+    }
+    public deserialize(value: string): K {
+        return this.validate(value);
+    }
+    public encode(value: K): K {
+        return this.serialize(value);
+    }
+    public encodeSortable(value: K): K {
+        return this.encode(value);
+    }
+    public decode(value: string): K {
+        return this.deserialize(value);
+    }
+}
+
+class IntegerField implements Field<number> {
+    public validate(value: number): number {
+        if (isFinite(value)) {
+            return Math.floor(value);
+        }
+        throw new ValidationError(`Invalid integer value`);
+    }
+    public serialize(value: number): number {
+        return this.validate(value);
+    }
+    public deserialize(value: any): number {
         if (value == null) {
             throw new ValidationError(`Missing integer value`);
         }
@@ -63,46 +83,88 @@ class IntegerField implements Field<number, number> {
         if (typeof value === 'string') {
             value = parseInt(value, 10);
         }
-        if (typeof value === 'number' && isFinite(value)) {
-            return Math.floor(value);
+        if (typeof value === 'number') {
+            return this.validate(value);
         }
         throw new ValidationError(`Invalid integer value`);
     }
-    public output(value: number): number {
-        return value;
+    public encode(value: number): string {
+        return this.serialize(value).toFixed(0);
     }
     public encodeSortable(value: number): string {
-        const paddedValue = padStart(value.toFixed(0), 23, '0');
+        const paddedValue = padStart(this.serialize(value).toFixed(0), 23, '0');
         return value < 0 ? `-${paddedValue}` : `0${paddedValue}`;
     }
-    public decodeSortable(value: string): number {
-        return parseInt(value, 10);
+    public decode(value: string): number {
+        return this.deserialize(value);
     }
 }
 
-class BooleanField implements Field<boolean, boolean> {
-    public input(value: any): boolean {
-        if (value == null) {
-            throw new ValidationError(`Missing boolean value`);
+class ConstantField<K extends number> extends IntegerField {
+    constructor(private options: K[]) {
+        super();
+    }
+    public validate(value: number): K {
+        const v = super.validate(value) as K;
+        if (this.options.indexOf(v) >= 0) {
+            return v;
         }
-        if (typeof value === 'boolean') {
+        throw new ValidationError(`Value is not one of the valid options`);
+    }
+    public serialize(value: K): K {
+        return this.validate(value);
+    }
+    public deserialize(value: any): K {
+        return super.deserialize(value) as K;
+    }
+    public encode(value: K): string {
+        return super.encode(value);
+    }
+    public encodeSortable(value: K): string {
+        return super.encodeSortable(value);
+    }
+    public decode(value: string): K {
+        return this.deserialize(value);
+    }
+}
+
+class BooleanField implements Field<boolean> {
+    public validate(value: boolean): boolean {
+        return value;
+    }
+    public deserialize(value: any): boolean {
+        if (value === true || value === false) {
             return value;
         }
         throw new ValidationError(`Invalid boolean value`);
     }
-    public output(value: boolean): boolean {
+    public serialize(value: boolean): boolean {
         return value;
     }
-    public encodeSortable(value: boolean): string {
+    public encode(value: boolean): 'true' | 'false' {
         return value ? 'true' : 'false';
     }
-    public decodeSortable(value: string): boolean {
-        return value === 'true';
+    public encodeSortable(value: boolean): 'true' | 'false' {
+        return this.encode(value);
+    }
+    public decode(value: string): boolean {
+        if (value === 'true') {
+            return true;
+        } else if (value === 'false') {
+            return false;
+        }
+        throw new ValidationError(`Invalid encoded boolean value`);
     }
 }
 
-class DateTimeField implements Field<string, Date> {
-    public input(value: any): Date {
+class DateTimeField implements Field<Date, string> {
+    public validate(value: Date): Date {
+        return value;
+    }
+    public serialize(value: Date): string {
+        return value.toISOString();
+    }
+    public deserialize(value: any): Date {
         if (typeof value === 'string') {
             // Try to parse the date from the string
             value = Date.parse(value);
@@ -112,18 +174,18 @@ class DateTimeField implements Field<string, Date> {
         }
         if (isFinite(value)) {
             // Accept the number of milliseconds from epoch
-            return new Date(value);
+            return this.validate(new Date(value));
         }
         throw new ValidationError(`Invalid date/time format`);
     }
-    public output(value: Date): string {
-        return value.toISOString();
+    public encode(value: Date): string {
+        return this.serialize(value);
     }
     public encodeSortable(value: Date): string {
-        return this.output(value);
+        return this.serialize(value);
     }
-    public decodeSortable(value: string): Date {
-        return this.input(value);
+    public decode(value: string): Date {
+        return this.deserialize(value);
     }
 }
 
@@ -133,12 +195,21 @@ class RegexpField extends StringField {
         private readonly errorMessage = `String not matching regular expression ${regexp}`) {
         super();
     }
-    public input(value: any): string {
-        const strValue = super.input(value);
+    public validate(value: string): string {
+        const strValue = super.validate(value);
         if (this.regexp.test(strValue)) {
             return strValue;
         }
         throw new ValidationError(this.errorMessage);
+    }
+}
+
+class URLField extends RegexpField {
+    constructor() {
+        super(
+            /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/,
+            `Value is not a valid URL`,
+        );
     }
 }
 
@@ -158,99 +229,102 @@ class ULIDField extends RegexpField {
 }
 
 /**
- * Wraps another field allowing its values to be undefined.
+ * Makes the given field nullable, allowing null values for it.
+ * It also means that any blank value, e.g. an empty string, will
+ * always be converted to null.
+ *
+ * Useful to be used with string() and datetime() fields.
  */
-class OptionalField<E, I> implements Field<E | undefined, I> {
-    constructor(public readonly field: Field<E, I>) {}
-    public input(value: any): I {
-        return value === undefined ? value : this.field.input(value);
+class NullableField<I, O extends string> implements Field<I | null, O | null> {
+    constructor(public readonly field: Field<I, O>) {}
+    public validate(value: I | null): I | null {
+        return value && this.field.validate(value) || null;
     }
-    public output(value: I): E {
-        return this.field.output(value);
+    public serialize(value: I | null): O | null {
+        return value && this.field.serialize(value) || null;
+    }
+    public deserialize(value: any): I | null {
+        return value === null || value === '' ? null : this.field.deserialize(value);
+    }
+    public encode(value: I | null): string {
+        return value && this.field.encode(value) || '';
     }
     public encodeSortable(value: I): string {
-        return this.field.encodeSortable(value);
+        return value && this.field.encodeSortable(value) || '';
     }
-    public decodeSortable(value: string): I {
-        return this.field.decodeSortable(value);
+    public decode(value: string): I | null {
+        return value && this.field.decode(value) || null;
     }
 }
 
-/**
- * Wraps another field allowing its values to be null.
- */
-class NullableField<E, I> implements Field<E | null, I> {
-    constructor(public readonly field: Field<E, I>) {}
-    public input(value: any): I {
-        return value === null ? value : this.field.input(value);
+class ListField<I, O> implements Field<I[], O[]> {
+    constructor(public readonly field: Field<I, O>) {}
+    public validate(items: I[]): I[] {
+        for (const item of items) {
+            this.field.validate(item);
+        }
+        return items;
     }
-    public output(value: I): E {
-        return this.field.output(value);
+    public serialize(items: I[]): O[] {
+        return items.map((item) => this.field.serialize(item));
     }
-    public encodeSortable(value: I): string {
-        return this.field.encodeSortable(value);
+    public deserialize(items: any): I[] {
+        if (items && Array.isArray(items)) {
+            return items.map((item) => this.field.deserialize(item));
+        }
+        throw new ValidationError(`Value is not an array`);
     }
-    public decodeSortable(value: string): I {
-        return this.field.decodeSortable(value);
+    public encode(_: I[]): never {
+        throw new Error(`List field does not support encoding.`);
     }
-}
-
-/**
- * Wraps another field allowing its inputs to be undefined, but
- * in those cases returns the given default value.
- */
-class DefaultValueField<E, I> implements Field<E | undefined, I> {
-    constructor(public readonly field: Field<E, I>, public readonly defaultValue: I) {}
-    public input(value: any): I {
-        return value === undefined ? this.defaultValue : this.field.input(value);
+    public encodeSortable(_: I[]): never {
+        throw new Error(`List field does not support sortable encoding.`);
     }
-    public output(value: I): E {
-        return this.field.output(value);
-    }
-    public encodeSortable(value: I): string {
-        return this.field.encodeSortable(value);
-    }
-    public decodeSortable(value: string): I {
-        return this.field.decodeSortable(value);
+    public decode(_: string): never {
+        throw new Error(`List field does not support decoding.`);
     }
 }
 
-export function string(): Field<string, string> {
+export function string(): Field<string> {
     return new StringField();
 }
 
-export function choice<K extends string>(options: K[]): Field<K, K> {
-    return new ChoiceField<K>(options);
+export function choice<K extends string>(options: K[]): Field<K> {
+    return new ChoiceField(options);
 }
 
-export function integer(): Field<number, number> {
+export function constant<K extends number>(options: K[]): Field<K> {
+    return new ConstantField<K>(options);
+}
+
+export function integer(): Field<number> {
     return new IntegerField();
 }
 
-export function boolean(): Field<boolean, boolean> {
+export function boolean(): Field<boolean> {
     return new BooleanField();
 }
 
-export function datetime(): Field<string, Date> {
+export function datetime(): Field<Date, string> {
     return new DateTimeField();
 }
 
-export function uuid(version?: 1 | 4 | 5): Field<string, string> {
+export function uuid(version?: 1 | 4 | 5): Field<string> {
     return new UUIDField(version);
 }
 
-export function ulid(): Field<string, string> {
+export function ulid(): Field<string> {
     return new ULIDField();
 }
 
-export function optional<E, I>(field: Field<E, I>): Field<E | undefined, I | undefined> {
-    return new OptionalField(field);
+export function url(): Field<string> {
+    return new URLField();
 }
 
-export function nullable<E, I>(field: Field<E, I>): Field<E | null, I | null> {
+export function nullable<I, O extends string>(field: Field<I, O>): Field<I | null, O | null> {
     return new NullableField(field);
 }
 
-export function withDefault<E, I>(field: Field<E, I>, defaultValue: I): Field<E | undefined, I> {
-    return new DefaultValueField(field, defaultValue);
+export function list<I, O>(field: Field<I, O>): Field<I[], O[]> {
+    return new ListField(field);
 }

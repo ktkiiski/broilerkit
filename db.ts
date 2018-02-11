@@ -14,6 +14,9 @@ export interface HashIndexQuery<T, P extends keyof T, S extends keyof T> extends
     value: T[P];
 }
 
+export type Identity<S, PK extends keyof S, V extends keyof S> = Pick<S, PK | V> | Pick<S, PK>;
+export type PartialUpdate<S, V extends keyof S> = Pick<S, V> & Partial<S>;
+
 export interface Model<T, PK extends keyof T, V extends keyof T, D> {
     table: Table<Model<T, PK, V, D>>;
     /**
@@ -26,7 +29,7 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      * Results to the item object, with all of its attributes,
      * if found successfully.
      */
-    retrieve(identity: Pick<T, PK>, notFoundError?: Error): Promise<T>;
+    retrieve(identity: Identity<T, PK, V>, notFoundError?: Error): Promise<T>;
     /**
      * Inserts an item with the given ID to the database,
      * The given item must contain all model attributes, including
@@ -39,7 +42,7 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      */
     create(item: T, alreadyExistsError?: Error): Promise<T>;
     /**
-     * Updates an existing item in the database, identified by the given
+     * Replaces an existing item in the database, identified by the given
      * identity object. The given item object must contain all model attributes,
      * including the identifying attributes and the new version attribute.
      *
@@ -55,7 +58,7 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      *
      * Results to the updated item object if inserted successfully.
      */
-    put(identity: Pick<T, PK> | Pick<T, V | PK>, item: T, notFoundError?: Error): Promise<T>;
+    replace(identity: Identity<T, PK, V>, item: T, notFoundError?: Error): Promise<T>;
     /**
      * Updates some of the attributes of an existing item in the database,
      * identified by the given identity object. The changes must contain
@@ -74,14 +77,14 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      * Results to the updated item object with all up-to-date attributes,
      * if updated successfully.
      */
-    patch(identity: Pick<T, PK> | Pick<T, V | PK>, changes: Partial<T> & Pick<T, V>, notFoundError?: Error): Promise<T>;
+    update(identity: Identity<T, PK, V>, changes: PartialUpdate<T, V>, notFoundError?: Error): Promise<T>;
     /**
      * Same than patch, but instead resulting to the whole updated object,
      * only results to the changes given as parameter. Prefer this instead
      * of patch if you do not need to know all the up-to-date attributes of the
      * object after a successful patch, as this is more efficient.
      */
-    patchUp<C extends Partial<T> & Pick<T, V>>(identity: Pick<T, PK> | Pick<T, V | PK>, changes: C, notFoundError?: Error): Promise<C>;
+    amend<C extends PartialUpdate<T, V>>(identity: Identity<T, PK, V>, changes: C, notFoundError?: Error): Promise<C>;
     /**
      * Either creates an item or replaces an existing one.
      * Use this instead of create/put method if you don't care if the

@@ -1,33 +1,18 @@
-import upperFirst = require('lodash');
-import forEach = require('lodash/forEach');
-import fromPairs = require('lodash/fromPairs');
-import includes = require('lodash/includes');
-import isNumber = require('lodash/isNumber');
-import isObject = require('lodash/isObject');
-import isString = require('lodash/isString');
-import keys = require('lodash/keys');
 import mapValues = require('lodash/mapValues');
-import pick = require('lodash/pick');
-import values = require('lodash/values');
-import zip = require('lodash/zip');
-import { DestroyApi, Endpoint, IApiListPage, ListApi, ListParams, PayloadApi, RetrieveApi } from './api';
+import upperFirst = require('lodash/upperFirst');
+import { CreateEndpoint, DestroyEndpoint, EndpointDefinition, IApiListPage, ListEndpoint, ListParams, RetrieveEndpoint, UpdateEndpoint } from './api';
 import { Model, Table } from './db';
-import { Field } from './fields';
-import { BadRequest, MethodNotAllowed } from './http';
+import { BadRequest, HttpMethod, HttpRequest, MethodNotAllowed, NoContent, UnsupportedMediaType } from './http';
 import { isReadHttpMethod, isWriteHttpMethod } from './http';
-import { ApiResponse, HttpMethod, HttpRequest, HttpResponse, OK, SuccesfulResponse } from './http';
+import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
+import { compileUrl } from './url';
+import { spread } from './utils/objects';
 
 declare const __SITE_ORIGIN__: string;
+declare const __API_ORIGIN__: string;
 declare const __AWS_REGION__: string;
 
-export type ApiFunctionHandler<I, P, M, O> = (identifier: I, payload: P, models: M, request: HttpRequest) => Promise<SuccesfulResponse<O>>;
-
-export interface ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
-    (request: HttpRequest): Promise<HttpResponse>;
-    endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>;
-}
-export type GenericApiFunction = ApiFunction<any, any, any, any, any, any, any, any>;
 export interface Models {
     [name: string]: Model<any, any, any, any>;
 }
@@ -35,41 +20,110 @@ export type Tables<T> = {
     [P in keyof T]: Table<T[P]>;
 };
 
-export function implementApi<M, IE, II>(endpoint: DestroyApi<IE, II>, db: Tables<M>, handler: ApiFunctionHandler<II, void, M, void>): ApiFunction<IE, II, void, void, void, void, void, void>;
-export function implementApi<M, IE, II, RI, RE>(endpoint: RetrieveApi<IE, II, RI, RE>, db: Tables<M>, handler: ApiFunctionHandler<II, void, M, RI>): ApiFunction<IE, II, void, void, void, void, RI, RE>;
-export function implementApi<M, IE, II, PE, PI, OE, OI, RI, RE>(endpoint: PayloadApi<IE, II, PE, PI, OE, OI, RI, RE>, db: Tables<M>, handler: ApiFunctionHandler<II, PI & Partial<OI>, M, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE>;
-export function implementApi<M, IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoint<IE, II, PE, PI, OE, OI, RI, RE>, db: Tables<M>, handler: ApiFunctionHandler<II, PI & Partial<OI>, M, RI>): ApiFunction<IE, II, PE, PI, OE, OI, RI, RE> {
-    const { methods, identifier, requiredPayload, optionalPayload, attrs } = endpoint;
+export type EndpointHandler<I, O, D> = (input: I, models: D, request: HttpRequest) => Promise<SuccesfulResponse<O>>;
+export type EndpointHandlers<D> = {
+    [P in HttpMethod]?: EndpointHandler<any, any, D>;
+};
 
-    async function execute(request: HttpRequest) {
+export interface Impl<T> {
+    endpoint: EndpointDefinition<T>;
+}
+
+export interface HttpRequestHandler {
+    endpoint: EndpointDefinition<any>;
+    execute(request: HttpRequest): Promise<HttpResponse | null>;
+}
+
+export type RetrievableEndpoint<I, O> = Impl<RetrieveEndpoint<I, O>>;
+export type CreatableEndpoint<I1, I2, O> = Impl<CreateEndpoint<I1, I2, O>>;
+export type ListableEndpoint<I, O, K extends keyof O> = Impl<ListEndpoint<I & ListParams<O, K>, O>>;
+export type UpdateableEndpoint<I1, I2, P, S> = Impl<UpdateEndpoint<I1, I2, P, S>>;
+export type DestroyableEndpoint<I> = Impl<DestroyEndpoint<I>>;
+
+export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler {
+    constructor(public endpoint: EndpointDefinition<T>, public tables: Tables<D>, private handlers: EndpointHandlers<D>) {}
+
+    public retrieve<X, Y>(this: RetrievableEndpoint<X, Y> & this, handler: (input: X, models: D, request: HttpRequest) => Promise<Y>) {
+        return this.extend({
+            GET: async (input: X, models: D, request: HttpRequest) => {
+                const result = await handler(input, models, request);
+                return new OK(result);
+            },
+        });
+    }
+    public create<X1, X2, Y>(this: CreatableEndpoint<X1, X2, Y> & this, handler: EndpointHandler<X2, Y, D>) {
+        return this.extend({POST: handler});
+    }
+    public list<X, Y, K extends keyof Y>(this: ListableEndpoint<X, Y, K> & this, handler: (input: X, models: D, request: HttpRequest) => Promise<Y[]>) {
+        const list = async (input: X & ListParams<Y, K>, models: D, request: HttpRequest): Promise<OK<IApiListPage<Y>>> => {
+            const {endpoint} = this;
+            const {ordering} = input;
+            const results = await handler(input, models, request);
+            const {length} = results;
+            if (!length) {
+                return new OK({next: null, results});
+            }
+            const last = results[length - 1];
+            const nextInput = spread(input, {since: last[ordering]});
+            const {path, queryParameters} = endpoint.serializeRequest('GET', nextInput);
+            const next = compileUrl(request.origin, path, queryParameters);
+            const headers = {Link: `${next}; rel="next"`};
+            return new OK({next, results}, headers);
+        };
+        return this.extend({GET: list});
+    }
+    public update<X1, X2, P, S>(this: UpdateableEndpoint<X1, X2, P, S> & this, handler: EndpointHandler<X2 | P, S, D>) {
+        return this.extend({PUT: handler, PATCH: handler});
+    }
+    public destroy<X>(this: DestroyableEndpoint<X> & this, handler: (input: X, models: D, request: HttpRequest) => Promise<void>) {
+        return this.extend({
+            DELETE: async (input: X, models: D, request: HttpRequest) => {
+                await handler(input, models, request);
+                return new NoContent();
+            },
+        });
+    }
+
+    public async execute(request: HttpRequest): Promise<HttpResponse | null> {
         const {method} = request;
-        const models = getModels(db, request);
+        const {endpoint, tables} = this;
+        const {methods} = endpoint;
+        const models = getModels(tables, request);
         try {
+            // TODO: Refactor so that there is no need to parse for every endpoint
+            const input = endpoint.deserializeRequest(request);
+            if (!input) {
+                return null;
+            }
+            // Respond to an OPTIONS request
+            if (method === 'OPTIONS') {
+                // Respond with the CORS headers
+                return {
+                    statusCode: 200,
+                    headers: {
+                        'Access-Control-Allow-Origin': __SITE_ORIGIN__,
+                        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
+                        'Access-Control-Allow-Methods': methods.join(', '),
+                        'Access-Control-Allow-Credentials': 'true',
+                    },
+                    body: '',
+                };
+            }
+            const handler = this.handlers[method];
             // Check that the API function was called with an accepted HTTP method
-            if (!includes(methods, method)) {
+            if (!handler) {
                 throw new MethodNotAllowed(`Method ${method} is not allowed`);
             }
-            const input = await convertInput(request, {
-                ...identifier as object,
-                ...requiredPayload as object,
-                ...optionalPayload as object,
-            });
-            const id = pick(input, keys(identifier)) as II;
-            const payload = pick(input, keys(requiredPayload).concat(keys(optionalPayload))) as PI & Partial<OI>;
-            const response = await handler(id, payload, models, request);
+            const response = await handler(input, models, request);
             if (!response.data) {
                 return convertApiResponse(response);
             }
-            const internalOutputData: any = response.data;
-            const outputData: {[key: string]: any} = {};
-            forEach(attrs, (field: Field<any, any>, name) => {
-                outputData[name] = field.output(internalOutputData[name]);
-            });
-            return convertApiResponse({...response, data: outputData});
+            return convertApiResponse({...response, data: endpoint.serializeResponseData(method, response.data)});
         } catch (error) {
             // Determine if the error was a HTTP response
-            const {statusCode, body, data, headers} = error || {} as any;
-            if (isNumber(statusCode) && (data != null || isString(body)) && isObject(headers)) {
+            // tslint:disable-next-line:no-shadowed-variable
+            const {statusCode, data, headers} = error || {} as any;
+            if (typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object') {
                 // This was an intentional HTTP error, so it should be considered
                 // a successful execution of the lambda function.
                 return convertApiResponse(error);
@@ -78,84 +132,19 @@ export function implementApi<M, IE, II, PE, PI, OE, OI, RI, RE>(endpoint: Endpoi
             throw error;
         }
     }
-    return Object.assign(execute, { endpoint });
+
+    private extend(handlers: {[P in HttpMethod]?: EndpointHandler<any, any, D>}): EndpointImplementation<D, T> {
+        return new EndpointImplementation(this.endpoint, this.tables, Object.assign({}, this.handlers, handlers));
+    }
 }
 
-export function implementList<M, KE extends keyof RE, KI extends keyof RI, IE extends ListParams<KE, RE>, II extends ListParams<KI, RI>, RI, RE>(endpoint: ListApi<IE, II, RI, RE>, db: Tables<M>, handler: (identifier: II, models: M) => Promise<RI[]>): ApiFunction<IE, II, void, void, void, void, IApiListPage<RI>, IApiListPage<RE>> {
-    async function list(identifier: II, _: any, models: M) {
-        const {ordering} = identifier;
-        const results = await handler(identifier, models);
-        const {length} = results;
-        if (!length) {
-            return new OK({next: null, results});
-        }
-        const last = results[length - 1];
-        const nextIdentifier = Object.assign({}, identifier, {
-            since: last[ordering],
-        });
-        const nextUrl = endpoint.getUrl(nextIdentifier);
-        return new OK({
-            next: nextUrl,
-            results,
-        }, {
-            Link: `${nextUrl}; rel="next"`,
-        });
-    }
-    return implementApi<M, IE, II, IApiListPage<RI>, IApiListPage<RE>>(
-        endpoint as RetrieveApi<IE, II, IApiListPage<RI>, IApiListPage<RE>>,
-        db,
-        list as ApiFunctionHandler<II, void, M, IApiListPage<RI>>,
-    );
+export function implement<D, T>(endpoint: EndpointDefinition<T>, db: Tables<D>): EndpointImplementation<D, T> {
+    return new EndpointImplementation<D, T>(endpoint, db, {});
 }
 
-async function convertInput(request: HttpRequest, fields: {[name: string]: Field<any, any>}) {
-    const {queryParameters, body, endpointParameters} = request;
-    const decodedEndpointParameters = mapValues(endpointParameters, (value) => {
-        if (!value) {
-            return value;
-        }
-        try {
-            return decodeURIComponent(value);
-        } catch (e) {
-            throw new BadRequest(`Invalid URL component`);
-        }
-    });
-    let input = {...queryParameters, ...decodedEndpointParameters};
-    if (body) {
-        let payload;
-        try {
-            payload = JSON.parse(body);
-        } catch (e) {
-            throw new BadRequest(`Request payload is not valid JSON`);
-        }
-        if (!isObject(payload)) {
-            throw new BadRequest(`Request payload is not a JSON object`);
-        }
-        input = {...input, ...payload};
-    }
-    const validationErrors: Array<{key: string, message: string, value: any}> = [];
-    const validatedInput: {[key: string]: any} = {};
-    forEach(fields, (field, name) => {
-        const value = input[name];
-        try {
-            validatedInput[name] = field.input(value);
-        } catch (error) {
-            if (error.invalid) {
-                validationErrors.push({message: error.message, key: name, value});
-            } else {
-                throw error;
-            }
-        }
-    });
-    if (validationErrors.length) {
-        throw new BadRequest(`Invalid input`, {errors: validationErrors});
-    }
-    return validatedInput as {[key: string]: any};
-}
-
-function convertApiResponse(response: ApiResponse<any> | HttpResponse): HttpResponse {
-    const {statusCode, data, body, headers} = response as ApiResponse<any> & HttpResponse;
-    const encodedBody = body == null ? data === undefined ? '' : JSON.stringify(data) : body;
+function convertApiResponse(response: ApiResponse<any>): HttpResponse {
+    const {statusCode, data, headers} = response;
+    const encodedBody = data == null ? '' : JSON.stringify(data);
     return {
         statusCode,
         body: encodedBody,
@@ -173,41 +162,20 @@ function convertApiResponse(response: ApiResponse<any> | HttpResponse): HttpResp
 export class ApiService {
 
     constructor(
-        public readonly apiFunctions: {[endpointName: string]: GenericApiFunction},
+        public readonly implementations: {[endpointName: string]: HttpRequestHandler},
         public readonly dbTables: Tables<Models>,
     ) {}
 
     public async execute(request: HttpRequest): Promise<HttpResponse> {
-        if (request.method === 'OPTIONS') {
-            // Get all the methods supported by the endpoint
-            const allowedMethods = new Array<HttpMethod>();
-            this.matchEndpoints(request.path, (apiFunction) => {
-                allowedMethods.push(...apiFunction.endpoint.methods);
-            });
-            // Respond with the CORS headers
-            return {
-                statusCode: 200,
-                headers: {
-                    'Access-Control-Allow-Origin': __SITE_ORIGIN__,
-                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
-                    'Access-Control-Allow-Methods': allowedMethods.join(','),
-                    'Access-Control-Allow-Credentials': 'true',
-                },
-                body: '',
-            };
-        }
-        // Otherwise find a matching endpoint that allows the given method, and execute it
-        const execution = this.matchEndpoints(request.path, (apiFunction, pathParams) => {
-            if (apiFunction.endpoint.methods.indexOf(request.method) >= 0) {
-                return apiFunction({
-                    ...request,
-                    endpoint: apiFunction.endpoint.url,
-                    endpointParameters: pathParams,
-                });
+        const {implementations} = this;
+        for (const endpointName in implementations) {
+            if (implementations.hasOwnProperty(endpointName)) {
+                const implementation = implementations[endpointName];
+                const response = await implementation.execute(request);
+                if (response) {
+                    return response;
+                }
             }
-        });
-        if (execution) {
-            return await execution;
         }
         // This should not be possible with API gateway, but possible with the local server
         return {
@@ -232,8 +200,10 @@ export class ApiService {
 
     protected fromLambdaToApiRequest(request: LambdaHttpRequest, _: LambdaHttpRequestContext): HttpRequest {
         let {httpMethod} = request;
-        const {queryStringParameters} = request;
-        const {method = null} = queryStringParameters || {};
+        const {body, isBase64Encoded} = request;
+        const queryParameters = request.queryStringParameters || {};
+        const headers = request.headers || {};
+        const {method = null} = queryParameters;
         if (method) {
             // Allow changing the HTTP method with 'method' query string parameter
             if (httpMethod === 'GET' && isReadHttpMethod(method)) {
@@ -244,32 +214,28 @@ export class ApiService {
                 throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
             }
         }
+        // Parse the request payload as JSON
+        const contentType = headers['Content-Type'];
+        if (contentType && contentType !== 'application/json') {
+            throw new UnsupportedMediaType(`Only application/json is accepted`);
+        }
+        let payload: any;
+        if (body) {
+            try {
+                const encodedBody = isBase64Encoded ? Buffer.from(body, 'base64').toString() : body;
+                payload = JSON.parse(encodedBody);
+            } catch {
+                throw new BadRequest(`Invalid JSON payload`);
+            }
+        }
         return {
             method: httpMethod,
             path: request.path,
-            endpoint: request.resource,
-            endpointParameters: request.pathParameters || {},
-            queryParameters: request.queryStringParameters || {},
-            headers: request.headers || {},
-            body: request.body,
+            queryParameters, headers, body, payload,
             environment: request.stageVariables || {},
             region: __AWS_REGION__,
+            origin: __API_ORIGIN__,
         };
-    }
-
-    private matchEndpoints<T>(path: string, callback: (endpoint: GenericApiFunction, pathParameters: {[key: string]: string}) => T | void): T | undefined {
-        for (const apiFunction of values(this.apiFunctions)) {
-            const {urlRegexp, urlKeys} = apiFunction.endpoint;
-            const match = urlRegexp.exec(path);
-            if (match) {
-                // TODO: Decode URI components
-                const pathParameters = fromPairs(zip(urlKeys, match.slice(1)));
-                const result = callback(apiFunction, pathParameters);
-                if (result != null) {
-                    return result;
-                }
-            }
-        }
     }
 }
 

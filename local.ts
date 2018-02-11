@@ -8,7 +8,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch$ } from './compile';
 import { IAppConfig } from './config';
-import { HttpMethod, HttpRequest, HttpStatus } from './http';
+import { HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { readStream } from './node';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -127,18 +127,19 @@ function serveHttp$(port: number, requestListener: (request: http.IncomingMessag
 }
 
 async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promise<HttpRequest> {
+    const {method} = nodeRequest;
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
+    const origin = `${requestUrlObj.protocol}://${requestUrlObj.host}`;
     const request: HttpRequest = {
-        endpoint: '',
-        endpointParameters: {},
-        method: nodeRequest.method as HttpMethod,
+        origin,
+        method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
-        queryParameters: requestUrlObj.query || {},
-        headers: mapValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers),
+        queryParameters: mapValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},
+        headers: mapValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers) as HttpHeaders,
         region: 'local',
         environment: {}, // TODO
     };
-    if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
         return request;
     }
     return {...request, body: await readStream(nodeRequest)};

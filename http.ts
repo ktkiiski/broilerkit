@@ -20,11 +20,12 @@ export const enum HttpStatus {
     NotAcceptable = 406,
     Conflict = 409,
     Gone = 410,
+    UnsupportedMediaType = 415,
 }
 
 export type HttpSuccessStatus = 200 | 201 | 202 | 204;
 export type HttpRedirectStatus = 301 | 302;
-export type HttpClientErrorStatus = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 409 | 410;
+export type HttpClientErrorStatus = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 409 | 410 | 415;
 
 /**
  * Any supported HTTP method.
@@ -41,22 +42,12 @@ export interface HttpRequest {
      */
     path: string;
     /**
-     * URL path pattern for the matching endpoint.
-     */
-    endpoint: string;
-    /**
-     * Mapping of endpoint parameters in the URL path.
-     */
-    endpointParameters: {
-        [parameter: string]: string;
-    };
-    /**
      * HTTP method that was used. If the HTTP method switch was used with query
      * parameters, then this is the switched HTTP method.
      */
     method: HttpMethod;
     /**
-     * Body of the request, or undefined if the HTTP method was either
+     * Raw, unparsed body of the request, or undefined if the HTTP method was either
      * HEAD, GET, OPTIONS or DELETE.
      */
     body?: string;
@@ -65,18 +56,32 @@ export interface HttpRequest {
      */
     headers: HttpHeaders;
     /**
-     * Query parameters parsed from the URL.
-     * This is an empty object if the URL did not contain any query.
+     * Query parameters parsed from the URL. This is an empty object if
+     * the URL did not contain any query. URL decoding has been already made
+     * to every value.
      */
     queryParameters: {
         [parameter: string]: string;
     };
     /**
+     * The origin (host) to which the request was made.
+     * This does not include any trailing slash.
+     */
+    origin: string;
+    /**
      * Region in which the request is being executed.
      */
     region: string; // TODO: Literal typing for the region
     /**
-     * Environment or staging variables.
+     * The contents of the payload body parsed from JSON
+     * to an object. It's contents are not validated at this point.
+     * If the request did not contain a payload body, then this
+     * will be undefined.
+     */
+    payload?: any;
+    /**
+     * Environment or staging variables about the server on which
+     * the request is being executed.
      */
     environment: {
         [variable: string]: string;
@@ -148,3 +153,10 @@ export class BadRequest extends ExceptionResponse {
 export class MethodNotAllowed extends ExceptionResponse {
     public readonly statusCode = HttpStatus.MethodNotAllowed;
 }
+
+export class UnsupportedMediaType extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.UnsupportedMediaType;
+}
+
+// Alias for the BadRequest
+export const ValidationError = BadRequest;

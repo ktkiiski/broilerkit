@@ -1,75 +1,63 @@
-import keys = require('lodash/keys');
 import map = require('lodash/map');
-import mapValues = require('lodash/mapValues');
-import pickBy = require('lodash/pickBy');
 import 'rxjs/add/operator/toPromise';
-import { __assign } from 'tslib';
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
-import { HashIndexQuery, Model, SlicedQuery, Table } from './db';
-import { Field, optional } from './fields';
+import { HashIndexQuery, Identity, Model, PartialUpdate, SlicedQuery, Table } from './db';
 import { NotFound } from './http';
-import { EncodedResource, FieldMapping, ResourceFieldSet, SortableEncoderSerializer } from './resources';
+import { EncodedResource, Resource, Serializer } from './resources';
+import { Diff, keys, omit, spread } from './utils/objects';
 
 export type SimpleDbQuery<T, P extends keyof T> = SlicedQuery<T, keyof T> | HashIndexQuery<T, keyof T, P>;
 
-export class BaseSimpleDbTable<E, I> {
-    constructor(protected name: string, protected attrs: ResourceFieldSet<E, I>) { }
+export class SimpleDbTableDefinition<S, PK extends keyof S, V extends keyof S> implements Table<Model<S, PK, V, SimpleDbQuery<S, PK>>> {
 
-    public attributes<E2, I2>(attributes: ResourceFieldSet<E2, I2>) {
-        return new BaseSimpleDbTable<E2, I2>(this.name, attributes);
-    }
+    constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
 
-    public identify<PK extends keyof E & keyof I, V extends keyof E & keyof I>(primaryKey: PK, versionAttr: V): Table<Model<I, PK, V, SimpleDbQuery<I, PK>>> {
-        return new SimpleDbTableDefinition(this.name, this.attrs, primaryKey, versionAttr);
+    public getModel(region: string, domainName: string): Model<S, PK, V, SimpleDbQuery<S, PK>> {
+        return new SimpleDbModel<S, PK, V>(this, domainName, region);
     }
 }
 
-export class SimpleDbTableDefinition<E, I, PK extends keyof E & keyof I, V extends keyof E & keyof I> implements Table<Model<I, PK, V, SimpleDbQuery<I, PK>>> {
+export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements Model<S, PK, V, SimpleDbQuery<S, PK>> {
 
-    public serializer: SortableEncoderSerializer<E, I>;
+    private serializer = this.table.resource;
+    private updateSerializer = this.serializer.optional<V, Diff<keyof S, PK | V>, never>({
+        required: [this.table.versionAttr],
+        optional: keys(this.table.resource.fields).filter((key) => key !== this.table.versionAttr),
+        defaults: {},
+    }) as Serializer<PartialUpdate<S, V>>;
+    private identitySerializer = this.serializer.optional({
+        required: [this.table.key],
+        optional: [this.table.versionAttr],
+        defaults: {},
+    }) as Serializer<Identity<S, PK, V>>;
 
-    constructor(public name: string, attrs: ResourceFieldSet<E, I>, public readonly key: PK, public readonly versionAttr: V) {
-        this.serializer = new SortableEncoderSerializer(
-            mapValues(
-                attrs as FieldMapping,
-                (field, attr) => attr === key || attr === versionAttr ? field : optional(field),
-            ) as ResourceFieldSet<E, I>,
-        );
-    }
+    constructor(public table: SimpleDbTableDefinition<S, PK, V>, private domainName: string, private region: string) {}
 
-    public getModel(region: string, domainName: string): Model<I, PK, V, SimpleDbQuery<I, PK>> {
-        return new SimpleDbModel<E, I, PK, V>(this, domainName, region);
-    }
-}
-
-export class SimpleDbModel<E, I, PK extends keyof E & keyof I, V extends keyof E & keyof I> implements Model<I, PK, V, SimpleDbQuery<I, PK>> {
-
-    constructor(public table: SimpleDbTableDefinition<E, I, PK, V>, private domainName: string, private region: string) {
-    }
-
-    public async retrieve(query: Pick<I, PK>, notFoundError?: Error) {
-        const {table} = this;
+    public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
+        const {table, identitySerializer, serializer} = this;
         const primaryKey = table.key;
-        const id = query[primaryKey];
+        const encodedQuery = identitySerializer.encode(query);
+        // TODO: Filter by version!
+        const encodedId = encodedQuery[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItem = await sdb
-            .getAttributes<EncodedResource<I>>({
+            .getAttributes<EncodedResource>({
                 DomainName: this.domainName,
-                ItemName: this.encodeId(id),
+                ItemName: encodedId,
             })
             .toPromise()
         ;
         if (!keys(encodedItem).length) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
-        return this.decodeItem(encodedItem);
+        return serializer.decode(encodedItem);
     }
 
-    public async create(item: I) {
-        const {table} = this;
+    public async create(item: S) {
+        const {table, serializer} = this;
         const primaryKey = table.key;
-        const encodedItem = this.encodeItem(item);
-        const encodedId = (encodedItem as Pick<EncodedResource<E>, PK>)[primaryKey];
+        const encodedItem = serializer.encode(item);
+        const encodedId = encodedItem[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         await sdb.putAttributes({
             DomainName: this.domainName,
@@ -87,33 +75,34 @@ export class SimpleDbModel<E, I, PK extends keyof E & keyof I, V extends keyof E
         return item;
     }
 
-    public put(identity: Pick<I, PK> | Pick<I, V | PK>, item: I, notFoundError?: Error) {
+    public replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
         // TODO: Implement separately
-        return this.patch(identity, item as any, notFoundError);
+        const update = omit(item, [this.table.key]);
+        return this.update(identity, update, notFoundError);
     }
 
-    public async patch(identity: Pick<I, PK> | Pick<I, V | PK>, item: Partial<I> & Pick<I, V>, notFoundError?: Error) {
-        const {table} = this;
+    public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
+        // TODO: Patch specific version!
+        const {table, serializer, identitySerializer, updateSerializer} = this;
         const primaryKey = table.key;
         const versionAttr = table.versionAttr;
-        const fields: FieldMapping = table.serializer.fields;
-        const id = (identity as Pick<I, PK>)[primaryKey];
-        const encodedId = this.encodeId(id);
+        const encodedIdentity = identitySerializer.encode(identity);
+        const encodedId = encodedIdentity[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
-        const filteredItem: {[key: string]: any} = pickBy(item, (_, key) => fields[key] != null);
+        const encodedChanges = updateSerializer.encode(changes);
         // Get the current item's state
         const encodedItem = await sdb
-            .getAttributes<EncodedResource<I>>({
+            .getAttributes<EncodedResource>({
                 DomainName: this.domainName,
                 ItemName: encodedId,
             })
             .toPromise()
         ;
-        const encodedVersion: string = encodedItem[versionAttr];
-        const existingItem = this.decodeItem(encodedItem);
-        if (!keys(existingItem).length) {
+        if (!keys(encodedItem).length) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
+        const encodedVersion: string = encodedItem[versionAttr];
+        const existingItem = serializer.decode(encodedItem);
         try {
             await sdb.putAttributes({
                 DomainName: this.domainName,
@@ -123,9 +112,9 @@ export class SimpleDbModel<E, I, PK extends keyof E & keyof I, V extends keyof E
                     Value: encodedVersion,
                     Exists: true,
                 },
-                Attributes: map(filteredItem, (value, attr) => ({
+                Attributes: map(encodedChanges, (value, attr) => ({
                     Name: attr,
-                    Value: fields[attr].encodeSortable(value),
+                    Value: value,
                     Replace: true,
                 })),
             }).toPromise();
@@ -136,22 +125,22 @@ export class SimpleDbModel<E, I, PK extends keyof E & keyof I, V extends keyof E
             }
             throw error;
         }
-        return __assign({}, existingItem, item) as I;
+        return spread(existingItem, changes) as S;
     }
 
-    public async patchUp<C extends Partial<I> & Pick<I, V>>(identity: Pick<I, PK> | Pick<I, V | PK>, changes: C, notFoundError?: Error): Promise<C> {
-        return await this.patch(identity, changes, notFoundError) as any;
+    public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C, notFoundError?: Error): Promise<C> {
+        return await this.update(identity, changes, notFoundError) as any;
     }
 
-    public async write(_: I): Promise<I> {
+    public async write(_: S): Promise<S> {
         throw new Error(`Not yet implemented!`);
     }
 
-    public async destroy(identity: Pick<I, PK>, notFoundError?: Error) {
-        const {table} = this;
+    public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
+        const {table, identitySerializer} = this;
         const primaryKey = table.key;
-        const id = identity[primaryKey];
-        const encodedId = this.encodeId(id);
+        const encodedIdentity = identitySerializer.encode(identity);
+        const encodedId = encodedIdentity[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         try {
             await sdb
@@ -174,7 +163,7 @@ export class SimpleDbModel<E, I, PK extends keyof E & keyof I, V extends keyof E
         }
     }
 
-    public async clear(identity: Pick<I, PK>) {
+    public async clear(identity: Identity<S, PK, V>) {
         // TODO: Better implementation!
         const notFound = new Error(`Not found`);
         try {
@@ -186,55 +175,47 @@ export class SimpleDbModel<E, I, PK extends keyof E & keyof I, V extends keyof E
         }
     }
 
-    public async list(query: SimpleDbQuery<I, PK>) {
-        const { table } = this;
+    public async list(query: SimpleDbQuery<S, PK>) {
+        const { serializer } = this;
+        const { fields } = this.table.resource;
         const { ordering, direction, since } = query;
-        const fields: FieldMapping = table.serializer.fields;
-        const orderingField = fields[ordering];
         const domain = this.domainName;
         const filters = [
             `${escapeQueryIdentifier(ordering)} is not null`,
         ];
-        if (isIndexQuery<I, PK>(query)) {
+        if (isIndexQuery<S, PK>(query)) {
             const { key, value } = query;
-            const keyField = fields[key];
+            const field = fields[key];
+            const encodedValue = field.encode(value);
             filters.push(
-                `${escapeQueryIdentifier(key)} == ${escapeQueryParam(keyField.encodeSortable(value))}`,
+                `${escapeQueryIdentifier(key)} == ${escapeQueryParam(encodedValue)}`,
             );
         }
         if (since) {
+            const field = fields[ordering];
+            const encodedValue = field.encode(since);
             filters.push([
                 escapeQueryIdentifier(ordering),
                 direction === 'asc' ? '>' : '<',
-                escapeQueryParam(orderingField.encodeSortable(since)),
+                escapeQueryParam(encodedValue),
             ].join(' '));
         }
         // TODO: Only select known fields
         const sql = `select * from ${escapeQueryIdentifier(domain)} where ${filters.join(' and ')} order by ${escapeQueryIdentifier(ordering)} ${direction} limit 100`;
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItems = await sdb.selectNext(sql, true).toPromise();
-        return encodedItems.map((item) => this.decodeItem(item.attributes as EncodedResource<I>));
-    }
-
-    private decodeItem(encodedItem: EncodedResource<I>) {
-        return this.table.serializer.input(encodedItem) as any as I;
-    }
-
-    private encodeItem(item: I) {
-        return this.table.serializer.output(item);
-    }
-
-    private encodeId(id: I[PK]): string {
-        const {table} = this;
-        const fields: FieldMapping = table.serializer.fields;
-        const primaryKey = table.key;
-        const primaryKeyField: Field<E[PK], I[PK]> = fields[primaryKey];
-        return primaryKeyField.encodeSortable(id);
+        return encodedItems.map((item) => serializer.decode(item.attributes));
     }
 }
 
-export function simpleDB(tableName: string) {
-    return new BaseSimpleDbTable(tableName, {});
+export function simpleDB<S>(tableName: string, resource: Resource<S>) {
+    function identifyBy<K extends keyof S>(key: K) {
+        function versionBy<V extends keyof S>(versionAttr: V) {
+            return new SimpleDbTableDefinition(tableName, resource, key, versionAttr);
+        }
+        return {versionBy};
+    }
+    return {identifyBy};
 }
 
 function isIndexQuery<I, PK extends keyof I>(query: SimpleDbQuery<I, PK>): query is HashIndexQuery<I, keyof I, PK> {

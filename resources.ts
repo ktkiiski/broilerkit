@@ -1,120 +1,189 @@
-import isPlainObject = require('lodash/isPlainObject');
-import { Field, ValidationError } from './fields';
+import { Field, list } from './fields';
+import { ValidationError } from './http';
+import { keys, omit, Omit, Optional, pick, spread } from './utils/objects';
 
-export interface FieldMapping {
-    [name: string]: Field<any, any>;
+export type Fields<I> = {
+    [P in keyof I]: Field<I[P], any>;
+};
+
+export interface SerializedResource {
+    [key: string]: any;
 }
 
-export type InternalFieldSet<I> = {
-    [P in keyof I]: Field<any, I[P]>;
-};
+export interface EncodedResource {
+    [key: string]: string;
+}
 
-export type ExternalFieldSet<E> = {
-    [P in keyof E]: Field<E[P], any>;
-};
+export interface Serializer<I = any, O = I> {
+    validate(input: I): O;
+    serialize(input: I): SerializedResource;
+    deserialize(input: any): O;
+    encode(input: I): EncodedResource;
+    encodeSortable(input: I): EncodedResource;
+    decode(input: EncodedResource): O;
+}
 
-export type ResourceFieldSet<E, I> = ExternalFieldSet<E> & InternalFieldSet<I>;
+export class Resource<T> implements Serializer<T> {
+    constructor(public readonly fields: Fields<T>) {}
 
-export class Serializer<E, I> implements Field<E, I> {
-    constructor(public readonly fields: ResourceFieldSet<E, I>) {}
-
-    public input(data: any): I {
-        if (!isPlainObject(data)) {
-            throw new ValidationError(`Value must be an object`);
+    public pick<K extends keyof T & keyof Fields<T>>(attrs: K[]): Resource<Pick<T, K>> {
+        return new Resource(pick(this.fields, attrs) as Fields<Pick<T, K>>);
+    }
+    public omit<K extends keyof T>(attrs: K[]): Resource<Omit<T, K>> {
+        return new Resource<Omit<T, K>>(omit(this.fields, attrs));
+    }
+    public optional<R extends keyof T, O extends keyof T, D extends keyof T>(options: OptionalOptions<T, R, O, D>): OptionalSerializer<T, R, O, D> {
+        return new OptionalSerializer(options, this.fields);
+    }
+    public extend<E>(fields: Fields<E>): Resource<T & E> {
+        return new Resource(spread(this.fields, fields) as Fields<T & E>);
+    }
+    public partial(): Serializer<Partial<T>> {
+        return this.optional({
+            required: [],
+            optional: keys(this.fields),
+            defaults: {},
+        });
+    }
+    public validate(input: T): T {
+        return serializeWith(this.fields, input, (field, value) => field.validate(value)) as T;
+    }
+    public serialize(input: T): SerializedResource {
+        return serializeWith(this.fields, input, (field, value) => field.serialize(value));
+    }
+    public encode(input: T): EncodedResource {
+        return serializeWith(this.fields, input, (field, value) => field.encode(value));
+    }
+    public encodeSortable(input: T): EncodedResource {
+        return serializeWith(this.fields, input, (field, value) => field.encodeSortable(value));
+    }
+    public deserialize(input: any): T {
+        return this.deserializeWith(input, (field, value) => field.deserialize(value));
+    }
+    public decode(input: EncodedResource): T {
+        return this.deserializeWith(input, (field, value) => field.decode(value));
+    }
+    private deserializeWith(input: any, callback: (field: Field<T[keyof T]>, value: any, key: keyof T) => T[keyof T]): T {
+        if (!input || typeof input !== 'object') {
+            throw new ValidationError(`Invalid object`);
         }
-        const fields: FieldMapping = this.fields;
-        // TODO: Collect validation errors!
-        return mapValues(
-            fields, (field, attr) => field.input(data[attr]),
-        ) as I;
-    }
-    public inputAttribute<K extends keyof I>(data: Pick<I, K>, attr: K): I[K] {
-        const fields: InternalFieldSet<I> = this.fields;
-        return fields[attr].input(data[attr]);
-    }
-    public output(data: I): E {
-        const fields: FieldMapping = this.fields;
-        return mapValues(
-            fields, (field, attr: keyof I) => field.output(data[attr]),
-        ) as E;
-    }
-    public outputAttribute<K extends keyof E>(data: Pick<E, K>, attr: K): E[K] {
-        const fields: ExternalFieldSet<E> = this.fields;
-        return fields[attr].output(data[attr]);
-    }
-    public getField<K extends keyof E & keyof I>(attr: K): Field<E[K], I[K]> {
-        return (this.fields as FieldMapping)[attr];
-    }
-    public encodeSortable(): never {
-        throw new Error(`Serializer does not support string encoding`);
-    }
-    public decodeSortable(): never {
-        throw new Error(`Serializer does not support string decoding`);
-    }
-}
-
-export class ListSerializer<E, I> implements Field<E[], I[]> {
-    private readonly serializer = new Serializer(this.fields);
-
-    constructor(public readonly fields: ResourceFieldSet<E, I>) {}
-
-    public input(data: any): I[] {
-        // TODO: Ensure that array
-        return (data as any[]).map((item) => this.serializer.input(item));
-    }
-    public output(data: I[]): E[] {
-        return data.map((item) => this.serializer.output(item));
-    }
-    public encodeSortable(): never {
-        throw new Error(`List serializer does not support string encoding`);
-    }
-    public decodeSortable(): never {
-        throw new Error(`List serializer does not support string decoding`);
-    }
-}
-
-export type EncodedResource<T> = {
-    [P in keyof T]: string;
-};
-
-class SortableEncoderField<I> implements Field<string, I> {
-    constructor(private field: Field<any, I>) {}
-
-    public input(data: any): I {
-        if (typeof data !== 'string') {
-            throw new ValidationError(`Invalid string value`);
+        const {fields} = this;
+        const output = {} as T;
+        // Deserialize each field
+        for (const key in fields) {
+            if (fields.hasOwnProperty(key)) {
+                const value = input[key];
+                if (value === undefined) {
+                    // TODO: Gather errors
+                    throw new ValidationError(`Missing required value for "${key}"`);
+                } else {
+                    output[key] = callback(fields[key], value, key);
+                }
+            }
         }
-        return this.decodeSortable(data);
-    }
-    public output(data: I): string {
-        return this.encodeSortable(data);
-    }
-    public encodeSortable(value: I): string {
-        return this.field.encodeSortable(value);
-    }
-    public decodeSortable(value: string): I {
-        return this.field.decodeSortable(value);
+        return output;
     }
 }
 
-export class SortableEncoderSerializer<E, I> extends Serializer<EncodedResource<E & I>, I> {
-    constructor(fields: ResourceFieldSet<E, I>) {
-        super(mapValues(fields, (field) => new SortableEncoderField(field)) as ResourceFieldSet<EncodedResource<E & I>, I>);
+export interface OptionalOptions<S, R extends keyof S, O extends keyof S, D extends keyof S> {
+    required: R[];
+    optional: O[];
+    defaults: {[P in D]: S[P]};
+}
+
+export type OptionalInput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Optional<Pick<S, R | O | D>, O | D>;
+export type OptionalOutput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Optional<Pick<S, R | O | D>, O>;
+
+export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D extends keyof S> implements Serializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+    private readonly requiredFields: R[];
+    private readonly optionalFields: Array<O | D>;
+    private readonly defaults: {[P in D]: S[P]};
+
+    constructor(options: OptionalOptions<S, R, O, D>, private fields: Fields<S>) {
+        const {required, optional, defaults} = options;
+        this.requiredFields = required;
+        this.optionalFields = [...optional, ...keys(defaults)];
+        this.defaults = defaults;
+    }
+
+    public validate(input: OptionalInput<S, R, O, D>): OptionalOutput<S, R, O, D> {
+        return this.deserializeWith(input, (field, value) => field.validate(value));
+    }
+    public serialize(input: OptionalInput<S, R, O, D>): SerializedResource {
+        return serializeWith(this.fields, input, (field, value) => field.serialize(value));
+    }
+    public encode(input: OptionalInput<S, R, O, D>): EncodedResource {
+        return serializeWith(this.fields, input, (field, value) => field.encode(value));
+    }
+    public encodeSortable(input: OptionalInput<S, R, O, D>): EncodedResource {
+        return serializeWith(this.fields, input, (field, value) => field.encodeSortable(value));
+    }
+    public deserialize(input: any): OptionalOutput<S, R, O, D> {
+        return this.deserializeWith(input, (field, value) => field.deserialize(value));
+    }
+    public decode(input: EncodedResource): OptionalOutput<S, R, O, D> {
+        return this.deserializeWith(input, (field, value) => field.decode(value));
+    }
+    private deserializeWith(input: any, callback: (field: Field<S[keyof S]>, value: any) => S[keyof S]): OptionalOutput<S, R, O, D> {
+        if (!input || typeof input !== 'object') {
+            throw new ValidationError(`Invalid object`);
+        }
+        const {fields} = this;
+        const output = spread(this.defaults) as {[key in R | O | D]: any};
+        // Deserialize each required field
+        for (const key of this.requiredFields) {
+            const value = input[key];
+            if (value === undefined) {
+                // TODO: Gather errors
+                throw new ValidationError(`Missing required value for "${key}"`);
+            }
+            output[key] = fields[key].serialize(value);
+        }
+        // Deserialize optional fields
+        for (const key of this.optionalFields) {
+            const value = input[key];
+            if (value !== undefined) {
+                output[key] = callback(fields[key], value);
+            }
+        }
+        return output;
     }
 }
 
-export function resource<E, I>(fields: ResourceFieldSet<E, I>): ResourceFieldSet<E, I> {
-    return fields;
+class NestedResourceField<T> extends Resource<T> implements Field<T, any> {
+    // tslint:disable-next-line:no-shadowed-variable
+    public encode(_: T): never {
+        throw new Error('Nested resource field does not support encoding.');
+    }
+    public encodeSortable(_: T): never {
+        throw new Error('Nested resource field does not support sortable encoding.');
+    }
+    public decode(_: any): never {
+        throw new Error('Nested resource field does not support sortable decoding.');
+    }
 }
 
-function mapValues<T, R, K extends keyof T>(obj: T, callback: (value: T[K], key: K) => R): {[P in keyof T]: R} {
-    const result = {} as {[P in keyof T]: R};
-    if (obj) {
-        for (const key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                result[key] = callback(obj[key], key as K);
+export function resource<T>(fields: Fields<T>) {
+    return new Resource<T>(fields);
+}
+
+export function nested<T>(res: Resource<T>): Field<T, any> {
+    return new NestedResourceField(res.fields);
+}
+
+export function nestedList<T>(res: Resource<T>): Field<T[], any[]> {
+    return list(nested(res));
+}
+
+function serializeWith<T>(fields: {[key: string]: Field<any>}, input: {[key: string]: any}, serializeField: (field: Field<any>, value: any, key: string) => T): {[key: string]: T} {
+    const output: {[key: string]: T} = {};
+    for (const key in fields) {
+        if (fields.hasOwnProperty(key)) {
+            const value = input[key];
+            if (value !== undefined) {
+                output[key] = serializeField(fields[key], value, key);
             }
         }
     }
-    return result;
+    return output;
 }

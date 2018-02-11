@@ -378,11 +378,11 @@ export class Broiler {
     }
     private generateApiTemplate$(apiConfig: ApiService) {
         const endpoints = sortBy(
-            map(apiConfig && apiConfig.apiFunctions, ({endpoint}, name) => ({
+            map(apiConfig && apiConfig.implementations, ({endpoint}, name) => ({
                 endpoint, name,
-                path: endpoint.url.replace(/^\/|\/$/g, '').split('/'),
+                path: endpoint.pathPattern.replace(/^\/|\/$/g, '').split('/'),
             })),
-            ({endpoint}) => endpoint.url,
+            ({endpoint}) => endpoint.pathPattern,
         );
         return this.getApiHash$().switchMap((hash) => {
             // Build templates for API Lambda functions

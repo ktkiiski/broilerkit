@@ -4,6 +4,7 @@ import * as webpack from 'webpack';
 
 import { IAppConfig } from './config';
 import { executeSync } from './exec';
+import { pick } from './utils/objects';
 
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
@@ -69,13 +70,13 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
         // Extract stylesheets to separate files in production
         new ExtractTextPlugin({
             disable: devServer,
-            filename: debug ? '[name].css' : '[name].[hash].css',
+            filename: devServer && debug ? '[name].css' : '[name].[hash].css',
         }),
         // Create HTML plugins for each webpage
         ...pages.map(
             ({file, title, scripts}) => new HtmlWebpackPlugin({
                 title,
-                filename: path.format({..._.pick(path.parse(file), 'dir', 'name'), ext: '.html'}),
+                filename: path.format({...pick(path.parse(file), ['dir', 'name']), ext: '.html'}),
                 template: path.resolve(sourceDirPath, file),
                 chunks: scripts.map((name) => path.basename(name).replace(/\..*?$/, '')),
                 // Insert tags for stylesheets and scripts
@@ -160,7 +161,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
                 // Your source logo
                 logo: iconFile,
                 // The prefix for all image files (might be a folder or a name)
-                prefix: debug ? 'icons/' : 'icons/[hash]/',
+                prefix: devServer && debug ? 'icons/' : 'icons/[hash]/',
                 // Emit all stats of the generated icons
                 emitStats: true,
                 // Generate a cache file with control hashes and
@@ -223,7 +224,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
             // Output files are placed to this folder
             path: buildDirPath,
             // The file name template for the entry chunks
-            filename: debug ? '[name].js' : '[name].[chunkhash].js',
+            filename: devServer && debug ? '[name].js' : '[name].[chunkhash].js',
             // The URL to the output directory resolved relative to the HTML page
             publicPath: `${assetsOrigin}/`,
             // The name of the exported library, e.g. the global variable name
@@ -437,7 +438,7 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
 
         // The main entry points for source files.
         entry: {
-            _api: path.resolve(projectDirPath, apiPath),
+            _api: path.resolve(projectDirPath, apiPath as string),
         },
 
         output: {
