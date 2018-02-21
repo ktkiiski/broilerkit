@@ -1,4 +1,3 @@
-import { cyan, green, red, yellow } from 'chalk';
 import * as http from 'http';
 import * as path from 'path';
 import { URL } from 'url';
@@ -15,6 +14,9 @@ import isArray = require('lodash/isArray');
 import isFunction = require('lodash/isFunction');
 import mapValues = require('lodash/mapValues');
 import { readStream } from './utils/fs';
+
+import chalk from 'chalk';
+const { cyan, green, red, yellow } = chalk;
 
 /**
  * Runs the Webpack development server.

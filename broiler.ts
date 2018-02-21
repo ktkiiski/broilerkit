@@ -1,6 +1,5 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { bold, cyan, dim, green, red, underline, yellow } from 'chalk';
 import { difference, differenceBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
 import { map } from 'lodash';
@@ -27,6 +26,9 @@ import * as File from 'vinyl';
 import { mergeAsync, toArray } from './async';
 import { flatMap } from './utils/arrays';
 import { spread } from './utils/objects';
+
+import chalk from 'chalk';
+const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
 export interface IFileUpload {
     file: File;
