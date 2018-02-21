@@ -468,6 +468,7 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
                     enforce: 'pre',
                     options: {
                         fix: true, // Auto-fix if possible
+                        typeCheck: true, // Required for some tslint rules
                     },
                 },
                 // Lint JavaScript files using eslint
