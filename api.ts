@@ -6,16 +6,6 @@ import { choice, Field, nullable, url } from './fields';
 import { HttpHeaders, HttpMethod, HttpStatus } from './http';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
 import { compileUrl, makeUrlRegexp } from './url';
-
-import 'rxjs/add/operator/concat';
-import 'rxjs/add/operator/concatMap';
-import 'rxjs/add/operator/expand';
-import 'rxjs/add/operator/filter';
-import 'rxjs/add/operator/ignoreElements';
-import 'rxjs/add/operator/map';
-import 'rxjs/add/operator/merge';
-import 'rxjs/add/operator/toArray';
-import 'rxjs/add/operator/toPromise';
 import { keys } from './utils/objects';
 
 export { Field };

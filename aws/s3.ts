@@ -1,6 +1,7 @@
-import { AWSError, S3 } from 'aws-sdk';
-import { Observable } from 'rxjs';
-import { retrievePage$, sendRequest$ } from './utils';
+import { S3 } from 'aws-sdk';
+import { buffer } from '../async';
+import { flatMap } from '../utils/arrays';
+import { retrievePages } from './utils';
 
 /**
  * Wrapper class for Amazon S3 operations with a reactive interface.
@@ -17,73 +18,79 @@ export class AmazonS3 {
     /**
      * Removes all the items from an Amazon S3 bucket so that it can be deleted.
      */
-    public emptyBucket$(bucketName: string) {
-        return Observable.concat(
-            // Delete regular objects (with null versions)
-            this.iterateObject$(bucketName)
-                .concatMap(({Key}) => Key ? [{Key}] : [])
-                .bufferCount(100)
-                .concatMap((refs) => this.deleteMultipleS3Object$(bucketName, refs)),
-            // Delete all object versions
-            this.iterateObjectVersions$(bucketName)
-                .concatMap(({Key, VersionId}) => Key && VersionId ? [{Key, VersionId}] : [])
-                .bufferCount(100)
-                .concatMap((refs) => this.deleteMultipleS3Object$(bucketName, refs)),
-        );
+    public async *emptyBucket(bucketName: string) {
+        // Delete regular objects (with null versions)
+        for await (const objects of buffer(this.iterateObjects(bucketName), 100)) {
+            const refs = flatMap(objects, ({Key}) => Key ? [{Key}] : []);
+            const removals = await this.deleteMultipleS3Objects(bucketName, refs);
+            yield *removals;
+        }
+        // Delete all object versions
+        for await (const versions of buffer(this.iterateObjectVersions(bucketName), 100)) {
+            const refs = flatMap(versions, ({Key, VersionId}) => Key && VersionId ? [{Key, VersionId}] : []);
+            const removals = await this.deleteMultipleS3Objects(bucketName, refs);
+            yield *removals;
+        }
     }
 
     /**
      * Uploads the given object to a S3 bucket, overriding one if it exists.
      * @param params Attributes for the uploaded object
      */
-    public putObject$(params: S3.PutObjectRequest) {
-        return sendRequest$(this.s3.putObject(params));
+    public async putObject(params: S3.PutObjectRequest): Promise<S3.PutObjectOutput> {
+        return await this.s3.putObject(params).promise();
     }
 
     /**
      * Checks if an object exists at S3 bucket.
      * @param params Attributes for the uploaded object
      */
-    public objectExists$({Bucket, Key}: {Bucket: string, Key: string}): Observable<boolean> {
-        return sendRequest$(this.s3.headObject({Bucket, Key}))
-            .mapTo(true)
-            .catch((error: AWSError) => {
-                if (error.statusCode === 404) {
-                    return [false];
-                }
-                throw error;
-            })
-        ;
+    public async objectExists({Bucket, Key}: {Bucket: string, Key: string}): Promise<boolean> {
+        try {
+            await this.s3.headObject({Bucket, Key}).promise();
+            return true; // Successful -> exists
+        } catch (error) {
+            if (error.statusCode === 404) {
+                return false;
+            }
+            throw error;
+        }
     }
 
     /**
      * Retrieve all the objects from an Amazon S3 bucket.
      */
-    private iterateObject$(bucketName: string): Observable<S3.Object> {
-        return retrievePage$(this.s3.listObjectsV2({ Bucket: bucketName }), 'Contents')
-            .concatMap((objects) => objects || [])
-        ;
+    private async *iterateObjects(bucketName: string): AsyncIterableIterator<S3.Object> {
+        const request = this.s3.listObjectsV2({ Bucket: bucketName });
+        for await (const objects of retrievePages(request, 'Contents')) {
+            if (objects) {
+                yield *objects;
+            }
+        }
     }
 
     /**
      * Retrieve all the object versions from an Amazon S3 bucket.
      */
-    private iterateObjectVersions$(bucketName: string): Observable<S3.ObjectVersion> {
-        return retrievePage$(this.s3.listObjectVersions({ Bucket: bucketName }), 'Versions')
-            .concatMap((versions) => versions || [])
-        ;
+    private async *iterateObjectVersions(bucketName: string): AsyncIterableIterator<S3.ObjectVersion> {
+        const request = this.s3.listObjectVersions({ Bucket: bucketName });
+        for await (const versions of retrievePages(request, 'Versions')) {
+            if (versions) {
+                yield *versions;
+            }
+        }
     }
 
     /**
      * Deletes an object from a S3 bucket.
      */
-    private deleteMultipleS3Object$(bucketName: string, refs: S3.ObjectIdentifierList) {
-        return sendRequest$(this.s3.deleteObjects({
+    private async deleteMultipleS3Objects(bucketName: string, refs: S3.ObjectIdentifierList) {
+        await this.s3.deleteObjects({
             Bucket: bucketName,
             Delete: {
                 Objects: refs,
             },
-        }))
-        .switchMapTo(refs.map((ref) => ({...ref, Bucket: bucketName})));
+        }).promise();
+        return refs.map((ref) => ({...ref, Bucket: bucketName}));
     }
 }

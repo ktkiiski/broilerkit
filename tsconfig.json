@@ -2,9 +2,10 @@
     "compilerOptions": {
         "alwaysStrict": true,
         "declaration": true,
+        "downlevelIteration": true,
         "forceConsistentCasingInFileNames": true,
         "importHelpers": true,
-        "lib": ["dom", "dom.iterable", "es2015"],
+        "lib": ["dom", "dom.iterable", "es2015", "esnext.asynciterable"],
         "module": "commonjs",
         "moduleResolution": "node",
         "noImplicitAny": true,

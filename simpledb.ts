@@ -1,5 +1,4 @@
 import map = require('lodash/map');
-import 'rxjs/add/operator/toPromise';
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
 import { HashIndexQuery, Identity, Model, PartialUpdate, SlicedQuery, Table } from './db';
 import { NotFound } from './http';
@@ -40,13 +39,10 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         // TODO: Filter by version!
         const encodedId = encodedQuery[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
-        const encodedItem = await sdb
-            .getAttributes<EncodedResource>({
-                DomainName: this.domainName,
-                ItemName: encodedId,
-            })
-            .toPromise()
-        ;
+        const encodedItem = await sdb.getAttributes<EncodedResource>({
+            DomainName: this.domainName,
+            ItemName: encodedId,
+        });
         if (!keys(encodedItem).length) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
@@ -71,7 +67,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
                 Value: value,
                 Replace: true,
             })),
-        }).toPromise();
+        });
         return item;
     }
 
@@ -91,13 +87,10 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         const sdb = new AmazonSimpleDB(this.region);
         const encodedChanges = updateSerializer.encode(changes);
         // Get the current item's state
-        const encodedItem = await sdb
-            .getAttributes<EncodedResource>({
-                DomainName: this.domainName,
-                ItemName: encodedId,
-            })
-            .toPromise()
-        ;
+        const encodedItem = await sdb.getAttributes<EncodedResource>({
+            DomainName: this.domainName,
+            ItemName: encodedId,
+        });
         if (!keys(encodedItem).length) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
@@ -117,7 +110,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
                     Value: value,
                     Replace: true,
                 })),
-            }).toPromise();
+            });
         } catch (error) {
             if (error.code === 'ConditionalCheckFailed') {
                 // Item was modified after it was read
@@ -143,18 +136,15 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         const encodedId = encodedIdentity[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         try {
-            await sdb
-                .deleteAttributes({
-                    DomainName: this.domainName,
-                    ItemName: encodedId,
-                    Expected: {
-                        Name: primaryKey,
-                        Value: encodedId,
-                        Exists: true,
-                    },
-                })
-                .toPromise()
-            ;
+            await sdb.deleteAttributes({
+                DomainName: this.domainName,
+                ItemName: encodedId,
+                Expected: {
+                    Name: primaryKey,
+                    Value: encodedId,
+                    Exists: true,
+                },
+            });
         } catch (error) {
             if (error.code === 'AttributeDoesNotExist' || error.code === 'MultiValuedAttribute' || error.code === 'ConditionalCheckFailed') {
                 throw notFoundError || new NotFound(`Item was not found.`);
@@ -203,7 +193,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         // TODO: Only select known fields
         const sql = `select * from ${escapeQueryIdentifier(domain)} where ${filters.join(' and ')} order by ${escapeQueryIdentifier(ordering)} ${direction} limit 100`;
         const sdb = new AmazonSimpleDB(this.region);
-        const encodedItems = await sdb.selectNext(sql, true).toPromise();
+        const encodedItems = await sdb.selectNext(sql, true);
         return encodedItems.map((item) => serializer.decode(item.attributes));
     }
 }

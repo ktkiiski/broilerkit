@@ -1,6 +1,5 @@
 import { filter, map } from 'lodash';
 import * as path from 'path';
-import { Observable } from 'rxjs/Observable';
 
 /**
  * Converts an object of parameter key-values to an
@@ -18,35 +17,19 @@ export function convertStackParameters(parameters: {[key: string]: any}) {
     );
 }
 
-/**
- * Converts a AWS.Request instance to an Observable.
- */
-export function sendRequest$<D, E>(request: AWS.Request<D, E>): Observable<D> {
-    return new Observable<D>((subscriber) => {
-        request.send((error, data) => {
-            if (error) {
-                subscriber.error(error);
-            } else {
-                subscriber.next(data);
-                subscriber.complete();
-            }
-        });
-    });
-}
-
-export function retrievePage$<D, E, T extends keyof D>(request: AWS.Request<D, E>, key: T): Observable<D[T]> {
-    return new Observable<D[T]>((subscriber) => {
-        request.eachPage((error, data) => {
-            if (error) {
-                subscriber.error(error);
-            } else if (data) {
-                subscriber.next(data[key]);
-            } else {
-                subscriber.complete();
-            }
-            return !subscriber.closed;
-        });
-    });
+export async function* retrievePages<D, E, T extends keyof D>(request: AWS.Request<D, E>, key: T) {
+    while (true) {
+        const response = await request.promise();
+        const { $response } = response;
+        const { data } = $response;
+        if (data) {
+            yield data[key];
+        }
+        if (!$response.hasNextPage()) {
+            break;
+        }
+        request = $response.nextPage(undefined as any) as AWS.Request<D, E>;
+    }
 }
 
 export function formatS3KeyName(filename: string, extension?: string): string {

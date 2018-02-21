@@ -1,6 +1,7 @@
 {
     "extends": "tslint:recommended",
     "rules": {
+        "await-promise": true,
         "interface-name": false,
         "max-classes-per-file": false,
         "max-line-length": false,

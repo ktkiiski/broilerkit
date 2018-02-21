@@ -1,8 +1,6 @@
 import { SimpleDB } from 'aws-sdk';
 import fromPairs = require('lodash/fromPairs');
 import map = require('lodash/map');
-import { Observable } from 'rxjs/Observable';
-import { sendRequest$ } from './utils';
 
 export interface ItemAttributes {
     [key: string]: string;
@@ -22,20 +20,18 @@ export class AmazonSimpleDB {
 
     constructor(private region: string) { }
 
-    public getAttributes<T extends ItemAttributes>(params: SimpleDB.GetAttributesRequest): Observable<T> {
-        return sendRequest$(this.simpleDB.getAttributes(params))
-            .map((result) => fromPairs(
-                map(result.Attributes, ({Name, Value}) => [Name, Value]),
-            ) as T)
-        ;
+    public async getAttributes<T extends ItemAttributes>(params: SimpleDB.GetAttributesRequest): Promise<T> {
+        const result = await this.simpleDB.getAttributes(params).promise();
+        return fromPairs(map(result.Attributes, ({Name, Value}) => [Name, Value])) as T;
     }
 
-    public selectNext(query: string, consistent: boolean): Observable<Item[]> {
-        return sendRequest$(this.simpleDB.select({
+    public async selectNext(query: string, consistent: boolean): Promise<Item[]> {
+        const request = this.simpleDB.select({
             SelectExpression: query,
             ConsistentRead: consistent,
-        }))
-        .map((response) => map(
+        });
+        const response = await request.promise();
+        return map(
             response.Items,
             (item) => ({
                 name: item.Name,
@@ -43,15 +39,15 @@ export class AmazonSimpleDB {
                     map(item.Attributes, ({Name, Value}) => [Name, Value]),
                 ),
             }),
-        ));
+        );
     }
 
-    public putAttributes(params: SimpleDB.PutAttributesRequest): Observable<{}> {
-        return sendRequest$(this.simpleDB.putAttributes(params));
+    public async putAttributes(params: SimpleDB.PutAttributesRequest): Promise<{}> {
+        return await this.simpleDB.putAttributes(params).promise();
     }
 
-    public deleteAttributes(params: SimpleDB.DeleteAttributesRequest): Observable<{}> {
-        return sendRequest$(this.simpleDB.deleteAttributes(params));
+    public async deleteAttributes(params: SimpleDB.DeleteAttributesRequest): Promise<{}> {
+        return await this.simpleDB.deleteAttributes(params).promise();
     }
 }
 

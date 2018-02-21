@@ -1,34 +1,36 @@
-import { Observable } from 'rxjs';
 import * as webpack from 'webpack';
+import { generate } from './async';
 
-export function compile$(config: webpack.Configuration): Observable<webpack.Stats> {
+export function compile(config: webpack.Configuration): Promise<webpack.Stats> {
     const compiler = webpack(config);
-    const run = compiler.run.bind(compiler) as typeof compiler.run;
-    return Observable.bindNodeCallback(run)()
-        .map((stats) => {
-            if (stats.hasErrors()) {
-                throw Object.assign(
+    return new Promise((resolve, reject) => {
+        compiler.run((error, stats) => {
+            if (error || !stats) {
+                reject(error || stats);
+            } else if (stats.hasErrors()) {
+                reject(Object.assign(
                     new Error(stats.toString('errors-only')),
                     {stats},
-                );
+                ));
+            } else {
+                resolve(stats);
             }
-            return stats;
-        })
-    ;
+        });
+    });
 }
 
-export function watch$(config: webpack.Configuration): Observable<webpack.Stats> {
-    const compiler = webpack(config);
-    return new Observable<webpack.Stats>((subscriber) => {
+export function watch(config: webpack.Configuration): AsyncIterableIterator<webpack.Stats> {
+    return generate(({next, error}) => {
+        const compiler = webpack(config);
         const watching = compiler.watch({
             aggregateTimeout: 300,
             poll: 5000,
-        }, (error, stats) => {
-            if (error) {
-                subscriber.error(error);
+        }, (err, stats) => {
+            if (err) {
+                error(err);
             } else {
                 // NOTE: There may still be compilation errors
-                subscriber.next(stats);
+                next(stats);
             }
         });
         return () => watching.close(() => undefined);

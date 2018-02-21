@@ -1,26 +1,25 @@
 import { cyan, green, red, yellow } from 'chalk';
 import * as http from 'http';
 import * as path from 'path';
-import { Observable } from 'rxjs';
 import { URL } from 'url';
 import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
-import { watch$ } from './compile';
+import { watch } from './compile';
 import { IAppConfig } from './config';
 import { HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
-import { readStream } from './node';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import isArray = require('lodash/isArray');
 import isFunction = require('lodash/isFunction');
 import mapValues = require('lodash/mapValues');
+import { readStream } from './utils/fs';
 
 /**
  * Runs the Webpack development server.
  */
-export function serveFrontEnd(options: IAppConfig): Observable<IAppConfig> {
+export function serveFrontEnd(options: IAppConfig, onReady?: () => void): Promise<void> {
     const assetsOriginUrl = new URL(options.siteOrigin);
     const assetsProtocol = assetsOriginUrl.protocol;
     const siteOriginUrl = new URL(options.siteOrigin);
@@ -29,9 +28,12 @@ export function serveFrontEnd(options: IAppConfig): Observable<IAppConfig> {
     const enableHttps = assetsProtocol === 'https:' || siteProtocol === 'https:';
     // TODO: Is this configuration for the inline livereloading still required?
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
-    return Observable.of({...options, debug: true, devServer: true, analyze: false})
-        .map((config) => webpack(getFrontendWebpackConfig(config)))
-        .map((compiler) => new WebpackDevServer(compiler, {
+    const compiler = webpack(getFrontendWebpackConfig({
+        ...options, debug: true, devServer: true, analyze: false,
+    }));
+    const devServer = new WebpackDevServer(
+        compiler,
+        {
             allowedHosts: [
                 assetsOriginUrl.hostname,
                 siteOriginUrl.hostname,
@@ -44,25 +46,25 @@ export function serveFrontEnd(options: IAppConfig): Observable<IAppConfig> {
                 poll: 1000,
             },
             publicPath: '/',
-        } as WebpackDevServer.Configuration))
-        .switchMap((devServer) => new Observable((subscriber) => {
-            const server = devServer.listen(serverPort, (error) => {
-                if (error) {
-                    subscriber.error(error);
-                } else {
-                    subscriber.next(options);
-                }
-            });
-            server.on('close', () => subscriber.complete());
-            server.on('error', (error) => subscriber.error(error));
-        }))
-    ;
+        } as WebpackDevServer.Configuration,
+    );
+    return new Promise((resolve, reject) => {
+        const server = devServer.listen(serverPort, (error) => {
+            if (error) {
+                reject(error);
+            } else if (onReady) {
+                onReady();
+            }
+        });
+        server.on('close', () => resolve());
+        server.on('error', (error) => reject(error));
+    });
 }
 
 /**
  * Runs the REST API development server.
  */
-export function serveBackEnd(options: IAppConfig) {
+export async function serveBackEnd(options: IAppConfig) {
     const {apiOrigin} = options;
     const apiOriginUrl = new URL(apiOrigin);
     const apiProtocol = apiOriginUrl.protocol;
@@ -71,59 +73,64 @@ export function serveBackEnd(options: IAppConfig) {
     if (enableHttps) {
         throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiOrigin.replace(/^https/, 'http')} instead!`);
     }
-    return watch$(getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false}))
-    .filter((stats) => {
-        if (stats.hasErrors()) {
-            // tslint:disable-next-line:no-console
-            console.error(stats.toString({
-                chunks: false,  // Makes the build much quieter
-                colors: true,    // Shows colors in the console
-            }));
-            return false;
-        }
-        return true;
-    })
-    .switchMap((stats) => {
-        // tslint:disable-next-line:no-console
-        console.log(stats.toString('minimal'));
-
-        const statsJson = stats.toJson();
-        const apiRequestHandlerFileName = statsJson.assetsByChunkName._api[0];
-        const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
-        // Ensure that module will be re-loaded
-        delete require.cache[apiRequestHandlerFilePath];
-        const handler: ApiService = require(apiRequestHandlerFilePath);
-        if (!handler || !isFunction(handler.execute)) {
-            // tslint:disable-next-line:no-console
-            console.error(red(`The exported API module must have a 'execute' callable!`));
-            return [];
-        }
-        return serveHttp$(serverPort, async (httpRequest, httpResponse) => {
-            try {
-                const request = await nodeRequestToApiRequest(httpRequest);
-                const response = await handler.execute(request);
-                // tslint:disable-next-line:no-console
-                console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
-                httpResponse.writeHead(response.statusCode, response.headers);
-                httpResponse.end(response.body);
-            } catch (error) {
-                // tslint:disable-next-line:no-console
-                console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${error}`);
-                httpResponse.writeHead(500, {
-                    'Content-Type': 'text/plain',
-                });
-                httpResponse.end(`Internal server error:\n${error}`);
+    const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
+    let server: http.Server | undefined;
+    try {
+        for await (const stats of watch(config)) {
+            // Close any previously running server
+            if (server) {
+                server.close();
+                server = undefined;
             }
-        });
-    });
-}
+            // Check for compilation errors
+            if (stats.hasErrors()) {
+                // tslint:disable-next-line:no-console
+                console.error(stats.toString({
+                    chunks: false,  // Makes the build much quieter
+                    colors: true,    // Shows colors in the console
+                }));
+                continue;
+            }
+            // Successful compilation -> start the HTTP server
+            // tslint:disable-next-line:no-console
+            console.log(stats.toString('minimal'));
 
-function serveHttp$(port: number, requestListener: (request: http.IncomingMessage, response: http.ServerResponse) => void) {
-    return new Observable(() => {
-        const server = http.createServer(requestListener);
-        server.listen(port);
-        return () => server.close();
-    });
+            const statsJson = stats.toJson();
+            const apiRequestHandlerFileName = statsJson.assetsByChunkName._api[0];
+            const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
+            // Ensure that module will be re-loaded
+            delete require.cache[apiRequestHandlerFilePath];
+            const handler: ApiService = require(apiRequestHandlerFilePath);
+            if (!handler || !isFunction(handler.execute)) {
+                // tslint:disable-next-line:no-console
+                console.error(red(`The exported API module must have a 'execute' callable!`));
+                continue;
+            }
+            // Start the server
+            server = http.createServer(async (httpRequest, httpResponse) => {
+                try {
+                    const request = await nodeRequestToApiRequest(httpRequest);
+                    const response = await handler.execute(request);
+                    // tslint:disable-next-line:no-console
+                    console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
+                    httpResponse.writeHead(response.statusCode, response.headers);
+                    httpResponse.end(response.body);
+                } catch (error) {
+                    // tslint:disable-next-line:no-console
+                    console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${error}`);
+                    httpResponse.writeHead(500, {
+                        'Content-Type': 'text/plain',
+                    });
+                    httpResponse.end(`Internal server error:\n${error}`);
+                }
+            });
+            server.listen(serverPort);
+        }
+    } finally {
+        if (server) {
+            server.close();
+        }
+    }
 }
 
 async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promise<HttpRequest> {
@@ -142,7 +149,8 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promi
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
         return request;
     }
-    return {...request, body: await readStream(nodeRequest)};
+    const chunks = await readStream(nodeRequest);
+    return {...request, body: chunks.map((chunk) => chunk.toString()).join('')};
 }
 
 function colorizeStatusCode(statusCode: HttpStatus): string {

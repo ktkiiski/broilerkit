@@ -13,6 +13,7 @@
     "clean-build": "npm run clean && npm run compile",
     "compile": "tsc -p .",
     "prepare": "npm run clean-build",
+    "lint": "tslint --project .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -46,7 +47,7 @@
     "@types/webpack-dev-server": "^2.4.2",
     "@types/yamljs": "^0.2.30",
     "awesome-typescript-loader": "^3.2.3",
-    "aws-sdk": "^2.130.0",
+    "aws-sdk": "^2.192.0",
     "chalk": "^2.1.0",
     "core-js": "^2.5.1",
     "css-loader": "^0.28.7",
@@ -68,7 +69,6 @@
     "node-sass": "^4.5.3",
     "pug": "^2.0.0-rc.4",
     "pug-loader": "^2.3.0",
-    "rxjs": "^5.5.6",
     "source-map-loader": "^0.2.2",
     "style-loader": "^0.18.2",
     "ts-node": "^3.3.0",
