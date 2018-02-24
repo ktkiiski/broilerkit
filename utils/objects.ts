@@ -28,6 +28,19 @@ export function keys<T>(obj: T): Array<keyof T> {
     return keyArray;
 }
 
+export type KeyValuePair<T> = {[P in keyof T]: [P, T[P]]}[keyof T];
+
+/**
+ * Returns the item pairs of the given object as an array.
+ * Each pair is an array of exactly two values: [key, value]
+ * @param obj Object whose items are returned.
+ */
+export function toPairs<T>(obj: T): Array<KeyValuePair<T>> {
+    const valueArray: Array<KeyValuePair<T>> = [];
+    forEachKey(obj, (key, value) => valueArray.push([key, value]));
+    return valueArray;
+}
+
 /**
  * Picks only the given keys of the given object.
  */

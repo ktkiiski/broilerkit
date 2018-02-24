@@ -6,6 +6,7 @@ import { map } from 'lodash';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
+import { AmazonCloudWatch } from './aws/cloudwatch';
 import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
@@ -25,7 +26,7 @@ import * as path from 'path';
 import * as File from 'vinyl';
 import { mergeAsync, toArray } from './async';
 import { flatMap } from './utils/arrays';
-import { spread } from './utils/objects';
+import { spread, toPairs } from './utils/objects';
 
 import chalk from 'chalk';
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
@@ -50,6 +51,7 @@ export class Broiler {
         region: this.options.region,
         apiVersion: '2017-03-25',
     });
+    private cloudWatch = new AmazonCloudWatch(this.options.region);
     private s3 = new AmazonS3(this.options.region);
 
     /**
@@ -213,6 +215,40 @@ export class Broiler {
             }
             return stack;
         });
+    }
+
+    /**
+     * Outputs the logs
+     */
+    public async printLogs(options: {follow?: boolean, since?: string, maxCount?: number} = {}) {
+        const {follow = false, since = '', maxCount} = options;
+        const startDate = new Date();
+        const minutesMatch = /(\d+)min/.exec(since);
+        if (minutesMatch) {
+            startDate.setMinutes(startDate.getMinutes() - parseInt(minutesMatch[1], 10));
+        }
+        const hoursMatch = /(\d+)h/.exec(since);
+        if (hoursMatch) {
+            startDate.setHours(startDate.getHours() - parseInt(hoursMatch[1], 10));
+        }
+        const daysMatch = /(\d+)d/.exec(since);
+        if (daysMatch) {
+            startDate.setDate(startDate.getDate() - parseInt(daysMatch[1], 10));
+        }
+        const output = await this.cloudFormation.getStackOutput();
+        const logGroupNames = toPairs(output)
+            .filter(([key]) => key.endsWith('LogGroupName'))
+            .map(([, logGroupName]) => logGroupName)
+        ;
+        const logStream = this.cloudWatch.streamLogGroups({
+            follow, maxCount, logGroupNames, startTime: +startDate,
+        });
+        for await (const event of logStream) {
+            const timestamp = new Date(event.timestamp).toISOString();
+            const groupName = event.logGroupName.replace(/^\/aws\/lambda\//, '');
+            const message = event.message.trim();
+            this.log(`${dim(`${timestamp}:`)} ${cyan(groupName)} ${message}`);
+        }
     }
 
     /**

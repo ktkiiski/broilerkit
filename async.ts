@@ -101,7 +101,7 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
             // tslint:disable-next-line:no-conditional-assignment
             while (nextToken = pendingTokens.shift()) {
                 if (nextToken.done) {
-                    break;
+                    return;
                 } else {
                     yield nextToken.value;
                 }

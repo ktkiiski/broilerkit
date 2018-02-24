@@ -38,3 +38,10 @@ Resources:
     Properties:
       LogGroupName:
         Fn::Sub: "/aws/lambda/${AWS::StackName}-<apiFunctionName>"
+
+# Output the log group name
+Outputs:
+  <ApiFunctionName>LogGroupName:
+    Description: "Log group name of <apiFunctionName>"
+    Value:
+      Ref: <ApiFunctionName>LogGroup
