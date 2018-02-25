@@ -221,7 +221,7 @@ export class Broiler {
      * Outputs the logs
      */
     public async printLogs(options: {follow?: boolean, since?: string, maxCount?: number} = {}) {
-        const {follow = false, since = '', maxCount} = options;
+        const {follow = false, since = '5min', maxCount} = options;
         const startDate = new Date();
         const minutesMatch = /(\d+)min/.exec(since);
         if (minutesMatch) {
