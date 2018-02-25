@@ -84,6 +84,9 @@ Resources:
         # Make the API origin available as a stage variable
         ApiOrigin:
           Ref: ApiOrigin
+        # Make the website origin available as a stage variable
+        SiteOrigin:
+          Ref: SiteOrigin
         # Make the AWS region available as a stage variable
         Region:
           Ref: AWS::Region

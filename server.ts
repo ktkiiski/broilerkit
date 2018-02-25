@@ -8,8 +8,6 @@ import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequ
 import { compileUrl } from './url';
 import { spread } from './utils/objects';
 
-declare const __SITE_ORIGIN__: string;
-
 export interface Models {
     [name: string]: Model<any, any, any, any>;
 }
@@ -98,7 +96,7 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
                 return {
                     statusCode: 200,
                     headers: {
-                        'Access-Control-Allow-Origin': __SITE_ORIGIN__,
+                        'Access-Control-Allow-Origin': request.siteOrigin,
                         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
                         'Access-Control-Allow-Methods': methods.join(', '),
                         'Access-Control-Allow-Credentials': 'true',
@@ -113,9 +111,9 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
             }
             const response = await handler(input, models, request);
             if (!response.data) {
-                return convertApiResponse(response);
+                return convertApiResponse(response, request);
             }
-            return convertApiResponse({...response, data: endpoint.serializeResponseData(method, response.data)});
+            return convertApiResponse({...response, data: endpoint.serializeResponseData(method, response.data)}, request);
         } catch (error) {
             // Determine if the error was a HTTP response
             // tslint:disable-next-line:no-shadowed-variable
@@ -123,7 +121,7 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
             if (typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object') {
                 // This was an intentional HTTP error, so it should be considered
                 // a successful execution of the lambda function.
-                return convertApiResponse(error);
+                return convertApiResponse(error, request);
             }
             // This doesn't seem like a HTTP response -> Pass through for the internal server error
             throw error;
@@ -139,14 +137,14 @@ export function implement<D, T>(endpoint: EndpointDefinition<T>, db: Tables<D>):
     return new EndpointImplementation<D, T>(endpoint, db, {});
 }
 
-function convertApiResponse(response: ApiResponse<any>): HttpResponse {
+function convertApiResponse(response: ApiResponse<any>, request: HttpRequest): HttpResponse {
     const {statusCode, data, headers} = response;
     const encodedBody = data == null ? '' : JSON.stringify(data);
     return {
         statusCode,
         body: encodedBody,
         headers: {
-            'Access-Control-Allow-Origin': __SITE_ORIGIN__,
+            'Access-Control-Allow-Origin': request.siteOrigin,
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
             'Access-Control-Allow-Credentials': 'true',
             'Content-Type': 'application/json',

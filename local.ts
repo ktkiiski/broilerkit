@@ -67,7 +67,8 @@ export function serveFrontEnd(options: IAppConfig, onReady?: () => void): Promis
  * Runs the REST API development server.
  */
 export async function serveBackEnd(options: IAppConfig) {
-    const {apiOrigin} = options;
+    const {apiOrigin, siteOrigin} = options;
+    const siteOriginUrl = new URL(siteOrigin);
     const apiOriginUrl = new URL(apiOrigin);
     const apiProtocol = apiOriginUrl.protocol;
     const serverPort = parseInt(apiOriginUrl.port, 10);
@@ -111,7 +112,7 @@ export async function serveBackEnd(options: IAppConfig) {
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const request = await nodeRequestToApiRequest(httpRequest);
+                    const request = await nodeRequestToApiRequest(httpRequest, siteOriginUrl.origin);
                     const response = await handler.execute(request);
                     // tslint:disable-next-line:no-console
                     console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
@@ -135,12 +136,12 @@ export async function serveBackEnd(options: IAppConfig) {
     }
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promise<HttpRequest> {
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOrigin: string): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
     const apiOrigin = `${requestUrlObj.protocol}://${requestUrlObj.host}`;
     const request: HttpRequest = {
-        apiOrigin,
+        apiOrigin, siteOrigin,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: mapValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},

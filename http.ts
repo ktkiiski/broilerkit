@@ -69,6 +69,11 @@ export interface HttpRequest {
      */
     apiOrigin: string;
     /**
+     * The origin of the website from which the API requests
+     * are expected to become. This does not include any trailing slash.
+     */
+    siteOrigin: string;
+    /**
      * Region in which the request is being executed.
      */
     region: string; // TODO: Literal typing for the region

@@ -84,10 +84,14 @@ export function convertLambdaRequest(request: LambdaHttpRequest, _: LambdaHttpRe
     if (!apiOrigin) {
         throw new Error(`The ApiOrigin stage variable is missing!`);
     }
+    const siteOrigin = environment.SiteOrigin;
+    if (!siteOrigin) {
+        throw new Error(`The SiteOrigin stage variable is missing!`);
+    }
     return {
         method: httpMethod,
         path: request.path,
         queryParameters, headers, body, payload,
-        environment, region, apiOrigin,
+        environment, region, apiOrigin, siteOrigin,
     };
 }
