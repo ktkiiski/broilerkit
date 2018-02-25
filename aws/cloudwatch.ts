@@ -68,7 +68,7 @@ export class AmazonCloudWatch {
         const oldEvents = await toArray(mergeAsync(...eventIterators));
         // TODO: Could do merge sort for the iterators for better performance for large log groups
         const sortedEvents = oldEvents.sort((a, b) => a.timestamp - b.timestamp);
-        for await (const event of sortedEvents) {
+        for (const event of sortedEvents) {
             yield event;
             maxCount --;
             if (maxCount <= 0) {
