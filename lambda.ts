@@ -1,4 +1,4 @@
-import { HttpHeaders, HttpMethod, HttpResponse } from './http';
+import { BadRequest, HttpHeaders, HttpMethod, HttpRequest, HttpResponse, isReadHttpMethod, isWriteHttpMethod, UnsupportedMediaType } from './http';
 
 export type LambdaHttpResponse = HttpResponse;
 
@@ -44,3 +44,50 @@ export interface LambdaHttpRequest {
 }
 
 export type LambdaHttpHandler = (request: LambdaHttpRequest, context: LambdaHttpRequestContext, callback: LambdaCallback) => void;
+
+export function convertLambdaRequest(request: LambdaHttpRequest, _: LambdaHttpRequestContext): HttpRequest {
+    let {httpMethod} = request;
+    const {body, isBase64Encoded} = request;
+    const queryParameters = request.queryStringParameters || {};
+    const headers = request.headers || {};
+    const {method = null} = queryParameters;
+    if (method) {
+        // Allow changing the HTTP method with 'method' query string parameter
+        if (httpMethod === 'GET' && isReadHttpMethod(method)) {
+            httpMethod = method;
+        } else if (httpMethod === 'POST' && isWriteHttpMethod(method)) {
+            httpMethod = method;
+        } else {
+            throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
+        }
+    }
+    // Parse the request payload as JSON
+    const contentType = headers['Content-Type'];
+    if (contentType && contentType !== 'application/json') {
+        throw new UnsupportedMediaType(`Only application/json is accepted`);
+    }
+    let payload: any;
+    if (body) {
+        try {
+            const encodedBody = isBase64Encoded ? Buffer.from(body, 'base64').toString() : body;
+            payload = JSON.parse(encodedBody);
+        } catch {
+            throw new BadRequest(`Invalid JSON payload`);
+        }
+    }
+    const environment = request.stageVariables || {};
+    const region = environment.Region;
+    if (!region) {
+        throw new Error(`The Region stage variable is missing!`);
+    }
+    const apiOrigin = environment.ApiOrigin;
+    if (!apiOrigin) {
+        throw new Error(`The ApiOrigin stage variable is missing!`);
+    }
+    return {
+        method: httpMethod,
+        path: request.path,
+        queryParameters, headers, body, payload,
+        environment, region, apiOrigin,
+    };
+}

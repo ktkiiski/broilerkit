@@ -290,11 +290,12 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const siteOriginUrl = new URL(this.options.siteOrigin);
+        const {siteOrigin, apiOrigin, assetsOrigin} = this.options;
+        const siteOriginUrl = new URL(siteOrigin);
         const siteDomain = siteOriginUrl.hostname;
-        const assetsOriginUrl = new URL(this.options.assetsOrigin);
+        const assetsOriginUrl = new URL(assetsOrigin);
         const assetsDomain = assetsOriginUrl.hostname;
-        const apiOriginUrl = new URL(this.options.apiOrigin);
+        const apiOriginUrl = new URL(apiOrigin);
         const apiDomain = apiOriginUrl.hostname;
         const apiFile = await this.getCompiledApiFile();
         return {
@@ -303,6 +304,7 @@ export class Broiler {
             SiteHostedZoneName: getHostedZone(siteDomain),
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
+            ApiOrigin: apiOriginUrl.origin,
             ApiHostedZoneName: getHostedZone(apiDomain),
             ApiDomainName: apiDomain,
             ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),

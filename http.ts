@@ -64,10 +64,10 @@ export interface HttpRequest {
         [parameter: string]: string;
     };
     /**
-     * The origin (host) to which the request was made.
+     * The origin of the API to which the request was made.
      * This does not include any trailing slash.
      */
-    origin: string;
+    apiOrigin: string;
     /**
      * Region in which the request is being executed.
      */

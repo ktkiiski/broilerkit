@@ -3,6 +3,9 @@ Parameters:
   # The key of the ZIP file in the deployment S3 bucket
   ApiRequestLambdaFunctionS3Key:
     Type: String
+  # Origin for the REST API
+  ApiOrigin:
+    Type: String
   # Domain for the REST API
   ApiDomainName:
     Type: String
@@ -77,6 +80,13 @@ Resources:
     Properties:
       DeploymentId:
         Ref: <ApiGatewayDeploymentName>
+      Variables:
+        # Make the API origin available as a stage variable
+        ApiOrigin:
+          Ref: ApiOrigin
+        # Make the AWS region available as a stage variable
+        Region:
+          Ref: AWS::Region
       MethodSettings:
       # Enables CloudWatch logging for the API gateway
       - DataTraceEnabled: true

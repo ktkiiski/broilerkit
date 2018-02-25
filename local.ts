@@ -138,9 +138,9 @@ export async function serveBackEnd(options: IAppConfig) {
 async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
-    const origin = `${requestUrlObj.protocol}://${requestUrlObj.host}`;
+    const apiOrigin = `${requestUrlObj.protocol}://${requestUrlObj.host}`;
     const request: HttpRequest = {
-        origin,
+        apiOrigin,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: mapValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},

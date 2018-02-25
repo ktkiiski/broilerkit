@@ -2,16 +2,13 @@ import mapValues = require('lodash/mapValues');
 import upperFirst = require('lodash/upperFirst');
 import { CreateEndpoint, DestroyEndpoint, EndpointDefinition, IApiListPage, ListEndpoint, ListParams, RetrieveEndpoint, UpdateEndpoint } from './api';
 import { Model, Table } from './db';
-import { BadRequest, HttpMethod, HttpRequest, MethodNotAllowed, NoContent, UnsupportedMediaType } from './http';
-import { isReadHttpMethod, isWriteHttpMethod } from './http';
+import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
-import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
+import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 import { compileUrl } from './url';
 import { spread } from './utils/objects';
 
 declare const __SITE_ORIGIN__: string;
-declare const __API_ORIGIN__: string;
-declare const __AWS_REGION__: string;
 
 export interface Models {
     [name: string]: Model<any, any, any, any>;
@@ -66,7 +63,7 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
             const last = results[length - 1];
             const nextInput = spread(input, {since: last[ordering]});
             const {path, queryParameters} = endpoint.serializeRequest('GET', nextInput);
-            const next = compileUrl(request.origin, path, queryParameters);
+            const next = compileUrl(request.apiOrigin, path, queryParameters);
             const headers = {Link: `${next}; rel="next"`};
             return new OK({next, results}, headers);
         };
@@ -191,51 +188,11 @@ export class ApiService {
     }
 
     public request: LambdaHttpHandler = (lambdaRequest: LambdaHttpRequest, context: LambdaHttpRequestContext, callback: LambdaCallback) => {
-        const request = this.fromLambdaToApiRequest(lambdaRequest, context);
+        const request = convertLambdaRequest(lambdaRequest, context);
         this.execute(request).then(
             (result) => callback(null, result),
             (error) => callback(error),
         );
-    }
-
-    protected fromLambdaToApiRequest(request: LambdaHttpRequest, _: LambdaHttpRequestContext): HttpRequest {
-        let {httpMethod} = request;
-        const {body, isBase64Encoded} = request;
-        const queryParameters = request.queryStringParameters || {};
-        const headers = request.headers || {};
-        const {method = null} = queryParameters;
-        if (method) {
-            // Allow changing the HTTP method with 'method' query string parameter
-            if (httpMethod === 'GET' && isReadHttpMethod(method)) {
-                httpMethod = method;
-            } else if (httpMethod === 'POST' && isWriteHttpMethod(method)) {
-                httpMethod = method;
-            } else {
-                throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
-            }
-        }
-        // Parse the request payload as JSON
-        const contentType = headers['Content-Type'];
-        if (contentType && contentType !== 'application/json') {
-            throw new UnsupportedMediaType(`Only application/json is accepted`);
-        }
-        let payload: any;
-        if (body) {
-            try {
-                const encodedBody = isBase64Encoded ? Buffer.from(body, 'base64').toString() : body;
-                payload = JSON.parse(encodedBody);
-            } catch {
-                throw new BadRequest(`Invalid JSON payload`);
-            }
-        }
-        return {
-            method: httpMethod,
-            path: request.path,
-            queryParameters, headers, body, payload,
-            environment: request.stageVariables || {},
-            region: __AWS_REGION__,
-            origin: __API_ORIGIN__,
-        };
     }
 }
 
