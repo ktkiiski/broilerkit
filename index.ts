@@ -87,7 +87,7 @@ export interface AppConfig {
     sourceDir: string;
 }
 
-export interface BindOptions {
+export interface ConfigOptions {
     /**
      * Name of the current app stage.
      */
@@ -108,17 +108,15 @@ export interface BindOptions {
     projectRootPath: string;
 }
 
-export interface AppStageConfig extends AppConfig, StageConfig, BindOptions {}
+export interface AppStageConfig extends AppConfig, StageConfig, ConfigOptions {}
 
 export class App {
     constructor(public readonly config: AppConfig) {}
 
-    public configure(options: {stage: string, debug: boolean, projectRootPath: string}): AppStageConfig {
-        return {
-            ...this.config,
-            ...this.config.stages[options.stage],
-            ...options,
-        };
+    public configure(options: ConfigOptions): AppStageConfig {
+        const {stage} = options;
+        const {config} = this;
+        return {...config, ...config.stages[stage], ...options};
     }
 }
 
