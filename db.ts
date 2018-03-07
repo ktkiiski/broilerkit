@@ -1,3 +1,7 @@
+import { parseARN } from './aws/arn';
+import { Resource } from './resources';
+import { SimpleDbModel } from './simpledb';
+
 export interface OrderedQuery<T, K extends keyof T> {
     ordering: K;
     direction: 'asc' | 'desc';
@@ -14,11 +18,12 @@ export interface HashIndexQuery<T, P extends keyof T, S extends keyof T> extends
     value: T[P];
 }
 
+export type Query<T, P extends keyof T> = SlicedQuery<T, keyof T> | HashIndexQuery<T, keyof T, P>;
+
 export type Identity<S, PK extends keyof S, V extends keyof S> = Pick<S, PK | V> | Pick<S, PK>;
 export type PartialUpdate<S, V extends keyof S> = Pick<S, V> & Partial<S>;
 
 export interface Model<T, PK extends keyof T, V extends keyof T, D> {
-    table: Table<Model<T, PK, V, D>>;
     /**
      * Gets the item from the database using the given identity
      * object, containing all the identifying attributes.
@@ -116,6 +121,59 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
 }
 
 export interface Table<M> {
+    /**
+     * An identifying name for the table that distinguishes it from the
+     * other table definitions.
+     */
     name: string;
-    getModel(region: string, tableId: string): M;
+    /**
+     * Binds the table to a specific environment (stage), defining the
+     * location where the table data is to be stored with the given URI.
+     *
+     * For a deployed environment, the URI should be an ARN of a SimpleDB
+     * domain, for example:
+     *
+     *      arn:aws:sdb:us-east-1:111122223333:domain/Domain1
+     *
+     * For local environment, this describes the location of the SQLite3
+     * database file where the data is to be persisted, for example:
+     *
+     *      file:/home/fred/data.db
+     *
+     * @param uri URI to the resource storing the data
+     */
+    getModel(uri: string): M;
+}
+
+export class TableDefinition<S, PK extends keyof S, V extends keyof S> implements Table<Model<S, PK, V, Query<S, PK>>> {
+
+    constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
+
+    public getModel(uri: string): Model<S, PK, V, Query<S, PK>> {
+        if (uri.startsWith('arn:')) {
+            const {service, region, resourceType, resourceId} = parseARN(uri);
+            if (service !== 'sdb') {
+                throw new Error(`Unknown AWS service "${service}"`);
+            }
+            if (resourceType !== 'domain') {
+                throw new Error(`Unknown AWS resource type "${resourceType}"`);
+            }
+            return new SimpleDbModel<S, PK, V>(resourceId, region, this.resource, this.key, this.versionAttr);
+        }
+        throw new Error(`Invalid database table URI ${uri}`);
+    }
+}
+
+export function table(tableName: string) {
+    // tslint:disable-next-line:no-shadowed-variable
+    function resource<S>(resource: Resource<S>) {
+        function identifyBy<K extends keyof S>(key: K) {
+            function versionBy<V extends keyof S>(versionAttr: V) {
+                return new TableDefinition(tableName, resource, key, versionAttr);
+            }
+            return {versionBy};
+        }
+        return {identifyBy};
+    }
+    return {resource};
 }

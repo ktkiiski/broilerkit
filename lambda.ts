@@ -93,5 +93,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest, _: LambdaHttpRe
         path: request.path,
         queryParameters, headers, body, payload,
         environment, region, apiOrigin, siteOrigin,
+        // Read the directory path from environment variables
+        directoryPath: process.env.LAMBDA_TASK_ROOT as string,
     };
 }

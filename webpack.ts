@@ -2,7 +2,7 @@ import * as _ from 'lodash';
 import * as path from 'path';
 import * as webpack from 'webpack';
 
-import { IAppConfig } from './config';
+import { BroilerConfig } from './config';
 import { executeSync } from './exec';
 import { pick } from './utils/objects';
 
@@ -41,7 +41,7 @@ const polyfills = [
     'core-js/fn/object/entries',
 ].map((mod) => require.resolve(mod));
 
-export interface IWebpackConfigOptions extends IAppConfig {
+export interface WebpackConfigOptions extends BroilerConfig {
     devServer: boolean;
     analyze: boolean;
 }
@@ -51,15 +51,14 @@ export interface IWebpackConfigOptions extends IAppConfig {
  * The options are documented at
  * https://webpack.js.org/configuration/
  */
-export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
-    const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRoot, stage, analyze} = config;
+export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
+    const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRootPath, stage, analyze} = config;
     const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
-    const projectDirPath = path.resolve(process.cwd(), projectRoot);
-    const sourceDirPath = path.resolve(projectDirPath, sourceDir);
+    const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const scriptPaths = _.union(..._.map(pages, (page) => page.scripts));
-    const buildDirPath = path.resolve(projectDirPath, buildDir);
-    const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
+    const buildDirPath = path.resolve(projectRootPath, buildDir);
+    const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
 
     const gitCommitHash = executeSync('git rev-parse HEAD');
@@ -270,7 +269,7 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
                     loader: 'awesome-typescript-loader',
                     options: {
                         // Explicitly expect the tsconfig.json to be located at the project root
-                        configFileName: path.resolve(projectDirPath, './tsconfig.json'),
+                        configFileName: path.resolve(projectRootPath, './tsconfig.json'),
                     },
                 },
                 // Extract CSS stylesheets from the main bundle
@@ -388,14 +387,13 @@ export function getFrontendWebpackConfig(config: IWebpackConfigOptions): webpack
  * The options are documented at
  * https://webpack.js.org/configuration/
  */
-export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.Configuration {
-    const {apiPath, sourceDir, buildDir, projectRoot} = config;
+export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
+    const {serverFile, sourceDir, buildDir, projectRootPath} = config;
     const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
-    const projectDirPath = path.resolve(process.cwd(), projectRoot);
-    const sourceDirPath = path.resolve(projectDirPath, sourceDir);
-    const buildDirPath = path.resolve(projectDirPath, buildDir);
-    const modulesDirPath = path.resolve(projectDirPath, 'node_modules');
+    const sourceDirPath = path.resolve(projectRootPath, sourceDir);
+    const buildDirPath = path.resolve(projectRootPath, buildDir);
+    const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
 
     const gitCommitHash = executeSync('git rev-parse HEAD');
@@ -438,7 +436,7 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
 
         // The main entry points for source files.
         entry: {
-            _api: path.resolve(projectDirPath, apiPath as string),
+            _api: path.resolve(projectRootPath, sourceDir, serverFile as string),
         },
 
         output: {
@@ -490,7 +488,7 @@ export function getBackendWebpackConfig(config: IWebpackConfigOptions): webpack.
                     loader: 'awesome-typescript-loader',
                     options: {
                         // Explicitly expect the tsconfig.json to be located at the project root
-                        configFileName: path.resolve(projectDirPath, './tsconfig.json'),
+                        configFileName: path.resolve(projectRootPath, './tsconfig.json'),
                     },
                 },
             ],

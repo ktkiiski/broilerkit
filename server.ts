@@ -199,9 +199,10 @@ function getModels<M>(db: Tables<M>, request: HttpRequest): M {
         db,
         (table: Table<any>) => {
             // TODO: Get this from a method/property of the table?
-            const logicalId = `SimpleDBTable${upperFirst(table.name)}`;
-            const domainName = request.environment[`${logicalId}DomainName`];
-            return table.getModel(request.region, domainName);
+            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
+            // TODO: Locally use SQLite3 URI
+            const tableUri = request.environment[`${logicalId}ARN`];
+            return table.getModel(tableUri);
         },
     ) as M;
 }

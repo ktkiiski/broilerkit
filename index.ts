@@ -1,4 +1,4 @@
-export interface IStageConfig {
+export interface StageConfig {
     /**
      * The URL origin where all the indefinitely-cached static assets are hosted.
      * This must contain the protocol, hostname and optionally any port. The origin
@@ -31,7 +31,7 @@ export interface IStageConfig {
     apiOrigin?: string;
 }
 
-export interface IWebPageConfig {
+export interface WebPageConfig {
     /**
      * Title of this web page.
      */
@@ -47,15 +47,11 @@ export interface IWebPageConfig {
     scripts: string[];
 }
 
-export interface IAppConfig {
+export interface AppConfig {
     /**
      * The name of the web app. Should include only letters, numbers, and dashes.
      */
     name: string;
-    /**
-     * Which version of BroilerKit is this app using?
-     */
-    broilerKitVersion: string;
     /**
      * Icon file for your app that is used to generate favicons and mobile-compatible
      * icons. The path is relative to the source directory.
@@ -64,7 +60,7 @@ export interface IAppConfig {
     /**
      * Pages
      */
-    pages: IWebPageConfig[];
+    pages: WebPageConfig[];
     /**
      * To which Amazon region the web app will be hosted.
      * Currently, only 'us-east-1' is supported!
@@ -77,15 +73,59 @@ export interface IAppConfig {
         /**
          * Stage name as a key and the stage's configuration as a value.
          */
-        [stage: string]: IStageConfig;
+        [stage: string]: StageConfig;
     };
     /**
-     * Relative path to the module that defines all the API endpoints.
+     * Relative path to the module that defines the server implementation.
      * The path must be relative to the source directory.
      */
-    apiPath?: string;
+    serverFile?: string;
     /**
      * The folder containing all the source files for your app.
+     * Other paths in this configuration are relative to this.
      */
     sourceDir: string;
+}
+
+export interface BindOptions {
+    /**
+     * Name of the current app stage.
+     */
+    stage: string;
+    /**
+     * Whether or not the app stage is in debugging mode.
+     * If true, the app compilation will be unminimized, unoptimized and source maps
+     * are fully enabled in order to make debugging much easier.
+     * If false (recommended for the production build) the bundle will
+     * be compressed and optimized.
+     */
+    debug: boolean;
+    /**
+     * The full absolute path to the root folder where the app project
+     * is located. Other directory and file names are always relative
+     * to this path.
+     */
+    projectRootPath: string;
+}
+
+export interface AppStageConfig extends AppConfig, StageConfig, BindOptions {}
+
+export class App {
+    constructor(public readonly config: AppConfig) {}
+
+    public configure(options: {stage: string, debug: boolean, projectRootPath: string}): AppStageConfig {
+        return {
+            ...this.config,
+            ...this.config.stages[options.stage],
+            ...options,
+        };
+    }
+}
+
+/**
+ * Configures a web app.
+ * @param config Configuration for the web app
+ */
+export function app(config: AppConfig) {
+    return new App(config);
 }

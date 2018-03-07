@@ -1,10 +1,11 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
+import { map } from 'lodash';
 import { difference, differenceBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
-import { map } from 'lodash';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
+import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch } from './aws/cloudwatch';
 import { AmazonS3 } from './aws/s3';
@@ -12,23 +13,24 @@ import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
 import { clean } from './clean';
 import { compile } from './compile';
-import { IAppConfig } from './config';
+import { BroilerConfig } from './config';
 import { HttpMethod } from './http';
+import { AppStageConfig } from './index';
 import { serveBackEnd, serveFrontEnd } from './local';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
+import { flatMap } from './utils/arrays';
 import { searchFiles } from './utils/fs';
+import { spread, toPairs } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
 import * as mime from 'mime';
 import * as path from 'path';
 import * as File from 'vinyl';
-import { mergeAsync, toArray } from './async';
-import { flatMap } from './utils/arrays';
-import { spread, toPairs } from './utils/objects';
 
 import chalk from 'chalk';
+
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
 export interface IFileUpload {
@@ -44,21 +46,36 @@ const staticHtmlCacheDuration = 3600;
 
 export class Broiler {
 
-    private cloudFormation = new AmazonCloudFormation(
-        this.options.region, this.options.stackName,
-    );
-    private cloudFront = new CloudFront({
-        region: this.options.region,
-        apiVersion: '2017-03-25',
-    });
-    private cloudWatch = new AmazonCloudWatch(this.options.region);
-    private s3 = new AmazonS3(this.options.region);
+    private readonly config: BroilerConfig;
+    // The name of the stack to be deployed
+    private readonly stackName: string;
+    // The full path to the directory for the current stage
+    private readonly stageDir: string;
+    // The full path to the build directory inside the stage directory
+    private readonly buildDir: string;
+
+    private readonly cloudFormation: AmazonCloudFormation;
+    private readonly cloudFront: CloudFront;
+    private readonly cloudWatch: AmazonCloudWatch;
+    private readonly s3: AmazonS3;
 
     /**
      * Creates a new Broiler utility with the given options.
      * @param options An object of options
      */
-    constructor(private options: IAppConfig) { }
+    constructor(config: AppStageConfig) {
+        const {name, stage, projectRootPath, region} = config;
+        const stackName = this.stackName = `${name}-${stage}`;
+        const stageDir = this.stageDir = path.join(projectRootPath, '.broiler', stage || 'local');
+        const buildDir = this.buildDir = path.join(stageDir, 'build');
+
+        this.cloudFormation = new AmazonCloudFormation(region, stackName);
+        this.cloudFront = new CloudFront({region, apiVersion: '2017-03-25'});
+        this.cloudWatch = new AmazonCloudWatch(region);
+        this.s3 = new AmazonS3(region);
+
+        this.config = {...config, stackName, stageDir, buildDir};
+    }
 
     /**
      * Deploys the web app, creating/updating the stack
@@ -77,7 +94,7 @@ export class Broiler {
         await this.deployFile();
         const output = await stackOutput$;
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
-        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.options.siteOrigin}/`)}`);
+        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteOrigin}/`)}`);
     }
 
     /**
@@ -109,7 +126,7 @@ export class Broiler {
      * Removes (undeploys) the stack, first clearing the contents of the S3 buckets
      */
     public async undeploy(): Promise<CloudFormation.Stack> {
-        this.log(`Removing the stack ${bold(this.options.stackName)} from region ${bold(this.options.region)}`);
+        this.log(`Removing the stack ${bold(this.stackName)} from region ${bold(this.config.region)}`);
         const output = await this.cloudFormation.getStackOutput();
         const emptyAssets$ = this.s3.emptyBucket(output.AssetsS3BucketName);
         const emptySite$ = this.s3.emptyBucket(output.SiteS3BucketName);
@@ -146,8 +163,8 @@ export class Broiler {
      * Compiles the assets with Webpack to the build directory.
      */
     public async compileFrontend(analyze: boolean): Promise<WebpackStats> {
-        this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.options.stage)}...`);
-        const stats = await compile(getFrontendWebpackConfig({...this.options, devServer: false, analyze}));
+        this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.config.stage)}...`);
+        const stats = await compile(getFrontendWebpackConfig({...this.config, devServer: false, analyze}));
         this.log(stats.toString({colors: true}));
         return stats;
     }
@@ -156,9 +173,9 @@ export class Broiler {
      * Compiles the backend code with Webpack to the build directory.
      */
     public async compileBackend(analyze: boolean): Promise<WebpackStats | void> {
-        if (this.importApi()) {
-            this.log(`Compiling the ${this.options.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.options.stage)}...`);
-            const stats = await compile(getBackendWebpackConfig({...this.options, devServer: false, analyze}));
+        if (this.importServer()) {
+            this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.config.stage)}...`);
+            const stats = await compile(getBackendWebpackConfig({...this.config, devServer: false, analyze}));
             this.log(stats.toString({colors: true}));
             return stats;
         }
@@ -182,7 +199,7 @@ export class Broiler {
      */
     public async serve() {
         this.log(`Starting the local development server...`);
-        const opts = this.options;
+        const opts = this.config;
         await Promise.all([
             serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.siteOrigin}/`)}`)),
             serveBackEnd(opts),
@@ -257,7 +274,7 @@ export class Broiler {
      * and its resources while the deployment is in progress.
      */
     public async deployStack(): Promise<IStackWithResources> {
-        this.log(`Starting deployment of stack ${bold(this.options.stackName)} to region ${bold(this.options.region)}...`);
+        this.log(`Starting deployment of stack ${bold(this.stackName)} to region ${bold(this.config.region)}...`);
         const template$ = this.generateTemplate();
         const parameters$ = this.getStackParameters();
         let oldStack = await this.cloudFormation.describeStackWithResources();
@@ -278,8 +295,8 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     public async deployFile(): Promise<IFileUpload[]> {
-        const asset$ = searchFiles(this.options.buildDir, ['!**/*.html', '!_api*.js']);
-        const page$ = searchFiles(this.options.buildDir, ['**/*.html']);
+        const asset$ = searchFiles(this.buildDir, ['!**/*.html', '!_api*.js']);
+        const page$ = searchFiles(this.buildDir, ['**/*.html']);
         const output = await this.cloudFormation.getStackOutput();
         const assetUpload$ = this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false);
         const pageUpload$ = this.uploadFilesToS3Bucket(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true);
@@ -290,13 +307,13 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteOrigin, apiOrigin, assetsOrigin} = this.options;
+        const {siteOrigin, apiOrigin, assetsOrigin} = this.config;
         const siteOriginUrl = new URL(siteOrigin);
         const siteDomain = siteOriginUrl.hostname;
         const assetsOriginUrl = new URL(assetsOrigin);
         const assetsDomain = assetsOriginUrl.hostname;
-        const apiOriginUrl = new URL(apiOrigin);
-        const apiDomain = apiOriginUrl.hostname;
+        const apiOriginUrl = apiOrigin && new URL(apiOrigin);
+        const apiDomain = apiOriginUrl && apiOriginUrl.hostname;
         const apiFile = await this.getCompiledApiFile();
         return {
             SiteOrigin: siteOriginUrl.origin,
@@ -304,8 +321,8 @@ export class Broiler {
             SiteHostedZoneName: getHostedZone(siteDomain),
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
-            ApiOrigin: apiOriginUrl.origin,
-            ApiHostedZoneName: getHostedZone(apiDomain),
+            ApiOrigin: apiOriginUrl && apiOriginUrl.origin,
+            ApiHostedZoneName: apiDomain && getHostedZone(apiDomain),
             ApiDomainName: apiDomain,
             ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),
         };
@@ -393,27 +410,27 @@ export class Broiler {
     }
 
     private clean(): Promise<string[]> {
-        return clean(this.options.buildDir);
+        return clean(this.buildDir);
     }
 
     private async generateTemplate(): Promise<any> {
-        const apiConfig = this.importApi();
+        const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const template$ = readTemplates([
             'cloudformation-init.yml',
             'cloudformation-app.yml',
         ]);
-        if (!apiConfig) {
+        if (!server) {
             return await template$;
         }
-        const apiTemplate$ = this.generateApiTemplate(apiConfig);
-        const dbTemplate$ = this.generateDbTemplates(apiConfig);
+        const apiTemplate$ = this.generateApiTemplate(server);
+        const dbTemplate$ = this.generateDbTemplates(server);
         return mergeTemplates(mergeTemplates(await template$, await apiTemplate$), await dbTemplate$);
     }
 
-    private async generateApiTemplate(apiConfig: ApiService): Promise<any> {
+    private async generateApiTemplate(server: ApiService): Promise<any> {
         const endpoints = sortBy(
-            map(apiConfig && apiConfig.implementations, ({endpoint}, name) => ({
+            map(server && server.implementations, ({endpoint}, name) => ({
                 endpoint, name,
                 path: endpoint.pathPattern.replace(/^\/|\/$/g, '').split('/'),
             })),
@@ -494,8 +511,9 @@ export class Broiler {
     private async generateDbTemplates(service: ApiService): Promise<any> {
         const sortedTables = sortBy(service.dbTables, 'name');
         return sortedTables.map((table) => {
-            const logicalId = `SimpleDBTable${upperFirst(table.name)}`;
-            const domainNameVar = `${logicalId}DomainName`;
+            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
+            const tableArnVar = `${logicalId}ARN`;
+            const tableArnSub = 'arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${' + logicalId + '}';
             return {
                 AWSTemplateFormatVersion: '2010-09-09',
                 // Create the domain for the SimpleDB table
@@ -503,15 +521,15 @@ export class Broiler {
                     [logicalId]: {
                         Type : 'AWS::SDB::Domain',
                         Properties : {
-                            Description: `SimpleDB domain for "${table.name}"`,
+                            Description: `Database table for "${table.name}"`,
                         },
                     },
                     // Make the domain name available for Lambda functions as a stage variable
                     ApiGatewayStage: {
                         Properties: {
                             Variables: {
-                                [domainNameVar]: {
-                                    Ref: logicalId,
+                                [tableArnVar]: {
+                                    'Fn::Sub': tableArnSub,
                                 },
                             },
                         },
@@ -519,9 +537,9 @@ export class Broiler {
                 },
                 // Output the name for the created SimpleDB domain
                 Outputs: {
-                    [domainNameVar]: {
+                    [tableArnVar]: {
                         Value: {
-                            Ref: logicalId,
+                            'Fn::Sub': tableArnSub,
                         },
                     },
                 },
@@ -540,8 +558,8 @@ export class Broiler {
     }
 
     private async getCompiledApiFile(): Promise<File | void> {
-        if (this.importApi()) {
-            const files = await searchFiles(this.options.buildDir, ['_api*.js']);
+        if (this.importServer()) {
+            const files = await searchFiles(this.buildDir, ['_api*.js']);
             if (files.length !== 1) {
                 throw new Error(`Couldn't find the compiled API bundle!`);
             }
@@ -612,10 +630,10 @@ export class Broiler {
         return newStack;
     }
 
-    private importApi(): ApiService | null {
-        const { apiPath, projectRoot } = this.options;
-        if (apiPath) {
-            const api = require(path.resolve(projectRoot, apiPath));
+    private importServer(): ApiService | null {
+        const { serverFile, projectRootPath, sourceDir } = this.config;
+        if (serverFile) {
+            const api = require(path.resolve(projectRootPath, sourceDir, serverFile));
             return api.config || api;
         }
         return null;

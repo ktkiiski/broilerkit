@@ -91,6 +91,12 @@ export interface HttpRequest {
     environment: {
         [variable: string]: string;
     };
+    /**
+     * The absolute path to the directory that the app may use
+     * for local file system operations. In local environment,
+     * this can be used to store persistent data.
+     */
+    directoryPath: string;
 }
 
 export interface HttpResponse {

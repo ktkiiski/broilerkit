@@ -1,40 +1,29 @@
 import map = require('lodash/map');
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
-import { HashIndexQuery, Identity, Model, PartialUpdate, SlicedQuery, Table } from './db';
+import { HashIndexQuery, Identity, Model, PartialUpdate, Query } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource, Serializer } from './resources';
 import { Diff, keys, omit, spread } from './utils/objects';
 
-export type SimpleDbQuery<T, P extends keyof T> = SlicedQuery<T, keyof T> | HashIndexQuery<T, keyof T, P>;
+export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements Model<S, PK, V, Query<S, PK>> {
 
-export class SimpleDbTableDefinition<S, PK extends keyof S, V extends keyof S> implements Table<Model<S, PK, V, SimpleDbQuery<S, PK>>> {
-
-    constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
-
-    public getModel(region: string, domainName: string): Model<S, PK, V, SimpleDbQuery<S, PK>> {
-        return new SimpleDbModel<S, PK, V>(this, domainName, region);
-    }
-}
-
-export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements Model<S, PK, V, SimpleDbQuery<S, PK>> {
-
-    private serializer = this.table.resource;
+    private serializer = this.resource;
     private updateSerializer = this.serializer.optional<V, Diff<keyof S, PK | V>, never>({
-        required: [this.table.versionAttr],
-        optional: keys(this.table.resource.fields).filter((key) => key !== this.table.versionAttr),
+        required: [this.versionAttr],
+        optional: keys(this.resource.fields).filter((key) => key !== this.versionAttr),
         defaults: {},
     }) as Serializer<PartialUpdate<S, V>>;
     private identitySerializer = this.serializer.optional({
-        required: [this.table.key],
-        optional: [this.table.versionAttr],
+        required: [this.key],
+        optional: [this.versionAttr],
         defaults: {},
     }) as Serializer<Identity<S, PK, V>>;
 
-    constructor(public table: SimpleDbTableDefinition<S, PK, V>, private domainName: string, private region: string) {}
+    constructor(private domainName: string, private region: string, private resource: Resource<S>, private key: PK, private versionAttr: V) {}
 
     public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
-        const {table, identitySerializer, serializer} = this;
-        const primaryKey = table.key;
+        const {identitySerializer, serializer} = this;
+        const primaryKey = this.key;
         const encodedQuery = identitySerializer.encode(query);
         // TODO: Filter by version!
         const encodedId = encodedQuery[primaryKey];
@@ -50,8 +39,8 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
     }
 
     public async create(item: S) {
-        const {table, serializer} = this;
-        const primaryKey = table.key;
+        const {serializer} = this;
+        const primaryKey = this.key;
         const encodedItem = serializer.encode(item);
         const encodedId = encodedItem[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
@@ -73,15 +62,15 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
 
     public replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
         // TODO: Implement separately
-        const update = omit(item, [this.table.key]);
+        const update = omit(item, [this.key]);
         return this.update(identity, update, notFoundError);
     }
 
     public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
         // TODO: Patch specific version!
-        const {table, serializer, identitySerializer, updateSerializer} = this;
-        const primaryKey = table.key;
-        const versionAttr = table.versionAttr;
+        const {serializer, identitySerializer, updateSerializer} = this;
+        const primaryKey = this.key;
+        const versionAttr = this.versionAttr;
         const encodedIdentity = identitySerializer.encode(identity);
         const encodedId = encodedIdentity[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
@@ -130,8 +119,8 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
     }
 
     public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
-        const {table, identitySerializer} = this;
-        const primaryKey = table.key;
+        const {identitySerializer} = this;
+        const primaryKey = this.key;
         const encodedIdentity = identitySerializer.encode(identity);
         const encodedId = encodedIdentity[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
@@ -165,9 +154,9 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         }
     }
 
-    public async list(query: SimpleDbQuery<S, PK>) {
+    public async list(query: Query<S, PK>) {
         const { serializer } = this;
-        const { fields } = this.table.resource;
+        const { fields } = this.resource;
         const { ordering, direction, since } = query;
         const domain = this.domainName;
         const filters = [
@@ -198,16 +187,6 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
     }
 }
 
-export function simpleDB<S>(tableName: string, resource: Resource<S>) {
-    function identifyBy<K extends keyof S>(key: K) {
-        function versionBy<V extends keyof S>(versionAttr: V) {
-            return new SimpleDbTableDefinition(tableName, resource, key, versionAttr);
-        }
-        return {versionBy};
-    }
-    return {identifyBy};
-}
-
-function isIndexQuery<I, PK extends keyof I>(query: SimpleDbQuery<I, PK>): query is HashIndexQuery<I, keyof I, PK> {
+function isIndexQuery<I, PK extends keyof I>(query: Query<I, PK>): query is HashIndexQuery<I, keyof I, PK> {
     return (query as HashIndexQuery<I, keyof I, PK>).key != null;
 }

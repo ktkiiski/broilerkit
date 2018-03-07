@@ -5,7 +5,7 @@ import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch } from './compile';
-import { IAppConfig } from './config';
+import { BroilerConfig } from './config';
 import { HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -21,7 +21,7 @@ const { cyan, green, red, yellow } = chalk;
 /**
  * Runs the Webpack development server.
  */
-export function serveFrontEnd(options: IAppConfig, onReady?: () => void): Promise<void> {
+export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Promise<void> {
     const assetsOriginUrl = new URL(options.siteOrigin);
     const assetsProtocol = assetsOriginUrl.protocol;
     const siteOriginUrl = new URL(options.siteOrigin);
@@ -66,8 +66,10 @@ export function serveFrontEnd(options: IAppConfig, onReady?: () => void): Promis
 /**
  * Runs the REST API development server.
  */
-export async function serveBackEnd(options: IAppConfig) {
-    const {apiOrigin, siteOrigin} = options;
+export async function serveBackEnd(options: BroilerConfig) {
+    const {siteOrigin, stageDir, buildDir, projectRootPath} = options;
+    const stageDirPath = path.resolve(projectRootPath, stageDir);
+    const apiOrigin = options.apiOrigin as string;
     const siteOriginUrl = new URL(siteOrigin);
     const apiOriginUrl = new URL(apiOrigin);
     const apiProtocol = apiOriginUrl.protocol;
@@ -100,7 +102,7 @@ export async function serveBackEnd(options: IAppConfig) {
 
             const statsJson = stats.toJson();
             const apiRequestHandlerFileName = statsJson.assetsByChunkName._api[0];
-            const apiRequestHandlerFilePath = path.resolve(options.projectRoot, options.buildDir, apiRequestHandlerFileName);
+            const apiRequestHandlerFilePath = path.resolve(options.projectRootPath, buildDir, apiRequestHandlerFileName);
             // Ensure that module will be re-loaded
             delete require.cache[apiRequestHandlerFilePath];
             const handler: ApiService = require(apiRequestHandlerFilePath);
@@ -112,7 +114,7 @@ export async function serveBackEnd(options: IAppConfig) {
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const request = await nodeRequestToApiRequest(httpRequest, siteOriginUrl.origin);
+                    const request = await nodeRequestToApiRequest(httpRequest, siteOriginUrl.origin, stageDirPath);
                     const response = await handler.execute(request);
                     // tslint:disable-next-line:no-console
                     console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
@@ -136,12 +138,14 @@ export async function serveBackEnd(options: IAppConfig) {
     }
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOrigin: string): Promise<HttpRequest> {
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOrigin: string, directoryPath: string): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
     const apiOrigin = `${requestUrlObj.protocol}://${requestUrlObj.host}`;
     const request: HttpRequest = {
-        apiOrigin, siteOrigin,
+        apiOrigin: apiOrigin as string,
+        siteOrigin,
+        directoryPath,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: mapValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},

@@ -1,26 +1,19 @@
-export interface IAppConfigOptions {
-    appConfigPath: string;
-    stage: string;
-    debug: boolean;
-}
+import { AppStageConfig } from './index';
 
-export interface IAppConfig extends IAppConfigOptions {
-    name: string;
-    broilerKitVersion: string;
-    assetsOrigin: string;
-    apiOrigin: string;
-    buildDir: string;
-    debug: boolean;
-    iconFile: string;
-    pages: Array<{
-        title: string;
-        file: string;
-        scripts: string[];
-    }>;
-    projectRoot: string;
-    region: string;
-    siteOrigin: string;
-    sourceDir: string;
+export interface BroilerConfig extends AppStageConfig {
+    /**
+     * The name of the stack when deployed to AWS CloudFormation.
+     * This will also act as an unique name of the app stage.
+     */
     stackName: string;
-    apiPath?: string;
+    /**
+     * Directory where the stage-specific files are stored,
+     * relative to the project root path.
+     */
+    stageDir: string;
+    /**
+     * Directory where the compiled bundle files are stored,
+     * relative to the project root path.
+     */
+    buildDir: string;
 }
