@@ -1,16 +1,15 @@
 import map = require('lodash/map');
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
-import { HashIndexQuery, Identity, Model, PartialUpdate, Query } from './db';
+import { Identity, isIndexQuery, Model, PartialUpdate, Query } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource, Serializer } from './resources';
 import { Diff, keys, omit, spread } from './utils/objects';
 
 export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements Model<S, PK, V, Query<S, PK>> {
 
-    private serializer = this.resource;
     private updateSerializer = this.serializer.optional<V, Diff<keyof S, PK | V>, never>({
         required: [this.versionAttr],
-        optional: keys(this.resource.fields).filter((key) => key !== this.versionAttr),
+        optional: keys(this.serializer.fields).filter((key) => key !== this.versionAttr),
         defaults: {},
     }) as Serializer<PartialUpdate<S, V>>;
     private identitySerializer = this.serializer.optional({
@@ -19,7 +18,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         defaults: {},
     }) as Serializer<Identity<S, PK, V>>;
 
-    constructor(private domainName: string, private region: string, private resource: Resource<S>, private key: PK, private versionAttr: V) {}
+    constructor(private domainName: string, private region: string, private serializer: Resource<S>, private key: PK, private versionAttr: V) {}
 
     public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
         const {identitySerializer, serializer} = this;
@@ -38,6 +37,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         return serializer.decode(encodedItem);
     }
 
+    // TODO: Already exists exception??
     public async create(item: S) {
         const {serializer} = this;
         const primaryKey = this.key;
@@ -111,7 +111,9 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
     }
 
     public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C, notFoundError?: Error): Promise<C> {
-        return await this.update(identity, changes, notFoundError) as any;
+        // TODO: Better performing implementation
+        await this.update(identity, changes, notFoundError);
+        return changes;
     }
 
     public async write(_: S): Promise<S> {
@@ -156,7 +158,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
 
     public async list(query: Query<S, PK>) {
         const { serializer } = this;
-        const { fields } = this.resource;
+        const { fields } = serializer;
         const { ordering, direction, since } = query;
         const domain = this.domainName;
         const filters = [
@@ -170,7 +172,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
                 `${escapeQueryIdentifier(key)} == ${escapeQueryParam(encodedValue)}`,
             );
         }
-        if (since) {
+        if (since !== undefined) {
             const field = fields[ordering];
             const encodedValue = field.encode(since);
             filters.push([
@@ -185,8 +187,4 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         const encodedItems = await sdb.selectNext(sql, true);
         return encodedItems.map((item) => serializer.decode(item.attributes));
     }
-}
-
-function isIndexQuery<I, PK extends keyof I>(query: Query<I, PK>): query is HashIndexQuery<I, keyof I, PK> {
-    return (query as HashIndexQuery<I, keyof I, PK>).key != null;
 }

@@ -177,3 +177,7 @@ export function table(tableName: string) {
     }
     return {resource};
 }
+
+export function isIndexQuery<I, PK extends keyof I>(query: Query<I, PK>): query is HashIndexQuery<I, keyof I, PK> {
+    return (query as HashIndexQuery<I, keyof I, PK>).key != null;
+}
