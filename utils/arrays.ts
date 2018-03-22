@@ -53,3 +53,21 @@ export function sort<T, V>(values: T[], iterator: (item: T, index: number, src: 
     // Do not return the indexes or comparison values, just the actual items
     return items.map((item) => item[0]);
 }
+
+/**
+ * Returns an array of items that exist in the first given
+ * array but do NOT exist in the second array.
+ */
+export function difference<T>(a: T[], b: T[]): T[] {
+    return a.filter((x) => b.indexOf(x) < 0);
+}
+
+/**
+ * Returns an array of items that exist in the first given
+ * array but do NOT exist in the second array. The given comparison
+ * function is used to check if two items are equal.
+ */
+export function differenceBy<T, S>(a: T[], b: S[], iterator: (item: T | S) => any): T[] {
+    const exclusions = b.map(iterator);
+    return a.filter((x) => exclusions.indexOf(iterator(x)) < 0);
+}
