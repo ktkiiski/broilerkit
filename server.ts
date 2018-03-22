@@ -1,4 +1,3 @@
-import upperFirst = require('lodash/upperFirst');
 import { CreateEndpoint, DestroyEndpoint, EndpointDefinition, IApiListPage, ListEndpoint, ListParams, RetrieveEndpoint, UpdateEndpoint } from './api';
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
@@ -6,6 +5,7 @@ import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 import { compileUrl } from './url';
 import { spread, transformValues } from './utils/objects';
+import { upperFirst } from './utils/strings';
 
 export interface Models {
     [name: string]: Model<any, any, any, any>;

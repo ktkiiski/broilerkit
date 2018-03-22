@@ -1,20 +1,20 @@
-import * as http from 'http';
-import * as path from 'path';
 import { URL } from 'url';
-import * as url from 'url';
-import * as webpack from 'webpack';
-import * as WebpackDevServer from 'webpack-dev-server';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
 import { BadRequest, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { ApiService } from './server';
+import { readStream } from './utils/fs';
+import { forEachKey, transformValues } from './utils/objects';
+import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
-import { readStream } from './utils/fs';
+import * as http from 'http';
+import * as path from 'path';
+import * as url from 'url';
+import * as webpack from 'webpack';
+import * as WebpackDevServer from 'webpack-dev-server';
 
 import chalk from 'chalk';
-import { upperFirst } from 'lodash';
-import { forEachKey, transformValues } from './utils/objects';
 const { cyan, green, red, yellow } = chalk;
 
 /**

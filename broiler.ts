@@ -1,6 +1,5 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { capitalize, upperFirst } from 'lodash';
 import { difference, differenceBy } from 'lodash';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
@@ -22,6 +21,7 @@ import { order, sort } from './utils/arrays';
 import { flatMap } from './utils/arrays';
 import { searchFiles } from './utils/fs';
 import { mapObject, spread, toPairs, values } from './utils/objects';
+import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
@@ -677,7 +677,7 @@ function getApiResourceLogicalId(urlPath: string[]) {
 }
 
 function getApiMethodLogicalId(urlPath: string[], method: HttpMethod) {
-    return `Endpoint${formatPathForLogicalId(urlPath)}${capitalize(method)}ApiGatewayMethod`;
+    return `Endpoint${formatPathForLogicalId(urlPath)}${upperFirst(method)}ApiGatewayMethod`;
 }
 
 function formatPathForLogicalId(urlPath: string[]) {
