@@ -1,4 +1,3 @@
-import mapValues = require('lodash/mapValues');
 import upperFirst = require('lodash/upperFirst');
 import { CreateEndpoint, DestroyEndpoint, EndpointDefinition, IApiListPage, ListEndpoint, ListParams, RetrieveEndpoint, UpdateEndpoint } from './api';
 import { Model, Table } from './db';
@@ -6,7 +5,7 @@ import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 import { compileUrl } from './url';
-import { spread } from './utils/objects';
+import { mapObject, spread } from './utils/objects';
 
 export interface Models {
     [name: string]: Model<any, any, any, any>;
@@ -195,7 +194,7 @@ export class ApiService {
 }
 
 function getModels<M>(db: Tables<M>, request: HttpRequest): M {
-    return mapValues(
+    return mapObject(
         db,
         (table: Table<any>) => {
             const tableUri = request.environment[`DatabaseTable${upperFirst(table.name)}URI`];

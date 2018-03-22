@@ -24,10 +24,10 @@ export function forEachKey<T>(obj: T, iterator: (key: keyof T, value: T[keyof T]
  * @param obj Object whose values are mapped
  * @param iterator Function that returns new value for each key
  */
-export function mapValues<T, R>(obj: T, iterator: (key: keyof T, value: T[keyof T]) => R): {[P in keyof T]: R} {
+export function mapObject<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof T, obj: T) => R): {[P in keyof T]: R} {
     const result = {} as {[P in keyof T]: R};
     forEachKey(obj, (key, value) => {
-        result[key] = iterator(key, value);
+        result[key] = iterator(value, key, obj);
     });
     return result;
 }
