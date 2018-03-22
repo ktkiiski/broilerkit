@@ -1,6 +1,5 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { map } from 'lodash';
 import { difference, differenceBy, sortBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
 import { URL } from 'url';
@@ -21,7 +20,7 @@ import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap } from './utils/arrays';
 import { searchFiles } from './utils/fs';
-import { spread, toPairs } from './utils/objects';
+import { mapObject, spread, toPairs } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
@@ -430,7 +429,7 @@ export class Broiler {
 
     private async generateApiTemplate(server: ApiService): Promise<any> {
         const endpoints = sortBy(
-            map(server && server.implementations, ({endpoint}, name) => ({
+            mapObject(server && server.implementations || {}, ({endpoint}, name) => ({
                 endpoint, name,
                 path: endpoint.pathPattern.replace(/^\/|\/$/g, '').split('/'),
             })),
@@ -466,7 +465,7 @@ export class Broiler {
         };
         // Build templates for every HTTP method, for every endpoint
         const apiMethods = flatMap(
-            endpoints, ({endpoint, path, name}) => map(endpoint.methods, (method) => ({method, path, name})),
+            endpoints, ({endpoint, path, name}) => endpoint.methods.map((method) => ({method, path, name})),
         );
         const apiMethods$ = apiMethods.map(
             ({method, path, name}) => readTemplates(['cloudformation-api-method.yml'], {
@@ -613,16 +612,13 @@ export class Broiler {
     }
 
     private logStackChanges(oldStack: IStackWithResources, newStack: IStackWithResources): IStackWithResources {
-        const oldResourceStates = map(oldStack.StackResources, formatResourceChange);
-        const newResourceStates = map(newStack.StackResources, formatResourceChange);
-        const deletedResourceStates = map(
-            differenceBy(
-                oldStack.StackResources,
-                newStack.StackResources,
-                (resource) => resource.LogicalResourceId,
-            ),
-            formatResourceDelete,
-        );
+        const oldResourceStates = oldStack.StackResources.map(formatResourceChange);
+        const newResourceStates = newStack.StackResources.map(formatResourceChange);
+        const deletedResourceStates = differenceBy(
+            oldStack.StackResources,
+            newStack.StackResources,
+            (resource) => resource.LogicalResourceId,
+        ).map(formatResourceDelete);
         const alteredResourcesStates = difference(newResourceStates.concat(deletedResourceStates), oldResourceStates);
         for (const resourceState of alteredResourcesStates) {
             this.log(resourceState);
@@ -684,7 +680,7 @@ function getApiMethodLogicalId(urlPath: string[], method: HttpMethod) {
 }
 
 function formatPathForLogicalId(urlPath: string[]) {
-    return map(urlPath, (path) => {
+    return urlPath.map((path) => {
         const match = /^{(.*)}$/.exec(path);
         return match ? upperFirst(match[1]) : upperFirst(path);
     }).join('');

@@ -19,6 +19,21 @@ export function forEachKey<T>(obj: T, iterator: (key: keyof T, value: T[keyof T]
 }
 
 /**
+ * Converts an object to an array of items by calling the given
+ * iterator function for each key and value, and constructing a new
+ * array from the returned values.
+ * @param obj Object whose values are mapped
+ * @param iterator Function that returns new value for each key
+ */
+export function mapObject<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof T, obj: T) => R): R[] {
+    const result: R[] = [];
+    forEachKey(obj, (key, value) => {
+        result.push(iterator(value, key, obj));
+    });
+    return result;
+}
+
+/**
  * Maps each value for each key of an object to a new value,
  * as returned by the given function that is called for each key.
  * @param obj Object whose values are mapped

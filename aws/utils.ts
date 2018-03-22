@@ -1,5 +1,5 @@
-import { filter, map } from 'lodash';
 import * as path from 'path';
+import { mapObject } from '../utils/objects';
 
 /**
  * Converts an object of parameter key-values to an
@@ -8,13 +8,9 @@ import * as path from 'path';
  * @returns Array of parameter objects.
  */
 export function convertStackParameters(parameters: {[key: string]: any}) {
-    return filter(
-        map(
-            parameters,
-            (ParameterValue, ParameterKey) => ({ParameterKey, ParameterValue}),
-        ),
-        ({ParameterValue}) => ParameterValue != null,
-    );
+    return mapObject(parameters, (ParameterValue, ParameterKey) => ({ParameterKey, ParameterValue}))
+        .filter(({ParameterValue}) => ParameterValue != null)
+    ;
 }
 
 export async function* retrievePages<D, E, T extends keyof D>(request: AWS.Request<D, E>, key: T) {

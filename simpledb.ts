@@ -1,9 +1,8 @@
-import map = require('lodash/map');
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
 import { Identity, isIndexQuery, Model, PartialUpdate, Query } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource, Serializer } from './resources';
-import { Diff, keys, omit, spread } from './utils/objects';
+import { Diff, keys, mapObject, omit, spread } from './utils/objects';
 
 export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements Model<S, PK, V, Query<S, PK>> {
 
@@ -51,7 +50,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
                 Name: primaryKey,
                 Exists: false,
             },
-            Attributes: map(encodedItem, (value: any, attr) => ({
+            Attributes: mapObject(encodedItem, (value: any, attr) => ({
                 Name: attr,
                 Value: value,
                 Replace: true,
@@ -94,7 +93,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
                     Value: encodedVersion,
                     Exists: true,
                 },
-                Attributes: map(encodedChanges, (value, attr) => ({
+                Attributes: mapObject(encodedChanges, (value, attr) => ({
                     Name: attr,
                     Value: value,
                     Replace: true,
