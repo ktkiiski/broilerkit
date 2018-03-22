@@ -122,7 +122,7 @@ export async function serveBackEnd(options: BroilerConfig) {
                     httpResponse.end(response.body);
                 } catch (error) {
                     // tslint:disable-next-line:no-console
-                    console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${error}`);
+                    console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`);
                     httpResponse.writeHead(500, {
                         'Content-Type': 'text/plain',
                     });
