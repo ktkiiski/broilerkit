@@ -16,7 +16,7 @@ import { readStream } from './utils/fs';
 
 import chalk from 'chalk';
 import { upperFirst } from 'lodash';
-import { forEachKey, mapObject } from './utils/objects';
+import { forEachKey, transformValues } from './utils/objects';
 const { cyan, green, red, yellow } = chalk;
 
 /**
@@ -156,8 +156,8 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOr
         siteOrigin,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
-        queryParameters: mapObject(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},
-        headers: mapObject(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers) as HttpHeaders,
+        queryParameters: transformValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},
+        headers: transformValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers) as HttpHeaders,
         region: 'local',
         environment,
     };

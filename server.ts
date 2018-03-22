@@ -5,7 +5,7 @@ import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
 import { compileUrl } from './url';
-import { mapObject, spread } from './utils/objects';
+import { spread, transformValues } from './utils/objects';
 
 export interface Models {
     [name: string]: Model<any, any, any, any>;
@@ -194,7 +194,7 @@ export class ApiService {
 }
 
 function getModels<M>(db: Tables<M>, request: HttpRequest): M {
-    return mapObject(
+    return transformValues(
         db,
         (table: Table<any>) => {
             const tableUri = request.environment[`DatabaseTable${upperFirst(table.name)}URI`];

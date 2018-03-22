@@ -5,7 +5,7 @@ import { choice, Field, nullable, url } from './fields';
 import { HttpHeaders, HttpMethod, HttpStatus } from './http';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
 import { compileUrl, makeUrlRegexp } from './url';
-import { keys, mapObject } from './utils/objects';
+import { keys, transformValues } from './utils/objects';
 
 export { Field };
 
@@ -417,7 +417,7 @@ export function endpoint<R>(resource: Resource<R>) {
 export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P]>};
 
 export function init<T>(origin: string, endpoints: ApiEndpoints<T>, callback: (apis: T) => void) {
-    const apis = mapObject(endpoints, (ep: EndpointDefinition<any>) => ep.bind(origin)) as T;
+    const apis = transformValues(endpoints, (ep: EndpointDefinition<any>) => ep.bind(origin)) as T;
     callback(apis);
 }
 
