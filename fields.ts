@@ -207,7 +207,7 @@ class RegexpField extends StringField {
 class URLField extends RegexpField {
     constructor() {
         super(
-            /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)$/,
+            /^https?:\/\/[\w.-]+(?:\.[\w\.-]+)*[\w\-\._~:%/?#[\]@!\$&'\(\)\*\+,;=.]+$/i,
             `Value is not a valid URL`,
         );
     }
