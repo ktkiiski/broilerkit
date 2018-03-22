@@ -4,7 +4,7 @@ import * as webpack from 'webpack';
 
 import { BroilerConfig } from './config';
 import { executeSync } from './exec';
-import { pick } from './utils/objects';
+import { buildObject, pick } from './utils/objects';
 
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
@@ -212,12 +212,10 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     }
     return {
         // The main entry points for source files.
-        entry: _.fromPairs(
-            scriptPaths.map((entry) => [
-                path.basename(entry).replace(/\..*?$/, ''),
-                [...polyfills, path.resolve(sourceDirPath, entry)],
-            ]),
-        ),
+        entry: buildObject(scriptPaths, (entry) => [
+            path.basename(entry).replace(/\..*?$/, ''),
+            [...polyfills, path.resolve(sourceDirPath, entry)],
+        ]),
 
         output: {
             // Output files are placed to this folder

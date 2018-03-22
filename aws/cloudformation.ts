@@ -1,7 +1,6 @@
 import { CloudFormation } from 'aws-sdk';
-import fromPairs = require('lodash/fromPairs');
-import map = require('lodash/map');
 import { wait } from '../async';
+import { buildObject } from '../utils/objects';
 import { convertStackParameters, retrievePages } from './utils';
 
 export interface IStackWithResources extends CloudFormation.Stack {
@@ -72,10 +71,11 @@ export class AmazonCloudFormation {
      */
     public async getStackOutput(): Promise<IStackOutput> {
         const stack = await this.describeStack();
-        return fromPairs(map(
-            stack.Outputs,
-            ({OutputKey, OutputValue}) => [OutputKey, OutputValue],
-        ));
+        return buildObject(stack.Outputs || [], ({OutputKey, OutputValue}) => {
+            if (OutputKey && OutputValue) {
+                return [OutputKey, OutputValue];
+            }
+        });
     }
 
     /**

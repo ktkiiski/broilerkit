@@ -1,6 +1,6 @@
 import { SimpleDB } from 'aws-sdk';
-import fromPairs = require('lodash/fromPairs');
 import map = require('lodash/map');
+import { buildObject } from '../utils/objects';
 
 export interface ItemAttributes {
     [key: string]: string;
@@ -22,7 +22,7 @@ export class AmazonSimpleDB {
 
     public async getAttributes<T extends ItemAttributes>(params: SimpleDB.GetAttributesRequest): Promise<T> {
         const result = await this.simpleDB.getAttributes(params).promise();
-        return fromPairs(map(result.Attributes, ({Name, Value}) => [Name, Value])) as T;
+        return buildObject(result.Attributes || [], ({Name, Value}) => [Name, Value]) as T;
     }
 
     public async selectNext(query: string, consistent: boolean): Promise<Item[]> {
@@ -35,9 +35,7 @@ export class AmazonSimpleDB {
             response.Items,
             (item) => ({
                 name: item.Name,
-                attributes: fromPairs(
-                    map(item.Attributes, ({Name, Value}) => [Name, Value]),
-                ),
+                attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
             }),
         );
     }

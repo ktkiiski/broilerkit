@@ -33,6 +33,24 @@ export function mapObject<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof
 }
 
 /**
+ * Creates an object by mapping each item in the given array to
+ * pairs of keys and values. The given iterator function is called
+ * for each item in the array and it should return the key-value pair
+ * as a two-item array. If it returns undefined, then the item will
+ * be omitted from the result object.
+ */
+export function buildObject<T, V, K extends string>(source: T[], iterator: (item: T, index: number, src: T[]) => [K, V] | void): {[P in K]: V} {
+    const result: {[key: string]: V} = {};
+    source.forEach((item, index, src) => {
+        const pair = iterator(item, index, src);
+        if (pair) {
+            result[pair[0]] = pair[1];
+        }
+    });
+    return result as {[P in K]: V};
+}
+
+/**
  * Returns the keys of the given object as an array.
  * @param obj Object whose keys are returned
  */
