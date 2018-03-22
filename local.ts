@@ -10,7 +10,6 @@ import { BadRequest, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
-import isFunction = require('lodash/isFunction');
 import { readStream } from './utils/fs';
 
 import chalk from 'chalk';
@@ -105,7 +104,7 @@ export async function serveBackEnd(options: BroilerConfig) {
             // Ensure that module will be re-loaded
             delete require.cache[apiRequestHandlerFilePath];
             const handler: ApiService = require(apiRequestHandlerFilePath);
-            if (!handler || !isFunction(handler.execute)) {
+            if (!handler || typeof handler.execute !== 'function') {
                 // tslint:disable-next-line:no-console
                 console.error(red(`The exported API module must have a 'execute' callable!`));
                 continue;
