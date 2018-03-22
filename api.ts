@@ -287,16 +287,22 @@ export class ApiEndpoint<S, U extends keyof S, T> implements EndpointDefinition<
         return new ApiEndpoint(resource, pathPattern, pathKeywords);
     }
 
-    public methods = keys(this.methodHandlers) as HttpMethod[];
+    public readonly methods: HttpMethod[];
     private urlResource = this.resource.pick(this.pathKeywords);
     private pathRegexp = makeUrlRegexp(this.pathPattern);
+    private readonly methodHandlers: {[key: string]: EndpointMethodHandler};
 
     private constructor(
         public readonly resource: Resource<S>,
         public readonly pathPattern: string, public readonly pathKeywords: U[],
-        private readonly methodHandlers: {[key: string]: EndpointMethodHandler} = {},
+        methodHandlers?: {[key: string]: EndpointMethodHandler},
         private readonly modelPrototypes: ApiModel[] = [],
-    ) {}
+    ) {
+        this.methodHandlers = methodHandlers || {
+            OPTIONS: new NoContentMethodHandler(this.urlResource),
+        };
+        this.methods = keys(this.methodHandlers) as HttpMethod[];
+    }
 
     public listable<K extends keyof S>(sortableKeys: K[]): ListEndpointDefinition<S, U, K, T> {
         const urlSerializer = new ListParamSerializer(this.resource, this.pathKeywords, sortableKeys);
