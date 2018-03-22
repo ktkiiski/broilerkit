@@ -1,5 +1,5 @@
-import padStart = require('lodash/padStart');
-import {ValidationError} from './http';
+import { ValidationError } from './http';
+import { padStart } from './utils/strings';
 
 export interface Field<I, E = I> {
     validate(value: I): I;
