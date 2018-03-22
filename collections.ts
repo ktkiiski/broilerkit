@@ -1,4 +1,3 @@
-import filter = require('lodash/filter');
 import orderBy = require('lodash/orderBy');
 
 /**
@@ -16,5 +15,5 @@ export function order<T, K extends keyof T>(values: T[], ordering: K, direction:
         ? (value: T) => value[ordering] > since
         : (value: T) => value[ordering] < since
     ;
-    return orderBy(filter(values, filterer), ordering, direction);
+    return orderBy(values.filter(filterer), ordering, direction);
 }

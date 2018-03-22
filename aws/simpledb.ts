@@ -1,5 +1,4 @@
 import { SimpleDB } from 'aws-sdk';
-import map = require('lodash/map');
 import { buildObject } from '../utils/objects';
 
 export interface ItemAttributes {
@@ -31,13 +30,10 @@ export class AmazonSimpleDB {
             ConsistentRead: consistent,
         });
         const response = await request.promise();
-        return map(
-            response.Items,
-            (item) => ({
-                name: item.Name,
-                attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
-            }),
-        );
+        return (response.Items || []).map((item) => ({
+            name: item.Name,
+            attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
+        }));
     }
 
     public async putAttributes(params: SimpleDB.PutAttributesRequest): Promise<{}> {

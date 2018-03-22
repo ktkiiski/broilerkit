@@ -56,7 +56,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
-    const scriptPaths = _.union(..._.map(pages, (page) => page.scripts));
+    const scriptPaths = _.union(...pages.map((page) => page.scripts));
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');

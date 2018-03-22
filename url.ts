@@ -1,5 +1,4 @@
-import { keys } from 'lodash';
-import map = require('lodash/map');
+import { keys } from './utils/objects';
 
 const urlPlaceholderRegexp = /^\{.+\}$/;
 
@@ -11,8 +10,7 @@ const urlPlaceholderRegexp = /^\{.+\}$/;
  * @param urlPattern URL pattern with {xxx} placeholders
  */
 export function makeUrlRegexp(urlPattern: string): RegExp {
-    const regexpComponents = map(
-        urlPattern.split('/'),
+    const regexpComponents = urlPattern.split('/').map(
         (component) => urlPlaceholderRegexp.test(component)
             ? '([^/]+)' // capturing group
             : escapeRegExp(component),
