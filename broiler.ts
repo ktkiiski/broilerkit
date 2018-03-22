@@ -1,6 +1,6 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { difference, differenceBy, sortBy } from 'lodash';
+import { difference, differenceBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
@@ -20,7 +20,7 @@ import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap } from './utils/arrays';
 import { searchFiles } from './utils/fs';
-import { mapObject, spread, toPairs } from './utils/objects';
+import { mapObject, spread, toPairs, values } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
@@ -29,6 +29,7 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
+import { order, sort } from './collections';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -428,7 +429,7 @@ export class Broiler {
     }
 
     private async generateApiTemplate(server: ApiService): Promise<any> {
-        const endpoints = sortBy(
+        const endpoints = sort(
             mapObject(server && server.implementations || {}, ({endpoint}, name) => ({
                 endpoint, name,
                 path: endpoint.pathPattern.replace(/^\/|\/$/g, '').split('/'),
@@ -508,7 +509,7 @@ export class Broiler {
     }
 
     private async generateDbTemplates(service: ApiService): Promise<any> {
-        const sortedTables = sortBy(service.dbTables, 'name');
+        const sortedTables = order(values(service.dbTables), 'name', 'asc');
         return sortedTables.map((table) => {
             const logicalId = `DatabaseTable${upperFirst(table.name)}`;
             const tableUriVar = `${logicalId}URI`;
