@@ -71,3 +71,20 @@ export function differenceBy<T, S>(a: T[], b: S[], iterator: (item: T | S) => an
     const exclusions = b.map(iterator);
     return a.filter((x) => exclusions.indexOf(iterator(x)) < 0);
 }
+
+/**
+ * Returns an array of unique items in the all
+ * of the given arrays. Each distinct value will only
+ * occur once in the returned array.
+ */
+export function union<T>(...arrays: T[][]): T[] {
+    const result: T[] = [];
+    for (const array of arrays) {
+        for (const item of array) {
+            if (result.indexOf(item) < 0) {
+                result.push(item);
+            }
+        }
+    }
+    return result;
+}
