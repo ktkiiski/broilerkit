@@ -388,7 +388,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {serverFile, sourceDir, buildDir, projectRootPath} = config;
+    const {serverFile, sourceDir, buildDir, projectRootPath, devServer} = config;
     const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
@@ -495,15 +495,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         },
 
         externals: {
-            // No need to bundle AWS SDK, because it will be available in the Lambda node environment
-            'aws-sdk': true,
+            // No need to bundle AWS SDK for compilation, because it will be available in the Lambda node environment
+            'aws-sdk': !devServer,
         },
 
         resolve: {
             // Look import modules from these directories
             modules: [
-                sourceDirPath,
-                modulesDirPath,
+                'node_modules',
             ],
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js'],
