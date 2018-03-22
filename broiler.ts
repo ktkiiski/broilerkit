@@ -1,15 +1,15 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
-import { difference, differenceBy } from 'lodash';
 import { capitalize, upperFirst } from 'lodash';
+import { difference, differenceBy } from 'lodash';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
 import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch } from './aws/cloudwatch';
 import { AmazonS3 } from './aws/s3';
-import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
+import { isDoesNotExistsError } from './aws/utils';
 import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
@@ -18,6 +18,7 @@ import { AppStageConfig } from './index';
 import { serveBackEnd, serveFrontEnd } from './local';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
+import { order, sort } from './utils/arrays';
 import { flatMap } from './utils/arrays';
 import { searchFiles } from './utils/fs';
 import { mapObject, spread, toPairs, values } from './utils/objects';
@@ -29,7 +30,6 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
-import { order, sort } from './collections';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
