@@ -6,7 +6,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
-import { HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
+import { BadRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
@@ -16,6 +16,8 @@ import mapValues = require('lodash/mapValues');
 import { readStream } from './utils/fs';
 
 import chalk from 'chalk';
+import { upperFirst } from 'lodash';
+import { forEachKey } from './utils/objects';
 const { cyan, green, red, yellow } = chalk;
 
 /**
@@ -70,7 +72,6 @@ export async function serveBackEnd(options: BroilerConfig) {
     const {siteOrigin, stageDir, buildDir, projectRootPath} = options;
     const stageDirPath = path.resolve(projectRootPath, stageDir);
     const apiOrigin = options.apiOrigin as string;
-    const siteOriginUrl = new URL(siteOrigin);
     const apiOriginUrl = new URL(apiOrigin);
     const apiProtocol = apiOriginUrl.protocol;
     const serverPort = parseInt(apiOriginUrl.port, 10);
@@ -111,10 +112,11 @@ export async function serveBackEnd(options: BroilerConfig) {
                 console.error(red(`The exported API module must have a 'execute' callable!`));
                 continue;
             }
+            const environment = getRequestEnvironment(handler, stageDirPath);
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const request = await nodeRequestToApiRequest(httpRequest, siteOriginUrl.origin, stageDirPath);
+                    const request = await nodeRequestToApiRequest(httpRequest, siteOrigin, apiOrigin, environment);
                     const response = await handler.execute(request);
                     // tslint:disable-next-line:no-console
                     console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
@@ -126,7 +128,7 @@ export async function serveBackEnd(options: BroilerConfig) {
                     httpResponse.writeHead(500, {
                         'Content-Type': 'text/plain',
                     });
-                    httpResponse.end(`Internal server error:\n${error}`);
+                    httpResponse.end(`Internal server error:\n${error.stack || error}`);
                 }
             });
             server.listen(serverPort);
@@ -138,26 +140,42 @@ export async function serveBackEnd(options: BroilerConfig) {
     }
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOrigin: string, directoryPath: string): Promise<HttpRequest> {
+function getRequestEnvironment(service: ApiService, directoryPath: string): {[key: string]: string} {
+    const environment: {[key: string]: string} = {};
+    forEachKey(service.dbTables, (_, table) => {
+        const filePath = `file://${path.resolve(directoryPath, `./db/${table.name}.db`)}`;
+        environment[`DatabaseTable${upperFirst(table.name)}URI`] = filePath;
+    });
+    return environment;
+}
+
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOrigin: string, apiOrigin: string, environment: {[key: string]: string}): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
-    const apiOrigin = `${requestUrlObj.protocol}://${requestUrlObj.host}`;
     const request: HttpRequest = {
-        apiOrigin: apiOrigin as string,
+        apiOrigin,
         siteOrigin,
-        directoryPath,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: mapValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},
         headers: mapValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers) as HttpHeaders,
         region: 'local',
-        environment: {}, // TODO
+        environment,
     };
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
         return request;
     }
     const chunks = await readStream(nodeRequest);
-    return {...request, body: chunks.map((chunk) => chunk.toString()).join('')};
+    const body = chunks.map((chunk) => chunk.toString()).join('');
+    const response = {...request, body};
+    if (body) {
+        try {
+            response.payload = JSON.parse(body);
+        } catch {
+            throw new BadRequest(`Invalid JSON payload`);
+        }
+    }
+    return response;
 }
 
 function colorizeStatusCode(statusCode: HttpStatus): string {

@@ -512,8 +512,8 @@ export class Broiler {
         const sortedTables = sortBy(service.dbTables, 'name');
         return sortedTables.map((table) => {
             const logicalId = `DatabaseTable${upperFirst(table.name)}`;
-            const tableArnVar = `${logicalId}ARN`;
-            const tableArnSub = 'arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${' + logicalId + '}';
+            const tableUriVar = `${logicalId}URI`;
+            const tableUriSub = 'arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${' + logicalId + '}';
             return {
                 AWSTemplateFormatVersion: '2010-09-09',
                 // Create the domain for the SimpleDB table
@@ -528,8 +528,8 @@ export class Broiler {
                     ApiGatewayStage: {
                         Properties: {
                             Variables: {
-                                [tableArnVar]: {
-                                    'Fn::Sub': tableArnSub,
+                                [tableUriVar]: {
+                                    'Fn::Sub': tableUriSub,
                                 },
                             },
                         },
@@ -537,9 +537,9 @@ export class Broiler {
                 },
                 // Output the name for the created SimpleDB domain
                 Outputs: {
-                    [tableArnVar]: {
+                    [tableUriVar]: {
                         Value: {
-                            'Fn::Sub': tableArnSub,
+                            'Fn::Sub': tableUriSub,
                         },
                     },
                 },

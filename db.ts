@@ -1,4 +1,5 @@
 import { parseARN } from './aws/arn';
+import { NeDbModel } from './nedb';
 import { Resource } from './resources';
 import { SimpleDbModel } from './simpledb';
 
@@ -150,6 +151,7 @@ export class TableDefinition<S, PK extends keyof S, V extends keyof S> implement
     constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
 
     public getModel(uri: string): Model<S, PK, V, Query<S, PK>> {
+        const {resource, key, versionAttr} = this;
         if (uri.startsWith('arn:')) {
             const {service, region, resourceType, resourceId} = parseARN(uri);
             if (service !== 'sdb') {
@@ -158,7 +160,11 @@ export class TableDefinition<S, PK extends keyof S, V extends keyof S> implement
             if (resourceType !== 'domain') {
                 throw new Error(`Unknown AWS resource type "${resourceType}"`);
             }
-            return new SimpleDbModel<S, PK, V>(resourceId, region, this.resource, this.key, this.versionAttr);
+            return new SimpleDbModel<S, PK, V>(resourceId, region, resource, key, versionAttr);
+        }
+        if (uri.startsWith('file://')) {
+            const filePath = uri.slice('file://'.length);
+            return new NeDbModel(filePath, resource, key, versionAttr);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     }
