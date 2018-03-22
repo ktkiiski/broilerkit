@@ -1,4 +1,4 @@
-import { isArray, mergeWith } from 'lodash';
+import { mergeWith } from 'lodash';
 import { readFile } from './utils/fs';
 
 import * as path from 'path';
@@ -17,7 +17,7 @@ export async function readTemplates(templateFiles: string[], placeholders: {[pla
 
 export function mergeTemplates(template1: any, template2: any): any {
     return mergeWith({}, template1, template2, (objValue, srcValue) => {
-        if (isArray(objValue) && isArray(srcValue)) {
+        if (Array.isArray(objValue) && Array.isArray(srcValue)) {
             return objValue.concat(srcValue);
         }
     });

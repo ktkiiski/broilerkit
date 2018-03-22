@@ -6,11 +6,10 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
-import { BadRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
+import { BadRequest, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { ApiService } from './server';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
-import isArray = require('lodash/isArray');
 import isFunction = require('lodash/isFunction');
 import { readStream } from './utils/fs';
 
@@ -156,8 +155,8 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOr
         siteOrigin,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
-        queryParameters: transformValues(requestUrlObj.query, (values) => isArray(values) ? values[0] : values) as {[param: string]: string},
-        headers: transformValues(nodeRequest.headers, (headers) => isArray(headers) ? headers[0] : headers) as HttpHeaders,
+        queryParameters: flattenParameters(requestUrlObj.query),
+        headers: flattenParameters(nodeRequest.headers),
         region: 'local',
         environment,
     };
@@ -189,4 +188,8 @@ function colorizeStatusCode(statusCode: HttpStatus): string {
         return red(codeStr);
     }
     return codeStr;
+}
+
+function flattenParameters<K extends string>(params: {[P in K]: string | string[] | undefined}): {[P in K]: string} {
+    return transformValues(params, (values) => Array.isArray(values) ? values[0] : String(values || ''));
 }
