@@ -9,7 +9,7 @@ import { buildObject, pick } from './utils/objects';
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const ExtractTextPlugin = require('extract-text-webpack-plugin');
-const FaviconsWebpackPlugin = require('favicons-webpack-plugin');
+const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 // Polyfill entrypoints
@@ -156,7 +156,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
      */
     if (iconFile) {
         plugins.push(
-            new FaviconsWebpackPlugin({
+            new WebappWebpackPlugin({
                 // Your source logo
                 logo: iconFile,
                 // The prefix for all image files (might be a folder or a name)
