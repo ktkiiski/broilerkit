@@ -345,7 +345,7 @@ export class Broiler {
                 Body: file.contents as Buffer,
                 ACL: 'public-read',
                 CacheControl: `max-age=${cacheDuration}`,
-                ContentType: mime.lookup(file.relative),
+                ContentType: mime.getType(file.relative) || undefined,
                 ContentLength: file.isStream() && file.stat ? file.stat.size : undefined,
             }, overwrite);
             uploads$.push(upload$.then((result) => {
