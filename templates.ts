@@ -1,5 +1,5 @@
-import { mergeWith } from 'lodash';
 import { readFile } from './utils/fs';
+import { forEachKey, spread } from './utils/objects';
 
 import * as path from 'path';
 import * as YAML from 'yamljs';
@@ -16,11 +16,28 @@ export async function readTemplates(templateFiles: string[], placeholders: {[pla
 }
 
 export function mergeTemplates(template1: any, template2: any): any {
-    return mergeWith({}, template1, template2, (objValue, srcValue) => {
-        if (Array.isArray(objValue) && Array.isArray(srcValue)) {
-            return objValue.concat(srcValue);
-        }
-    });
+    // If the first parameter is undefined, then always return the second one.
+    if (template1 === undefined) {
+        return template2;
+    }
+    // Any two arrays in the same object keys are concatenated together
+    if (isArray(template1) && isArray(template2)) {
+        return template1.concat(template2);
+    }
+    // Any two objects are merged recursively
+    if (isObject(template1) && isObject(template2)) {
+        const result = spread(template1);
+        forEachKey(template2, (key, value) => {
+            result[key] = mergeTemplates(result[key], value);
+        });
+        return result;
+    }
+    // If parameters are the same type, then the second one overwrites the first one
+    if (typeof template1 === typeof template2) {
+        return template2;
+    }
+    // Any other situation means an error
+    throw new Error(`Cannot merge incompatible template items: ${template1} & ${template2}`);
 }
 
 export function dumpTemplate(template: any): string {
@@ -36,4 +53,12 @@ function deserializeTemplate(template: string, placeholderValues: {[placeholder:
         return value;
     });
     return YAML.parse(replacedTemplate);
+}
+
+function isArray(value: any): value is any[] {
+    return Array.isArray(value);
+}
+
+function isObject(value: any): value is {[key: string]: any} {
+    return !!value && typeof value === 'object' && !isArray(value);
 }
