@@ -2,6 +2,10 @@ export function upperFirst(str: string) {
     return str.replace(/^\w/i, (letter) => letter.toLocaleUpperCase());
 }
 
+export function capitalize(str: string) {
+    return upperFirst(str.toLocaleLowerCase());
+}
+
 export function padStart(str: string, minLength: number, padChars: string) {
     const paddingLength = minLength - str.length;
     if (paddingLength <= 0) {

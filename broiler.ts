@@ -6,8 +6,8 @@ import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch } from './aws/cloudwatch';
 import { AmazonS3 } from './aws/s3';
-import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
+import { isDoesNotExistsError } from './aws/utils';
 import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
@@ -20,7 +20,7 @@ import { difference, differenceBy, order, sort } from './utils/arrays';
 import { flatMap } from './utils/arrays';
 import { searchFiles } from './utils/fs';
 import { mapObject, spread, toPairs, values } from './utils/objects';
-import { upperFirst } from './utils/strings';
+import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
 
@@ -676,7 +676,7 @@ function getApiResourceLogicalId(urlPath: string[]) {
 }
 
 function getApiMethodLogicalId(urlPath: string[], method: HttpMethod) {
-    return `Endpoint${formatPathForLogicalId(urlPath)}${upperFirst(method)}ApiGatewayMethod`;
+    return `Endpoint${formatPathForLogicalId(urlPath)}${capitalize(method)}ApiGatewayMethod`;
 }
 
 function formatPathForLogicalId(urlPath: string[]) {
