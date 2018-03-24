@@ -158,7 +158,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         plugins.push(
             new WebappWebpackPlugin({
                 // Your source logo
-                logo: iconFile,
+                logo: path.resolve(sourceDirPath, iconFile),
                 // The prefix for all image files (might be a folder or a name)
                 prefix: devServer && debug ? 'icons/' : 'icons/[hash]/',
                 // Emit all stats of the generated icons
@@ -349,11 +349,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         },
 
         resolve: {
-            // Look import modules from these directories
-            modules: [
-                sourceDirPath,
-                modulesDirPath,
-            ],
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js'],
         },
@@ -498,10 +493,6 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         },
 
         resolve: {
-            // Look import modules from these directories
-            modules: [
-                'node_modules',
-            ],
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js'],
         },
