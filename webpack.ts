@@ -14,9 +14,6 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 // Polyfill entrypoints
 const polyfills = [
-    // Promises
-    'core-js/es6/promise',
-    'core-js/fn/promise',
     // ES6 Object stuff
     'core-js/es6/object',
     'core-js/fn/object/assign',
@@ -84,6 +81,12 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 hash: false,
             }),
         ),
+        /**
+         * Provide polyfills with ProvidePlugin.
+         */
+        new webpack.ProvidePlugin({
+            Promise: [require.resolve('./polyfill/promise'), 'Promise'],
+        }),
         /**
          * Replace "global variables" from the scripts with the constant values.
          */

@@ -66,6 +66,7 @@
     "mime": "^2.2.0",
     "nedb": "^1.8.0",
     "node-sass": "^4.7.2",
+    "promise-polyfill": "^7.1.0",
     "pug": "^2.0.3",
     "pug-loader": "^2.3.0",
     "source-map-loader": "^0.2.3",
