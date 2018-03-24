@@ -8,7 +8,13 @@ const isSymbolImplemented = typeof globalSymbol === 'function' && typeof globalS
 
 export const Symbol: SymbolConstructor = isSymbolImplemented ? globalSymbol : require('es6-symbol/polyfill');
 
-// If the Symbol.asyncIterator is not implemented, polyfill it
-if (!Symbol.asyncIterator) {
-    (Symbol as any).asyncIterator = Symbol.for('Symbol.asyncIterator');
+for (const propName of ['iterator', 'asyncIterator']) {
+    if (!(Symbol as any)[propName]) {
+        Object.defineProperty(Symbol, propName, {
+            value: Symbol.for(propName),
+            configurable: false,
+            enumerable: false,
+            writable: false,
+        });
+    }
 }
