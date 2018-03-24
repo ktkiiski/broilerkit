@@ -86,6 +86,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
          */
         new webpack.ProvidePlugin({
             Promise: [require.resolve('./polyfill/promise'), 'Promise'],
+            Symbol: [require.resolve('./polyfill/symbol'), 'Symbol'],
         }),
         /**
          * Replace "global variables" from the scripts with the constant values.
