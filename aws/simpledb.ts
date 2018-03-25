@@ -46,9 +46,9 @@ export class AmazonSimpleDB {
 }
 
 export function escapeQueryParam(param: string): string {
-    return `'${param.replace(`'`, `''`)}'`;
+    return `'${param.replace(/'/g, `''`)}'`;
 }
 
 export function escapeQueryIdentifier(param: string): string {
-    return `\`${param.replace('`', '``')}\``;
+    return `\`${param.replace(/`/g, '``')}\``;
 }
