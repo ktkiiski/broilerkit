@@ -9,6 +9,7 @@ import { buildObject, pick } from './utils/objects';
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const ExtractTextPlugin = require('extract-text-webpack-plugin');
+const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
@@ -37,6 +38,11 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
+        // Perform type checking for TypeScript
+        new ForkTsCheckerWebpackPlugin({
+            tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
+            tslint: path.resolve(projectRootPath, './tslint.json'),
+        }),
         // Extract stylesheets to separate files in production
         new ExtractTextPlugin({
             disable: devServer,
@@ -216,16 +222,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                     loader: 'source-map-loader',
                     enforce: 'pre',
                 },
-                // Lint TypeScript files using tslint
-                {
-                    test: /\.tsx?$/,
-                    include: sourceDirPath,
-                    loader: 'tslint-loader',
-                    enforce: 'pre',
-                    options: {
-                        fix: true, // Auto-fix if possible
-                    },
-                },
                 // Lint JavaScript files using eslint
                 {
                     test: /\.jsx?$/,
@@ -242,10 +238,12 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 // Compile TypeScript files ('.ts' or '.tsx')
                 {
                     test: /\.tsx?$/,
-                    loader: 'awesome-typescript-loader',
+                    loader: 'ts-loader',
                     options: {
                         // Explicitly expect the tsconfig.json to be located at the project root
-                        configFileName: path.resolve(projectRootPath, './tsconfig.json'),
+                        configFile: path.resolve(projectRootPath, './tsconfig.json'),
+                        // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
+                        transpileOnly: true,
                     },
                 },
                 // Extract CSS stylesheets from the main bundle
@@ -373,6 +371,11 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
 
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
+        // Perform type checking for TypeScript
+        new ForkTsCheckerWebpackPlugin({
+            tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
+            tslint: path.resolve(projectRootPath, './tslint.json'),
+        }),
         /**
          * Replace "global variables" from the scripts with the constant values.
          */
@@ -429,17 +432,6 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                     loader: 'source-map-loader',
                     enforce: 'pre',
                 },
-                // Lint TypeScript files using tslint
-                {
-                    test: /\.tsx?$/,
-                    include: sourceDirPath,
-                    loader: 'tslint-loader',
-                    enforce: 'pre',
-                    options: {
-                        fix: true, // Auto-fix if possible
-                        typeCheck: true, // Required for some tslint rules
-                    },
-                },
                 // Lint JavaScript files using eslint
                 {
                     test: /\.jsx?$/,
@@ -456,10 +448,12 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                 // Compile TypeScript files ('.ts' or '.tsx')
                 {
                     test: /\.tsx?$/,
-                    loader: 'awesome-typescript-loader',
+                    loader: 'ts-loader',
                     options: {
                         // Explicitly expect the tsconfig.json to be located at the project root
-                        configFileName: path.resolve(projectRootPath, './tsconfig.json'),
+                        configFile: path.resolve(projectRootPath, './tsconfig.json'),
+                        // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
+                        transpileOnly: true,
                     },
                 },
             ],
