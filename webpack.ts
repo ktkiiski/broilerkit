@@ -12,32 +12,6 @@ const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
-// Polyfill entrypoints
-const polyfills = [
-    // ES6 Object stuff
-    'core-js/es6/object',
-    'core-js/fn/object/assign',
-    'core-js/fn/object/is',
-    'core-js/fn/object/set-prototype-of',
-    'core-js/fn/object/get-prototype-of',
-    'core-js/fn/object/create',
-    'core-js/fn/object/define-property',
-    'core-js/fn/object/define-properties',
-    'core-js/fn/object/get-own-property-descriptor',
-    'core-js/fn/object/keys',
-    'core-js/fn/object/get-own-property-names',
-    'core-js/fn/object/freeze',
-    'core-js/fn/object/seal',
-    'core-js/fn/object/prevent-extensions',
-    'core-js/fn/object/is-frozen',
-    'core-js/fn/object/is-sealed',
-    'core-js/fn/object/is-extensible',
-    // 'core-js/fn/object/to-string',
-    // ES7 Object methods
-    'core-js/fn/object/values',
-    'core-js/fn/object/entries',
-].map((mod) => require.resolve(mod));
-
 export interface WebpackConfigOptions extends BroilerConfig {
     devServer: boolean;
     analyze: boolean;
@@ -218,7 +192,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         // The main entry points for source files.
         entry: buildObject(scriptPaths, (entry) => [
             path.basename(entry).replace(/\..*?$/, ''),
-            [...polyfills, path.resolve(sourceDirPath, entry)],
+            path.resolve(sourceDirPath, entry),
         ]),
 
         output: {
