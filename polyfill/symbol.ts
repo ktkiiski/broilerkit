@@ -1,20 +1,7 @@
+// Intentional side effects: ensure that core-js has backfilled Symbol
+import 'core-js/library/modules/es6.symbol';
+import 'core-js/library/modules/es7.symbol.async-iterator';
 /**
- * Export the native Symbol, if available, or otherwise the polyfill implementation
- * as the default export.
+ * Export the native Symbol, if available, or otherwise the polyfill implementation.
  */
-// tslint:disable-next-line:no-string-literal
-const globalSymbol = (window as any)['Symbol'];
-const isSymbolImplemented = typeof globalSymbol === 'function' && typeof globalSymbol() === 'symbol';
-
-export const Symbol: SymbolConstructor = isSymbolImplemented ? globalSymbol : require('es6-symbol/polyfill');
-
-for (const propName of ['iterator', 'asyncIterator']) {
-    if (!(Symbol as any)[propName]) {
-        Object.defineProperty(Symbol, propName, {
-            value: Symbol.for(propName),
-            configurable: false,
-            enumerable: false,
-            writable: false,
-        });
-    }
-}
+export const Symbol: SymbolConstructor = require('core-js/library/modules/_core').Symbol;

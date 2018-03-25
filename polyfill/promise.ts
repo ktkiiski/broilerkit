@@ -1,6 +1,6 @@
+// Intentional side effects: ensure that core-js has backfilled Promise
+import 'core-js/library/modules/es6.promise';
 /**
  * Export the native Promise, if available, or otherwise the polyfill implementation.
  */
-// tslint:disable-next-line:no-string-literal
-export const Promise: PromiseConstructor = (window as any)['Promise'] || require('promise-polyfill').default;
-// TODO: Set custom Promise._unhandledRejectionFn for unhandled rejections
+export const Promise: PromiseConstructor = require('core-js/library/modules/_core').Promise;
