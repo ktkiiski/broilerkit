@@ -40,7 +40,13 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
         new ForkTsCheckerWebpackPlugin({
+            // Synchronize with the main Webpack compilation, causing it to fail if there are type errors
+            async: false,
+            // Do not log anything. Any failure will become visible anyway
+            silent: true,
+            // Use the tsconfig.json in the project folder (not in this library)
             tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
+            // Use the tslint.json in the project folder (not in this library)
             tslint: path.resolve(projectRootPath, './tslint.json'),
         }),
         // Extract stylesheets to separate files in production
@@ -373,7 +379,13 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
         new ForkTsCheckerWebpackPlugin({
+            // Synchronize with the main Webpack compilation, causing it to fail if there are type errors
+            async: false,
+            // Do not log anything. Any failure will become visible anyway
+            silent: true,
+            // Use the tsconfig.json in the project folder (not in this library)
             tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
+            // Use the tslint.json in the project folder (not in this library)
             tslint: path.resolve(projectRootPath, './tslint.json'),
         }),
         /**
