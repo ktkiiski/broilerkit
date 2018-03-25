@@ -93,7 +93,7 @@ export class Broiler {
         await this.deployFile();
         const output = await stackOutput$;
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
-        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteOrigin}/`)}`);
+        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
     }
 
     /**
@@ -200,7 +200,7 @@ export class Broiler {
         this.log(`Starting the local development server...`);
         const opts = this.config;
         await Promise.all([
-            serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.siteOrigin}/`)}`)),
+            serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.siteRoot}/`)}`)),
             serveBackEnd(opts),
         ]);
     }
@@ -306,21 +306,24 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteOrigin, apiOrigin, assetsOrigin} = this.config;
-        const siteOriginUrl = new URL(siteOrigin);
-        const siteDomain = siteOriginUrl.hostname;
-        const assetsOriginUrl = new URL(assetsOrigin);
-        const assetsDomain = assetsOriginUrl.hostname;
-        const apiOriginUrl = apiOrigin && new URL(apiOrigin);
-        const apiDomain = apiOriginUrl && apiOriginUrl.hostname;
+        const {siteRoot, apiRoot, assetsRoot} = this.config;
+        const siteRootUrl = new URL(siteRoot);
+        const siteDomain = siteRootUrl.hostname;
+        const assetsRootUrl = new URL(assetsRoot);
+        const assetsDomain = assetsRootUrl.hostname;
+        const apiRootUrl = apiRoot && new URL(apiRoot);
+        const apiDomain = apiRootUrl && apiRootUrl.hostname;
         const apiFile = await this.getCompiledApiFile();
         return {
-            SiteOrigin: siteOriginUrl.origin,
+            SiteRoot: siteRoot,
+            SiteOrigin: siteRootUrl.origin,
             SiteDomainName: siteDomain,
             SiteHostedZoneName: getHostedZone(siteDomain),
+            AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
-            ApiOrigin: apiOriginUrl && apiOriginUrl.origin,
+            ApiRoot: apiRoot,
+            ApiOrigin: apiRootUrl && apiRootUrl.origin,
             ApiHostedZoneName: apiDomain && getHostedZone(apiDomain),
             ApiDomainName: apiDomain,
             ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),

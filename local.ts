@@ -21,11 +21,11 @@ const { cyan, green, red, yellow } = chalk;
  * Runs the Webpack development server.
  */
 export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Promise<void> {
-    const assetsOriginUrl = new URL(options.siteOrigin);
-    const assetsProtocol = assetsOriginUrl.protocol;
-    const siteOriginUrl = new URL(options.siteOrigin);
-    const siteProtocol = siteOriginUrl.protocol;
-    const serverPort = parseInt(siteOriginUrl.port, 10);
+    const assetsRootUrl = new URL(options.siteRoot);
+    const assetsProtocol = assetsRootUrl.protocol;
+    const siteRootUrl = new URL(options.siteRoot);
+    const siteProtocol = siteRootUrl.protocol;
+    const serverPort = parseInt(siteRootUrl.port, 10);
     const enableHttps = assetsProtocol === 'https:' || siteProtocol === 'https:';
     // TODO: Is this configuration for the inline livereloading still required?
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
@@ -36,8 +36,8 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
         compiler,
         {
             allowedHosts: [
-                assetsOriginUrl.hostname,
-                siteOriginUrl.hostname,
+                assetsRootUrl.hostname,
+                siteRootUrl.hostname,
             ],
             https: enableHttps,
             stats: {
@@ -66,15 +66,18 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
  * Runs the REST API development server.
  */
 export async function serveBackEnd(options: BroilerConfig) {
-    const {siteOrigin, stageDir, buildDir, projectRootPath} = options;
+    const {siteRoot, stageDir, buildDir, projectRootPath} = options;
+    const apiRoot = options.apiRoot as string;
     const stageDirPath = path.resolve(projectRootPath, stageDir);
-    const apiOrigin = options.apiOrigin as string;
-    const apiOriginUrl = new URL(apiOrigin);
-    const apiProtocol = apiOriginUrl.protocol;
-    const serverPort = parseInt(apiOriginUrl.port, 10);
+    const siteRootUrl = new URL(siteRoot);
+    const siteOrigin = siteRootUrl.origin;
+    const apiRootUrl = new URL(apiRoot);
+    const apiOrigin = apiRootUrl.origin;
+    const apiProtocol = apiRootUrl.protocol;
+    const serverPort = parseInt(apiRootUrl.port, 10);
     const enableHttps = apiProtocol === 'https:';
     if (enableHttps) {
-        throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiOrigin.replace(/^https/, 'http')} instead!`);
+        throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiRoot.replace(/^https/, 'http')} instead!`);
     }
     const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
     let server: http.Server | undefined;
@@ -113,7 +116,9 @@ export async function serveBackEnd(options: BroilerConfig) {
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const request = await nodeRequestToApiRequest(httpRequest, siteOrigin, apiOrigin, environment);
+                    const request = await nodeRequestToApiRequest(httpRequest, {
+                        siteOrigin, apiOrigin, siteRoot, apiRoot, environment,
+                    });
                     const response = await handler.execute(request);
                     // tslint:disable-next-line:no-console
                     console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
@@ -146,18 +151,16 @@ function getRequestEnvironment(service: ApiService, directoryPath: string): {[ke
     return environment;
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, siteOrigin: string, apiOrigin: string, environment: {[key: string]: string}): Promise<HttpRequest> {
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
     const request: HttpRequest = {
-        apiOrigin,
-        siteOrigin,
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: flattenParameters(requestUrlObj.query),
         headers: flattenParameters(nodeRequest.headers),
         region: 'local',
-        environment,
+        ...context,
     };
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
         return request;

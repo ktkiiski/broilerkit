@@ -25,7 +25,7 @@ export interface WebpackConfigOptions extends BroilerConfig {
  */
 export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRootPath, stage, analyze} = config;
-    const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
+    const {region, apiRoot, assetsRoot, siteRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const scriptPaths = union(...pages.map((page) => page.scripts));
@@ -82,12 +82,12 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             'process.env': {
                 NODE_ENV: JSON.stringify(debug ? 'development' : 'production'),
             },
-            // Static assets URL origin
-            '__ASSETS_ORIGIN__': JSON.stringify(assetsOrigin),
-            // Web site URL origin
-            '__SITE_ORIGIN__': JSON.stringify(siteOrigin),
-            // API URL origin
-            '__API_ORIGIN__': JSON.stringify(apiOrigin),
+            // Static assets URL root
+            '__ASSETS_ROOT__': JSON.stringify(assetsRoot),
+            // Web site URL root
+            '__SITE_ROOT__': JSON.stringify(siteRoot),
+            // API URL root
+            '__API_ROOT__': JSON.stringify(apiRoot),
             // Allow using the GIT commit hash ID
             '__COMMIT_HASH__': JSON.stringify(gitCommitHash),
             // Allow using the GIT version
@@ -213,7 +213,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             // The file name template for the entry chunks
             filename: devServer && debug ? '[name].js' : '[name].[chunkhash].js',
             // The URL to the output directory resolved relative to the HTML page
-            publicPath: `${assetsOrigin}/`,
+            publicPath: `${assetsRoot}/`,
             // The name of the exported library, e.g. the global variable name
             library: 'app',
             // How the library is exported? E.g. 'var', 'this'
@@ -364,7 +364,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
     const {serverFile, sourceDir, buildDir, projectRootPath, devServer} = config;
-    const {region, apiOrigin, assetsOrigin, siteOrigin} = config;
+    const {region, apiRoot, assetsRoot, siteRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const buildDirPath = path.resolve(projectRootPath, buildDir);
@@ -392,12 +392,12 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
          * Replace "global variables" from the scripts with the constant values.
          */
         new webpack.DefinePlugin({
-            // Static assets URL origin
-            __ASSETS_ORIGIN__: JSON.stringify(assetsOrigin),
-            // Web site URL origin
-            __SITE_ORIGIN__: JSON.stringify(siteOrigin),
-            // API URL origin
-            __API_ORIGIN__: JSON.stringify(apiOrigin),
+            // Static assets URL root
+            __ASSETS_ROOT__: JSON.stringify(assetsRoot),
+            // Web site URL root
+            __SITE_ROOT__: JSON.stringify(siteRoot),
+            // API URL root
+            __API_ROOT__: JSON.stringify(apiRoot),
             // Allow using the GIT commit hash ID
             __COMMIT_HASH__: JSON.stringify(gitCommitHash),
             // Allow using the GIT version
@@ -431,7 +431,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             // The file name template for the entry chunks
             filename: '[name].[hash].js',
             // The URL to the output directory resolved relative to the HTML page
-            publicPath: `${assetsOrigin}/`,
+            publicPath: `${assetsRoot}/`,
             // Export so for use in a Lambda function
             libraryTarget: 'commonjs2',
         },

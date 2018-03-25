@@ -64,13 +64,25 @@ export interface HttpRequest {
         [parameter: string]: string;
     };
     /**
-     * The origin of the API to which the request was made.
+     * The root URL of the API to which the request was made.
+     * This does not include any trailing slash.
+     */
+    apiRoot: string;
+    /**
+     * The origin of the API to which the request was made,
+     * including the protocol, host and any port number.
      * This does not include any trailing slash.
      */
     apiOrigin: string;
     /**
-     * The origin of the website from which the API requests
+     * The root URL of the website from which the API requests
      * are expected to become. This does not include any trailing slash.
+     */
+    siteRoot: string;
+    /**
+     * The origin of the website from which the API requests
+     * are expected to become, including the protocol, host and any port number.
+     * This does not include any trailing slash.
      */
     siteOrigin: string;
     /**

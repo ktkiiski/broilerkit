@@ -22,13 +22,13 @@ export function makeUrlRegexp(urlPattern: string): RegExp {
  * Compiles the URL from the given components as a string, encoding and ordering the query
  * parameters to a consistent order.
  *
- * @param origin Host of the URL
+ * @param root Host of the URL
  * @param path Path component of the URL
  * @param queryParameters Object of query parameters
  */
-export function compileUrl(origin: string, path: string, queryParameters: {[key: string]: string}): string {
+export function compileUrl(root: string, path: string, queryParameters: {[key: string]: string}): string {
     const sortedQueryKeys = keys(queryParameters).sort();
-    const urlBase = `${origin}${path}`;
+    const urlBase = `${root}${path}`;
     if (sortedQueryKeys.length) {
         const queryComponents = sortedQueryKeys.map(
             (key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParameters[key])}`,

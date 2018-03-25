@@ -60,7 +60,7 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
             const last = results[length - 1];
             const nextInput = spread(input, {since: last[ordering]});
             const {path, queryParameters} = endpoint.serializeRequest('GET', nextInput);
-            const next = compileUrl(request.apiOrigin, path, queryParameters);
+            const next = compileUrl(request.apiRoot, path, queryParameters);
             const headers = {Link: `${next}; rel="next"`};
             return new OK({next, results}, headers);
         };

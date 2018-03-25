@@ -3,6 +3,9 @@ Parameters:
   # The key of the ZIP file in the deployment S3 bucket
   ApiRequestLambdaFunctionS3Key:
     Type: String
+  # Root URL for the REST API
+  ApiRoot:
+    Type: String
   # Origin for the REST API
   ApiOrigin:
     Type: String
@@ -81,9 +84,15 @@ Resources:
       DeploymentId:
         Ref: <ApiGatewayDeploymentName>
       Variables:
+        # Make the API root URL available as a stage variable
+        ApiRoot:
+          Ref: ApiRoot
         # Make the API origin available as a stage variable
         ApiOrigin:
           Ref: ApiOrigin
+        # Make the website root URL available as a stage variable
+        SiteRoot:
+          Ref: SiteRoot
         # Make the website origin available as a stage variable
         SiteOrigin:
           Ref: SiteOrigin

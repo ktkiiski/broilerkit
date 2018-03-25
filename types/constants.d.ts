@@ -1,20 +1,20 @@
 /**
- * The origin of the static asset URLs, not containing
+ * The root URL of the static assets, not containing
  * the trailing slash. Example: "https://static.example.com"
  */
-declare const __ASSETS_ORIGIN__: string;
+declare const __ASSETS_ROOT__: string;
 
 /**
- * The origin of the web site URLs, not containing
+ * The root URL of the web site, not containing
  * the trailing slash. Example: "https://www.example.com"
  */
-declare const __SITE_ORIGIN__: string;
+declare const __SITE_ROOT__: string;
 
 /**
- * The origin of the REST API URLs, not containing
+ * The root URL of the REST API, not containing
  * the trailing slash. Example: "https://api.example.com"
  */
-declare const __API_ORIGIN__: string;
+declare const __API_ROOT__: string;
 
 /**
  * GIT commit hash of the web app build.

@@ -1,26 +1,26 @@
 export interface StageConfig {
     /**
-     * The URL origin where all the indefinitely-cached static assets are hosted.
-     * This must contain the protocol, hostname and optionally any port. The origin
+     * The base URL where all the indefinitely-cached static assets are hosted.
+     * This must contain the protocol, hostname and optionally any port. The root URL
      * must NOT end with a trailing slash.
      *
      * Examples:
      * - "https://static.example.com"
      * - "http://localhost:8080"
      */
-    assetsOrigin: string;
+    assetsRoot: string;
     /**
-     * The URL origin where the HTML pages are hosted. This must contain the protocol,
-     * hostname and optionally any port. The origin must NOT end with a trailing slash.
+     * The base URL where the HTML pages are hosted. This must contain the protocol,
+     * hostname and optionally any port. The root URL must NOT end with a trailing slash.
      *
      * Examples:
      * - "https://www.example.com"
      * - "http://localhost:8080"
      */
-    siteOrigin: string;
+    siteRoot: string;
     /**
-     * The URL origin where the REST API is hosted. This must contain the protocol,
-     * hostname and optionally any port. The origin must NOT end with a trailing slash.
+     * The base URL where the REST API is hosted. This must contain the protocol,
+     * hostname and optionally any port. The root URL must NOT end with a trailing slash.
      *
      * You may omit this if the app does not have an API.
      *
@@ -28,7 +28,7 @@ export interface StageConfig {
      * - "https://api.example.com"
      * - "http://localhost:8081"
      */
-    apiOrigin?: string;
+    apiRoot?: string;
 }
 
 export interface WebPageConfig {

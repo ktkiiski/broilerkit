@@ -75,7 +75,7 @@ export interface DestroyEndpoint<I> {
 export interface EndpointDefinition<T> {
     methods: HttpMethod[];
     pathPattern: string;
-    bind(origin: string): T;
+    bind(rootUrl: string): T;
     validate(method: HttpMethod, input: any): any;
     serializeRequest(method: HttpMethod, input: any): ApiRequest;
     deserializeRequest(request: ApiRequest): any;
@@ -85,14 +85,14 @@ export interface EndpointDefinition<T> {
 
 class ApiModel {
     constructor(
-        public origin: string,
+        public rootUrl: string,
         private endpoint: EndpointDefinition<any>,
     ) { }
 
     public async request(method: HttpMethod, input: any): Promise<any> {
         const {endpoint} = this;
         const {path, queryParameters, payload} = endpoint.serializeRequest(method, input);
-        const url = compileUrl(this.origin, path, queryParameters);
+        const url = compileUrl(this.rootUrl, path, queryParameters);
         const response = await ajax({url, method, payload});
         return endpoint.deserializeResponseData(method, response.data);
     }
@@ -356,10 +356,10 @@ export class ApiEndpoint<S, U extends keyof S, T> implements EndpointDefinition<
         );
     }
 
-    public bind(origin: string): T {
+    public bind(rootUrl: string): T {
         class BoundApiEndpoint extends ApiModel {}
         Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(origin, this) as any;
+        return new BoundApiEndpoint(rootUrl, this) as any;
     }
 
     public validate(method: HttpMethod, input: any): any {
@@ -416,8 +416,8 @@ export function endpoint<R>(resource: Resource<R>) {
 
 export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P]>};
 
-export function init<T>(origin: string, endpoints: ApiEndpoints<T>, callback: (apis: T) => void) {
-    const apis = transformValues(endpoints, (ep: EndpointDefinition<any>) => ep.bind(origin)) as T;
+export function init<T>(rootUrl: string, endpoints: ApiEndpoints<T>, callback: (apis: T) => void) {
+    const apis = transformValues(endpoints, (ep: EndpointDefinition<any>) => ep.bind(rootUrl)) as T;
     callback(apis);
 }
 

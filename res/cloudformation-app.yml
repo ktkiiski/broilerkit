@@ -1,6 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Stack for the deployed application
 Parameters:
+  # Root URL for the website HTML files
+  SiteRoot:
+    Type: String
   # Origin for the website HTML files
   SiteOrigin:
     Type: String
@@ -9,6 +12,9 @@ Parameters:
     Type: String
   # Hosted zone name of the domain for the website HTML files
   SiteHostedZoneName:
+    Type: String
+  # Root URL for the static asset files
+  AssetsRoot:
     Type: String
   # Domain for the static asset files
   AssetsDomainName:
