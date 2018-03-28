@@ -24,10 +24,11 @@ export interface WebpackConfigOptions extends BroilerConfig {
  * https://webpack.js.org/configuration/
  */
 export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {devServer, debug, iconFile, sourceDir, buildDir, pages, projectRootPath, stage, analyze} = config;
+    const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, pages, projectRootPath, stage, analyze} = config;
     const {region, apiRoot, assetsRoot, siteRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
+    const stageDirPath = path.resolve(projectRootPath, stageDir);
     const scriptPaths = union(...pages.map((page) => page.scripts));
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
@@ -158,6 +159,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 persistentCache: true,
                 // Inject the html into the html-webpack-plugin
                 inject: true,
+                // Locate the cache folder inside the .broiler directory
+                cache: path.resolve(stageDirPath, '.wwp-cache'),
                 /**
                  * Which icons should be generated.
                  * See: https://github.com/haydenbleasel/favicons#usage
