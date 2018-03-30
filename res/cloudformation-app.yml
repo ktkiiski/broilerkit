@@ -176,6 +176,32 @@ Resources:
         Ref: SiteDomainName
       SubjectAlternativeNames:
         - Ref: AssetsDomainName
+  # Sub-stack for the custom resources
+  CustomResource:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        Fn::Sub: https://s3.amazonaws.com/${DeploymentManagementS3Bucket}/cloudformation-custom-resource.yml
+  # Policy required to execute custom resource Lambda function
+  CustomResourcePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SES
+      Roles:
+        - Fn::GetAtt: CustomResource.Outputs.Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              # Add all the actions required for any used custom resources
+              # The full reference is available here:
+              # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
+              - cognito-idp:CreateUserPoolDomain
+              - cognito-idp:DeleteUserPoolDomain
+              - cognito-idp:DescribeUserPoolDomain
+
 Outputs:
   SiteS3BucketName:
     Value:

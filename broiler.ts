@@ -6,8 +6,8 @@ import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch } from './aws/cloudwatch';
 import { AmazonS3 } from './aws/s3';
-import { formatS3KeyName } from './aws/utils';
 import { isDoesNotExistsError } from './aws/utils';
+import { formatS3KeyName } from './aws/utils';
 import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
@@ -18,7 +18,7 @@ import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { difference, differenceBy, order, sort } from './utils/arrays';
 import { flatMap } from './utils/arrays';
-import { searchFiles } from './utils/fs';
+import { readFile, searchFiles } from './utils/fs';
 import { mapObject, spread, toPairs, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -85,8 +85,10 @@ export class Broiler {
         const frontendCompile$ = this.compileFrontend(false);
         const backendCompile$ = this.compileBackend(false);
         await this.initialize();
+        const customResourceUpload$ = this.uploadCustomResource();
         await backendCompile$;
         await this.uploadBackend();
+        await customResourceUpload$;
         await this.deployStack();
         const stackOutput$ = this.cloudFormation.getStackOutput();
         await frontendCompile$;
@@ -386,6 +388,24 @@ export class Broiler {
         }).promise();
         this.log(`Successfully created CloudFront distribution invalidation! It should take effect shortly!`);
         return result;
+    }
+
+    /**
+     * Uploads a CloudFormation template and a Lambda JavaScript source code
+     * required for custom CloudFormation resources. Any existing files
+     * are overwritten.
+     */
+    private async uploadCustomResource(): Promise<S3.PutObjectOutput> {
+        const templateFileName = 'cloudformation-custom-resource.yml';
+        const bucketName$ = this.cloudFormation.getStackOutput().then((output) => output.DeploymentManagementS3BucketName);
+        const templateFile$ = readFile(path.join(__dirname, 'res', templateFileName));
+        const templateUpload$ = this.createS3File$({
+            Bucket: await bucketName$,
+            Key: templateFileName,
+            Body: await templateFile$,
+            ContentType: 'application/x-yaml',
+        }, true);
+        return (await templateUpload$) as S3.PutObjectOutput;
     }
 
     /**
