@@ -227,7 +227,7 @@ export class Broiler {
             }
             if (stack.Outputs) {
                 this.log('Outputs:');
-                stack.Outputs.forEach(({OutputKey, OutputValue}) => {
+                order(stack.Outputs, 'OutputKey', 'asc').forEach(({OutputKey, OutputValue}) => {
                     this.log(`- ${OutputKey} = ${bold(String(OutputValue))}`);
                 });
             }
