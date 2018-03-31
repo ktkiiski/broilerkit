@@ -37,6 +37,16 @@ Resources:
       UserPoolName:
         Ref: AWS::StackName
 
+  # Group for administrator users
+  AdminUserPoolGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      Description: Administrators of the application
+      GroupName: Administrator
+      Precedence: 10
+      UserPoolId:
+        Ref: UserPool
+
   # The domain for the user pool in the AWS Cognito
   UserPoolDomain:
     Type: Custom::CognitoUserPoolDomain
