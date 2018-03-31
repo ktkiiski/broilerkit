@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Resources:
+  # Sub-stack for the custom resources
+  CustomResource:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        Fn::Sub: https://s3.amazonaws.com/${DeploymentManagementS3Bucket}/cloudformation-custom-resource.yml
+
+  # Policy that allows custom resource Lambda function to alter AWS service resources
+  CustomResourcePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SES
+      Roles:
+        - Fn::GetAtt: CustomResource.Outputs.Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              # Add all the actions required for any used custom resources
+              # The full reference is available here:
+              # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
+              - cognito-idp:CreateUserPoolDomain
+              - cognito-idp:DeleteUserPoolDomain
+              - cognito-idp:DescribeUserPoolDomain
+              - cognito-idp:UpdateUserPoolClient
+              - cognito-idp:DescribeUserPoolClient
+
+  # The user pool for the registry
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName:
+        Ref: AWS::StackName
+
+  # The domain for the user pool in the AWS Cognito
+  UserPoolDomain:
+    Type: Custom::CognitoUserPoolDomain
+    DependsOn:
+    - CustomResourcePolicy
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+      Service: CognitoIdentityServiceProvider
+      PhysicalResourceId:
+        # User pool domains are physically identified by the domain name
+        Ref: AWS::StackName
+      Parameters:
+        UserPoolId:
+          Ref: UserPool
+        Domain:
+          Ref: AWS::StackName
+      Create:
+        Action: createUserPoolDomain
+      Delete:
+        Action: deleteUserPoolDomain
+        IgnoreErrors: true
+
+  # The client for the user pool
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName:
+        Fn::Sub: ${AWS::StackName}-client
+      GenerateSecret: true
+      UserPoolId:
+        Ref: UserPool
+
+  # Settings for the user pool client that cannot be set natively in CloudFormation
+  UserPoolClientSettings:
+    Type: Custom::CognitoUserPoolClientSettings
+    DependsOn:
+    - CustomResourcePolicy
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+      Service: CognitoIdentityServiceProvider
+      Create:
+        Action: updateUserPoolClient
+        Parameters:
+          UserPoolId:
+            Ref: UserPool
+          ClientId:
+            Ref: UserPoolClient
+          AllowedOAuthFlows:
+            - code
+            - implicit
+          AllowedOAuthScopes:
+            - openid
+          SupportedIdentityProviders:
+            - COGNITO
+            - Facebook
+          AllowedOAuthFlowsUserPoolClient: true
+          CallbackURLs:
+            - Fn::Sub: ${SiteRoot}/
+
+  # The client secret is not available natively via CloudFormation
+  # We retrieve it with the custom resource
+  UserPoolClientSecret:
+    Type: Custom::CognitoClientSecret
+    DependsOn:
+    - CustomResourcePolicy
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+      Service: CognitoIdentityServiceProvider
+      Create:
+        Action: describeUserPoolClient
+        Attributes: UserPoolClient
+        Parameters:
+          UserPoolId:
+            Ref: UserPool
+          ClientId:
+            Ref: UserPoolClient
+
+  # Authorizer for our API to allow authentication with the user pools
+  ApiGatewayUserPoolAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Type: COGNITO_USER_POOLS
+      Name: UserPoolAuthorizer
+      IdentitySource: method.request.header.Authorization
+      IdentityValidationExpression:
+        Fn::Sub: "^${UserPoolClientSecret.ClientId}$"
+      RestApiId:
+        Ref: ApiGatewayRestApi
+      ProviderARNs:
+        - Fn::GetAtt: UserPool.Arn
+
+Outputs:
+  UserPoolOrigin:
+    Description: "URL origin for the AWS Cognito user pool"
+    Value:
+      Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com"
+  UserPoolClientId:
+    Description: "ID of the user pool client"
+    Value:
+      Ref: UserPoolClient
+  UserPoolClientSecret:
+    Description: "Generated secret for the user pool client"
+    Value:
+      Fn::GetAtt: UserPoolClientSecret.ClientSecret

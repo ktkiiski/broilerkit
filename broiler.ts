@@ -441,6 +441,7 @@ export class Broiler {
         const template$ = readTemplates([
             'cloudformation-init.yml',
             'cloudformation-app.yml',
+            'cloudformation-user-registry.yml',
         ]);
         if (!server) {
             return await template$;
