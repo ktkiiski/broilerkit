@@ -36,6 +36,12 @@ export interface HttpHeaders {
     [header: string]: string;
 }
 
+export interface HttpUser {
+    id: string;
+    email: string;
+    name: string;
+}
+
 export interface HttpRequest {
     /**
      * URL path of the request, starting with a leading trail.
@@ -103,6 +109,11 @@ export interface HttpRequest {
     environment: {
         [variable: string]: string;
     };
+    /**
+     * User that has been authenticated for the request, containing basic the
+     * information stored to the access or identity token.
+     */
+    user: HttpUser | null;
 }
 
 export interface HttpResponse {

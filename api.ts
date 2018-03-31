@@ -9,6 +9,8 @@ import { keys, transformValues } from './utils/objects';
 
 export { Field };
 
+export type AuthenticationType = null | 'user' | 'admin';
+
 export interface ApiRequest {
     method: HttpMethod;
     path: string;
@@ -169,7 +171,7 @@ interface EndpointMethodHandler {
 }
 
 class PayloadMethodHandler implements EndpointMethodHandler {
-    constructor(private urlSerializer: Serializer, private payloadSerializer: Serializer, private resourceSerializer: Serializer) {}
+    constructor(private urlSerializer: Serializer, private payloadSerializer: Serializer, private resourceSerializer: Serializer, public auth: AuthenticationType) {}
 
     public validate(input: any) {
         return {
@@ -197,7 +199,7 @@ class PayloadMethodHandler implements EndpointMethodHandler {
 }
 
 class ReadMethodHandler implements EndpointMethodHandler {
-    constructor(private urlSerializer: Serializer, private resourceSerializer: Serializer) {}
+    constructor(private urlSerializer: Serializer, private resourceSerializer: Serializer, public auth: AuthenticationType) {}
 
     public validate(input: any) {
         return this.urlSerializer.validate(input);
@@ -217,7 +219,7 @@ class ReadMethodHandler implements EndpointMethodHandler {
 }
 
 class NoContentMethodHandler implements EndpointMethodHandler {
-    constructor(private urlSerializer: Serializer) {}
+    constructor(private urlSerializer: Serializer, public auth: AuthenticationType) {}
 
     public validate(input: any) {
         return this.urlSerializer.validate(input);
@@ -298,60 +300,69 @@ export class ApiEndpoint<S, U extends keyof S, T> implements EndpointDefinition<
         private readonly modelPrototypes: ApiModel[] = [],
     ) {
         this.methodHandlers = methodHandlers || {
-            OPTIONS: new NoContentMethodHandler(this.urlResource),
+            OPTIONS: new NoContentMethodHandler(this.urlResource, null),
         };
         this.methods = keys(this.methodHandlers) as HttpMethod[];
     }
 
-    public listable<K extends keyof S>(sortableKeys: K[]): ListEndpointDefinition<S, U, K, T> {
-        const urlSerializer = new ListParamSerializer(this.resource, this.pathKeywords, sortableKeys);
+    public listable<K extends keyof S>(orderingKeys: K[]): ListEndpointDefinition<S, U, K, T>;
+    // tslint:disable-next-line:unified-signatures
+    public listable<K extends keyof S>(options: {auth?: AuthenticationType, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, T>;
+    public listable<K extends keyof S>(options: K[] | {auth?: AuthenticationType, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, T> {
+        const orderingKeys = Array.isArray(options) ? options : options.orderingKeys;
+        const auth = !Array.isArray(options) && options.auth || null;
+        const urlSerializer = new ListParamSerializer(this.resource, this.pathKeywords, orderingKeys);
         const pageResource = resource({
             next: nullable(url()),
             results: nestedList(this.resource),
         });
         return new ApiEndpoint(
             this.resource, this.pathPattern, this.pathKeywords,
-            {...this.methodHandlers, GET: new ReadMethodHandler(urlSerializer, pageResource)},
+            {...this.methodHandlers, GET: new ReadMethodHandler(urlSerializer, pageResource, auth)},
             [...this.modelPrototypes, ListEndpointModel.prototype],
         );
     }
 
-    public retrievable(): RetrieveEndpointDefinition<S, U, T> {
+    public retrievable(options?: {auth: AuthenticationType}): RetrieveEndpointDefinition<S, U, T> {
+        const auth = options && options.auth || null;
         return new ApiEndpoint(
             this.resource, this.pathPattern, this.pathKeywords,
-            {...this.methodHandlers, GET: new ReadMethodHandler(this.urlResource, this.resource)},
+            {...this.methodHandlers, GET: new ReadMethodHandler(this.urlResource, this.resource, auth)},
             [...this.modelPrototypes, RetrieveEndpointModel.prototype],
         );
     }
 
-    public creatable<R extends keyof S, O extends keyof S, D extends keyof S>(options: {required: R[], optional: O[], defaults: {[P in D]: S[P]}}): CreateEndpointDefinition<S, U, R, O, D, T> {
+    public creatable<R extends keyof S, O extends keyof S, D extends keyof S>(options: {auth?: AuthenticationType, required: R[], optional: O[], defaults: {[P in D]: S[P]}}): CreateEndpointDefinition<S, U, R, O, D, T> {
         const payloadResource = this.resource.optional(options);
+        const {auth = null} = options;
         return new ApiEndpoint(
             this.resource, this.pathPattern, this.pathKeywords,
-            {...this.methodHandlers, POST: new PayloadMethodHandler(this.urlResource, payloadResource, this.resource)},
+            {...this.methodHandlers, POST: new PayloadMethodHandler(this.urlResource, payloadResource, this.resource, auth)},
             [...this.modelPrototypes, CreateEndpointModel.prototype],
         );
     }
 
-    public updateable<R extends keyof S, O extends keyof S, D extends keyof S>(options: {required: R[], optional: O[], defaults: {[P in D]: S[P]}}): ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S> & T> {
+    public updateable<R extends keyof S, O extends keyof S, D extends keyof S>(options: {auth?: AuthenticationType, required: R[], optional: O[], defaults: {[P in D]: S[P]}}): ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S> & T> {
         const {required, optional, defaults} = options;
+        const {auth = null} = options;
         const replaceResource = this.resource.optional(options);
         const updateResource = this.resource.pick([...required, ...optional, ...keys(defaults)]).partial();
         return new ApiEndpoint(
             this.resource, this.pathPattern, this.pathKeywords,
             {
                 ...this.methodHandlers,
-                PUT: new PayloadMethodHandler(this.urlResource, replaceResource, this.resource),
-                PATCH: new PayloadMethodHandler(this.urlResource, updateResource, this.resource),
+                PUT: new PayloadMethodHandler(this.urlResource, replaceResource, this.resource, auth),
+                PATCH: new PayloadMethodHandler(this.urlResource, updateResource, this.resource, auth),
             },
             [...this.modelPrototypes, UpdateEndpointModel.prototype],
         );
     }
 
-    public destroyable(): ApiEndpoint<S, U, DestroyEndpoint<Pick<S, U>> & T> {
+    public destroyable(options?: {auth: AuthenticationType}): ApiEndpoint<S, U, DestroyEndpoint<Pick<S, U>> & T> {
+        const auth = options && options.auth || null;
         return new ApiEndpoint(
             this.resource, this.pathPattern, this.pathKeywords,
-            {...this.methodHandlers, DELETE: new NoContentMethodHandler(this.urlResource)},
+            {...this.methodHandlers, DELETE: new NoContentMethodHandler(this.urlResource, auth)},
             [...this.modelPrototypes, DestroyEndpointModel.prototype],
         );
     }

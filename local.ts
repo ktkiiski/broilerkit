@@ -160,6 +160,7 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, contex
         queryParameters: flattenParameters(requestUrlObj.query),
         headers: flattenParameters(nodeRequest.headers),
         region: 'local',
+        user: null, // TODO
         ...context,
     };
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {

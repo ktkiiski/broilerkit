@@ -2,7 +2,7 @@ import { CreateEndpoint, DestroyEndpoint, EndpointDefinition, IApiListPage, List
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
-import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, LambdaHttpRequestContext } from './lambda';
+import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
 import { compileUrl } from './url';
 import { spread, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
@@ -184,8 +184,8 @@ export class ApiService {
         };
     }
 
-    public request: LambdaHttpHandler = (lambdaRequest: LambdaHttpRequest, context: LambdaHttpRequestContext, callback: LambdaCallback) => {
-        const request = convertLambdaRequest(lambdaRequest, context);
+    public request: LambdaHttpHandler = (lambdaRequest: LambdaHttpRequest, _: any, callback: LambdaCallback) => {
+        const request = convertLambdaRequest(lambdaRequest);
         this.execute(request).then(
             (result) => callback(null, result),
             (error) => callback(error),

@@ -28,6 +28,21 @@ export interface LambdaHttpRequestContext {
     resourcePath: string;
     httpMethod: string;
     apiId: string;
+    authorizer?: {
+        claims?: {
+            'aud': string;
+            'cognito:groups': string;
+            'cognito:username': string;
+            'email': string;
+            'exp': string;
+            'iat': string;
+            'identities': string;
+            'iss': string;
+            'name': string;
+            'sub': string;
+            'token_use': string;
+        };
+    };
 }
 
 export interface LambdaHttpRequest {
@@ -43,14 +58,21 @@ export interface LambdaHttpRequest {
     isBase64Encoded?: boolean;
 }
 
-export type LambdaHttpHandler = (request: LambdaHttpRequest, context: LambdaHttpRequestContext, callback: LambdaCallback) => void;
+export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void;
 
-export function convertLambdaRequest(request: LambdaHttpRequest, _: LambdaHttpRequestContext): HttpRequest {
+export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
     let {httpMethod} = request;
-    const {body, isBase64Encoded} = request;
+    const {body, isBase64Encoded, requestContext} = request;
     const queryParameters = request.queryStringParameters || {};
     const headers = request.headers || {};
     const {method = null} = queryParameters;
+    const authorizer = requestContext && requestContext.authorizer;
+    const claims = authorizer && authorizer.claims || null;
+    const user = claims && {
+        id: claims.sub,
+        name: claims.name,
+        email: claims.email,
+    };
     if (method) {
         // Allow changing the HTTP method with 'method' query string parameter
         if (httpMethod === 'GET' && isReadHttpMethod(method)) {
@@ -103,6 +125,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest, _: LambdaHttpRe
         environment, region,
         apiRoot, siteRoot,
         apiOrigin, siteOrigin,
+        user,
         // Read the directory path from environment variables
         // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
     };
