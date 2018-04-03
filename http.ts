@@ -116,6 +116,10 @@ export interface HttpRequest {
     user: HttpUser | null;
 }
 
+export interface AuthenticatedHttpRequest extends HttpRequest {
+    user: HttpUser;
+}
+
 export interface HttpResponse {
     statusCode: HttpStatus;
     headers: HttpHeaders;

@@ -1,4 +1,4 @@
-import { CreateEndpoint, DestroyEndpoint, EndpointDefinition, IApiListPage, ListEndpoint, ListParams, RetrieveEndpoint, UpdateEndpoint } from './api';
+import { AuthenticationType, AuthRequestMapping, CreateEndpoint, CreateEndpointMethodMapping, DestroyEndpoint, DestroyEndpointMethodMapping, EndpointDefinition, EndpointMethodMapping, IApiListPage, ListEndpoint, ListEndpointMethodMapping, ListParams, RetrieveEndpoint, RetrieveEndpointMethodMapping, UpdateEndpoint, UpdateEndpointMethodMapping } from './api';
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
@@ -14,42 +14,48 @@ export type Tables<T> = {
     [P in keyof T]: Table<T[P]>;
 };
 
-export type EndpointHandler<I, O, D> = (input: I, models: D, request: HttpRequest) => Promise<SuccesfulResponse<O>>;
+export type EndpointHandler<I, O, D, R extends HttpRequest = HttpRequest> = (input: I, models: D, request: R) => Promise<SuccesfulResponse<O>>;
 export type EndpointHandlers<D> = {
     [P in HttpMethod]?: EndpointHandler<any, any, D>;
 };
 
-export interface Impl<T> {
-    endpoint: EndpointDefinition<T>;
-}
-
 export interface HttpRequestHandler {
-    endpoint: EndpointDefinition<any>;
+    endpoint: EndpointDefinition<any, EndpointMethodMapping>;
     execute(request: HttpRequest): Promise<HttpResponse | null>;
 }
 
-export type RetrievableEndpoint<I, O> = Impl<RetrieveEndpoint<I, O>>;
-export type CreatableEndpoint<I1, I2, O> = Impl<CreateEndpoint<I1, I2, O>>;
-export type ListableEndpoint<I, O, K extends keyof O> = Impl<ListEndpoint<I & ListParams<O, K>, O>>;
-export type UpdateableEndpoint<I1, I2, P, S> = Impl<UpdateEndpoint<I1, I2, P, S>>;
-export type DestroyableEndpoint<I> = Impl<DestroyEndpoint<I>>;
+export interface RetrievableEndpoint<I, O, A extends AuthenticationType> {
+    endpoint: EndpointDefinition<RetrieveEndpoint<I, O>, RetrieveEndpointMethodMapping<A>>;
+}
+export interface CreatableEndpoint<I1, I2, O, A extends AuthenticationType> {
+    endpoint: EndpointDefinition<CreateEndpoint<I1, I2, O>, CreateEndpointMethodMapping<A>>;
+}
+export interface ListableEndpoint<I, O, K extends keyof O, A extends AuthenticationType> {
+    endpoint: EndpointDefinition<ListEndpoint<I & ListParams<O, K>, O>, ListEndpointMethodMapping<A>>;
+}
+export interface UpdateableEndpoint<I1, I2, P, S, A extends AuthenticationType> {
+    endpoint: EndpointDefinition<UpdateEndpoint<I1, I2, P, S>, UpdateEndpointMethodMapping<A>>;
+}
+export interface DestroyableEndpoint<I, A extends AuthenticationType> {
+    endpoint: EndpointDefinition<DestroyEndpoint<I>, DestroyEndpointMethodMapping<A>>;
+}
 
-export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler {
-    constructor(public endpoint: EndpointDefinition<T>, public tables: Tables<D>, private handlers: EndpointHandlers<D>) {}
+export class EndpointImplementation<D, T, H extends EndpointMethodMapping> implements HttpRequestHandler {
+    constructor(public endpoint: EndpointDefinition<T, H>, public tables: Tables<D>, private handlers: EndpointHandlers<D>) {}
 
-    public retrieve<X, Y>(this: RetrievableEndpoint<X, Y> & this, handler: (input: X, models: D, request: HttpRequest) => Promise<Y>) {
+    public retrieve<I, O, A extends AuthenticationType>(this: RetrievableEndpoint<I, O, A> & this, handler: (input: I, models: D, request: AuthRequestMapping[A]) => Promise<O>) {
         return this.extend({
-            GET: async (input: X, models: D, request: HttpRequest) => {
+            GET: async (input: I, models: D, request: AuthRequestMapping[A]) => {
                 const result = await handler(input, models, request);
                 return new OK(result);
             },
         });
     }
-    public create<X1, X2, Y>(this: CreatableEndpoint<X1, X2, Y> & this, handler: EndpointHandler<X2, Y, D>) {
+    public create<X1, X2, Y, A extends AuthenticationType>(this: CreatableEndpoint<X1, X2, Y, A> & this, handler: EndpointHandler<X2, Y, D, AuthRequestMapping[A]>): EndpointImplementation<D, T, H> {
         return this.extend({POST: handler});
     }
-    public list<X, Y, K extends keyof Y>(this: ListableEndpoint<X, Y, K> & this, handler: (input: X, models: D, request: HttpRequest) => Promise<Y[]>) {
-        const list = async (input: X & ListParams<Y, K>, models: D, request: HttpRequest): Promise<OK<IApiListPage<Y>>> => {
+    public list<X, Y, K extends keyof Y, A extends AuthenticationType>(this: ListableEndpoint<X, Y, K, A> & this, handler: (input: X, models: D, request: AuthRequestMapping[A]) => Promise<Y[]>) {
+        const list = async (input: X & ListParams<Y, K>, models: D, request: AuthRequestMapping[A]): Promise<OK<IApiListPage<Y>>> => {
             const {endpoint} = this;
             const {ordering} = input;
             const results = await handler(input, models, request);
@@ -66,12 +72,12 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
         };
         return this.extend({GET: list});
     }
-    public update<X1, X2, P, S>(this: UpdateableEndpoint<X1, X2, P, S> & this, handler: EndpointHandler<X2 | P, S, D>) {
+    public update<X1, X2, P, S, A extends AuthenticationType>(this: UpdateableEndpoint<X1, X2, P, S, A> & this, handler: EndpointHandler<X2 | P, S, D, AuthRequestMapping[A]>) {
         return this.extend({PUT: handler, PATCH: handler});
     }
-    public destroy<X>(this: DestroyableEndpoint<X> & this, handler: (input: X, models: D, request: HttpRequest) => Promise<void>) {
+    public destroy<X, A extends AuthenticationType>(this: DestroyableEndpoint<X, A> & this, handler: (input: X, models: D, request: AuthRequestMapping[A]) => Promise<void>) {
         return this.extend({
-            DELETE: async (input: X, models: D, request: HttpRequest) => {
+            DELETE: async (input: X, models: D, request: AuthRequestMapping[A]) => {
                 await handler(input, models, request);
                 return new NoContent();
             },
@@ -127,13 +133,13 @@ export class EndpointImplementation<D, T> implements Impl<T>, HttpRequestHandler
         }
     }
 
-    private extend(handlers: {[P in HttpMethod]?: EndpointHandler<any, any, D>}): EndpointImplementation<D, T> {
+    private extend(handlers: {[P in HttpMethod]?: EndpointHandler<any, any, D>}): EndpointImplementation<D, T, H> {
         return new EndpointImplementation(this.endpoint, this.tables, Object.assign({}, this.handlers, handlers));
     }
 }
 
-export function implement<D, T>(endpoint: EndpointDefinition<T>, db: Tables<D>): EndpointImplementation<D, T> {
-    return new EndpointImplementation<D, T>(endpoint, db, {});
+export function implement<D, T, H extends EndpointMethodMapping>(endpoint: EndpointDefinition<T, H>, db: Tables<D>): EndpointImplementation<D, T, H> {
+    return new EndpointImplementation<D, T, H>(endpoint, db, {});
 }
 
 function convertApiResponse(response: ApiResponse<any>, request: HttpRequest): HttpResponse {
