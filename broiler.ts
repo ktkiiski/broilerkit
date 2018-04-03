@@ -29,6 +29,7 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
+import { EndpointMethodHandler } from './api';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -489,15 +490,20 @@ export class Broiler {
         };
         // Build templates for every HTTP method, for every endpoint
         const apiMethods = flatMap(
-            endpoints, ({endpoint, path, name}) => endpoint.methods.map((method) => ({method, path, name})),
+            endpoints, ({endpoint, path, name}) => mapObject(
+                endpoint.methodHandlers,
+                ({auth}: EndpointMethodHandler, method: HttpMethod) => ({method, path, name, auth}),
+            ),
         );
         const apiMethods$ = apiMethods.map(
-            ({method, path, name}) => readTemplates(['cloudformation-api-method.yml'], {
+            ({method, path, name, auth}) => readTemplates(['cloudformation-api-method.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, method),
                 ApiFunctionName: getApiLambdaFunctionLogicalId(name),
                 ApiResourceName: getApiResourceLogicalId(path),
                 ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
                 ApiMethod: method,
+                AuthorizationType: auth === 'none' ? '"NONE"' : '"COGNITO_USER_POOLS"',
+                AuthorizerId: JSON.stringify(auth === 'none' ? '' : {Ref: 'ApiGatewayUserPoolAuthorizer'}),
             }))
         ;
         // Enable CORS for every endpoint URL

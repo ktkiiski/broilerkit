@@ -169,7 +169,7 @@ class DestroyEndpointModel<I> extends ApiModel implements DestroyEndpoint<I> {
     }
 }
 
-export interface EndpointMethodHandler<A extends AuthenticationType> {
+export interface EndpointMethodHandler<A extends AuthenticationType = AuthenticationType> {
     auth: A;
     validate(input: any): any;
     serializeRequest(input: any): MethodHandlerRequest;

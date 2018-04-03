@@ -10,9 +10,8 @@ Resources:
       RestApiId:
         Ref: ApiGatewayRestApi
       RequestParameters: {}
-      AuthorizationType: COGNITO_USER_POOLS
-      AuthorizerId:
-        Ref: ApiGatewayUserPoolAuthorizer
+      AuthorizationType: <AuthorizationType>
+      AuthorizerId: <AuthorizerId>
       Integration:
         # NOTE: Lambda execution endpoint is always called with POST
         IntegrationHttpMethod: POST
