@@ -106,7 +106,9 @@ Resources:
             - Facebook
           AllowedOAuthFlowsUserPoolClient: true
           CallbackURLs:
-            - Fn::Sub: ${SiteRoot}/
+            - Fn::Sub: ${SiteRoot}/_oauth2_signin_complete.html
+          LogoutURLs:
+            - Fn::Sub: ${SiteRoot}/_oauth2_signout_complete.html
 
   # The client secret is not available natively via CloudFormation
   # We retrieve it with the custom resource
@@ -142,8 +144,8 @@ Resources:
         - Fn::GetAtt: UserPool.Arn
 
 Outputs:
-  UserPoolOrigin:
-    Description: "URL origin for the AWS Cognito user pool"
+  UserPoolRoot:
+    Description: "Root URL for the AWS Cognito user pool"
     Value:
       Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com"
   UserPoolClientId:

@@ -31,6 +31,8 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
     const compiler = webpack(getFrontendWebpackConfig({
         ...options, debug: true, devServer: true, analyze: false,
+        authClientId: '', // TODO!
+        authRoot: '', // TODO!
     }));
     const devServer = new WebpackDevServer(
         compiler,

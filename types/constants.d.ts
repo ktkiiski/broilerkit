@@ -42,3 +42,16 @@ declare const __AWS_REGION__: string;
  * The AWS stack name to which the app is deployed.
  */
 declare const __AWS_STACK_NAME__: string;
+
+/**
+ * Options that should be passed to the authentication client:
+ *
+ *     const client = new AuthClient(__AUTH_OPTIONS__);
+ */
+declare const __AUTH_OPTIONS__: {
+    clientId: string;
+    signInUri: string;
+    signOutUri: string;
+    signInRedirectUri: string;
+    signOutRedirectUri: string;
+};

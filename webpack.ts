@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as webpack from 'webpack';
 
+import { AuthOptions } from './auth';
 import { BroilerConfig } from './config';
 import { executeSync } from './exec';
 import { union } from './utils/arrays';
@@ -18,14 +19,19 @@ export interface WebpackConfigOptions extends BroilerConfig {
     analyze: boolean;
 }
 
+export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
+    authClientId: string;
+    authRoot: string;
+}
+
 /**
  * Creates the Webpack 2 configuration for the front-end asset compilation.
  * The options are documented at
  * https://webpack.js.org/configuration/
  */
-export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
+export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, pages, projectRootPath, stage, analyze} = config;
-    const {region, apiRoot, assetsRoot, siteRoot} = config;
+    const {region, apiRoot, assetsRoot, siteRoot, authClientId, authRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const stageDirPath = path.resolve(projectRootPath, stageDir);
@@ -33,7 +39,14 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
-
+    // Determine options for the AuthClient
+    const authOptions: AuthOptions = {
+        clientId: authClientId,
+        signInUri: `${authRoot}/oauth2/authorize`,
+        signOutUri: `${authRoot}/logout`,
+        signInRedirectUri: `${siteRoot}/_oauth2_signin_complete.html`,
+        signOutRedirectUri: `${siteRoot}/_oauth2_signout_complete.html`,
+    };
     const gitCommitHash = executeSync('git rev-parse HEAD');
     const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
     const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
@@ -97,6 +110,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             '__BRANCH__': JSON.stringify(gitBranch),
             // AWS region to which the app is deployed
             '__AWS_REGION__': JSON.stringify(region),
+            // Options for the authentication client
+            '__AUTH_OPTIONS__': JSON.stringify(authOptions),
         }),
         /**
          * Prevent all the MomentJS locales to be imported by default.

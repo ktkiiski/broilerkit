@@ -83,7 +83,6 @@ export class Broiler {
      */
     public async deploy(): Promise<void> {
         await this.clean();
-        const frontendCompile$ = this.compileFrontend(false);
         const backendCompile$ = this.compileBackend(false);
         await this.initialize();
         const customResourceUpload$ = this.uploadCustomResource();
@@ -92,8 +91,9 @@ export class Broiler {
         await customResourceUpload$;
         await this.deployStack();
         const stackOutput$ = this.cloudFormation.getStackOutput();
-        await frontendCompile$;
-        await this.deployFile();
+        // TODO: Figure out how to make the frontend independent of the stack deployment
+        await this.compileFrontend(false);
+        await this.uploadFrontend();
         const output = await stackOutput$;
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
         this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
@@ -166,7 +166,14 @@ export class Broiler {
      */
     public async compileFrontend(analyze: boolean): Promise<WebpackStats> {
         this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.config.stage)}...`);
-        const stats = await compile(getFrontendWebpackConfig({...this.config, devServer: false, analyze}));
+        const output = await this.cloudFormation.getStackOutput();
+        const stats = await compile(getFrontendWebpackConfig({
+            ...this.config,
+            devServer: false,
+            authRoot: output.UserPoolRoot,
+            authClientId: output.UserPoolClientId,
+            analyze,
+        }));
         this.log(stats.toString({colors: true}));
         return stats;
     }
@@ -296,13 +303,15 @@ export class Broiler {
      * Deploys the compiled asset files from the build directory to the
      * Amazon S3 buckets in the deployed stack.
      */
-    public async deployFile(): Promise<IFileUpload[]> {
+    public async uploadFrontend(): Promise<IFileUpload[]> {
         const asset$ = searchFiles(this.buildDir, ['!**/*.html', '!_api*.js']);
         const page$ = searchFiles(this.buildDir, ['**/*.html']);
+        const res$ = searchFiles(path.join(__dirname, 'res'), ['**/*.html']);
         const output = await this.cloudFormation.getStackOutput();
-        const assetUpload$ = this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false);
-        const pageUpload$ = this.uploadFilesToS3Bucket(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true);
-        return [...await toArray(assetUpload$), ...await toArray(pageUpload$)];
+        const assetUpload$ = toArray(this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false));
+        const pageUpload$ = toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true));
+        const resUpload$ = toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, res$, staticHtmlCacheDuration, true));
+        return [...await assetUpload$, ...await pageUpload$, ...await resUpload$];
     }
 
     /**

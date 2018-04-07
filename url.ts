@@ -38,6 +38,15 @@ export function compileUrl(root: string, path: string, queryParameters: {[key: s
     return urlBase;
 }
 
+export function parseQuery(query: string): {[key: string]: string} {
+    const result: {[key: string]: string} = {};
+    for (const item of query.split('&')) {
+        const [key, value] = item.split('=', 2);
+        result[decodeURIComponent(key)] = decodeURIComponent(value);
+    }
+    return result;
+}
+
 function escapeRegExp(str: string) {
     return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
 }
