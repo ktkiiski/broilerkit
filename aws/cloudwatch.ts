@@ -1,6 +1,11 @@
 import { CloudWatchLogs } from 'aws-sdk';
 import { mergeAsync, toArray, wait } from '../async';
+import { indent, stripPrefix } from '../utils/strings';
 import { retrievePages } from './utils';
+
+import chalk from 'chalk';
+
+import * as YAML from 'yamljs';
 
 export interface LogStreamOptions {
     logGroupName: string;
@@ -113,4 +118,28 @@ export class AmazonCloudWatch {
             }
         }
     }
+}
+
+/**
+ * Formats the given log event as a pretty, colorized, printable message string.
+ */
+export function formatLogEvent(event: LogEvent, stackName?: string) {
+    const timestamp = new Date(event.timestamp).toISOString();
+    const groupName = event.logGroupName.replace(/^\/aws\/lambda\//, '');
+    const functionName = stackName && stripPrefix(groupName, `${stackName}-`) || groupName;
+    const message = event.message.trim().replace(/\t+(\{\"[^\t]+\})$/, (match, encodedJson) => {
+        let obj: any;
+        try {
+            obj = JSON.parse(encodedJson);
+        } catch {
+            // Wasn't valid JSON after all. Return as it was.
+            return match;
+        }
+        const prettified = YAML.stringify(obj, 4, 2).replace(/^(\s*)(\w+):/gm, (_, indentation, attr) => {
+            const color = /^(error\w+|stackTrace)$/i.test(attr) ? chalk.red : chalk.dim;
+            return `${indentation}${color(attr)}:`;
+        });
+        return '\n' + indent(prettified.trimRight(), 2);
+    });
+    return `${chalk.dim(`${timestamp}:`)} ${chalk.cyan(functionName)} ${message}`;
 }

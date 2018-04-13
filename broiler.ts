@@ -4,7 +4,7 @@ import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
 import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
-import { AmazonCloudWatch } from './aws/cloudwatch';
+import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
@@ -270,10 +270,7 @@ export class Broiler {
             follow, maxCount, logGroupNames, startTime: +startDate,
         });
         for await (const event of logStream) {
-            const timestamp = new Date(event.timestamp).toISOString();
-            const groupName = event.logGroupName.replace(/^\/aws\/lambda\//, '');
-            const message = event.message.trim();
-            this.log(`${dim(`${timestamp}:`)} ${cyan(groupName)} ${message}`);
+            this.log(formatLogEvent(event, this.stackName));
         }
     }
 

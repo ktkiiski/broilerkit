@@ -12,8 +12,12 @@ export function padStart(str: string, minLength: number, padChars: string) {
         return str;
     }
     const paddingCount = Math.ceil(paddingLength / padChars.length);
-    const padding = new Array(paddingCount + 1).join(padChars);
+    const padding = repeat(padChars, paddingCount);
     return padding + str;
+}
+
+export function repeat(str: string, count: number): string {
+    return new Array(count + 1).join(str);
 }
 
 const digits = '1234567890';
@@ -35,4 +39,10 @@ export function stripPrefix(str: string, prefix: string): string | null {
         return str.slice(ln);
     }
     return null;
+}
+
+const indentRegexp = /^/gm;
+
+export function indent(str: string, indentation: number): string {
+    return str.replace(indentRegexp, repeat(' ', indentation));
 }
