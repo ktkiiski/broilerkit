@@ -121,12 +121,39 @@ export class AuthClient {
     }
 
     /**
+     * Use this method to get the identity token right before making an
+     * API request to the server, to be included to the Authorization header.
+     *
+     * If the user is not authenticated, or any previous token has expired,
+     * (i.e. there is no valid identity token stored), the user will be signed in.
+     * Because this may open a pop-up, only call this in a `click` event handler,
+     * to prevent pop-up blockers to prevent the window to be opened.
+     */
+    public async demandIdToken(): Promise<string> {
+        const token = this.getIdToken();
+        if (token) {
+            return token;
+        }
+        const auth = await this.authenticate();
+        return auth.idToken;
+    }
+
+    /**
      * Returns the current access token if the user is authenticated and the token
      * has not expired yet. Otherwise returns null.
      */
     public getAccessToken(now = new Date()): string | null {
         const auth = this.auth;
         return auth && auth.expiresAt < now && auth.accessToken || null;
+    }
+
+    /**
+     * Returns the current identity token if the user is authenticated and the token
+     * has not expired yet. Otherwise returns null.
+     */
+    public getIdToken(now = new Date()): string | null {
+        const auth = this.auth;
+        return auth && auth.expiresAt < now && auth.idToken || null;
     }
 
     /**
