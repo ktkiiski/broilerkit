@@ -12,7 +12,7 @@ export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
  */
 export function forEachKey<T>(obj: T, iterator: (key: keyof T, value: T[keyof T]) => void): void {
     for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (hasOwnProperty(obj, key)) {
             iterator(key, obj[key]);
         }
     }
@@ -104,7 +104,7 @@ export function toPairs<T>(obj: T): Array<KeyValuePair<T>> {
 export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, K> {
     const output = {} as Pick<T, K>;
     for (const key of props) {
-        if (obj.hasOwnProperty(key)) {
+        if (hasOwnProperty(obj, key)) {
             output[key] = obj[key];
         }
     }
@@ -129,4 +129,8 @@ export function spread<A, B, C, D>(obj1: A, obj2: B, obj3: C, obj4: D): A & B & 
 export function spread<T>(obj1: T, ...obj2: T[]): T;
 export function spread(...args: any[]): any {
     return __assign({}, ...args);
+}
+
+function hasOwnProperty(obj: any, propName: string) {
+    return Object.prototype.hasOwnProperty.call(obj, propName);
 }
