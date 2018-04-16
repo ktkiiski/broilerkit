@@ -39,6 +39,7 @@ export function compileUrl(root: string, path: string, queryParameters: {[key: s
 }
 
 export function parseQuery(query: string): {[key: string]: string} {
+    query = query.replace(/^[#?]/, ''); // Strip any leading # or ?
     const result: {[key: string]: string} = {};
     for (const item of query.split('&')) {
         const [key, value] = item.split('=', 2);
