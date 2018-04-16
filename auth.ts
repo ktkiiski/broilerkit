@@ -144,7 +144,7 @@ export class AuthClient {
      */
     public getAccessToken(now = new Date()): string | null {
         const auth = this.auth;
-        return auth && auth.expiresAt < now && auth.accessToken || null;
+        return auth && now < auth.expiresAt && auth.accessToken || null;
     }
 
     /**
@@ -153,7 +153,7 @@ export class AuthClient {
      */
     public getIdToken(now = new Date()): string | null {
         const auth = this.auth;
-        return auth && auth.expiresAt < now && auth.idToken || null;
+        return auth && now < auth.expiresAt && auth.idToken || null;
     }
 
     /**
