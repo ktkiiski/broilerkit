@@ -42,8 +42,8 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
     // Determine options for the AuthClient
     const authOptions: AuthOptions = {
         clientId: authClientId,
-        signInUri: `${authRoot}/oauth2/authorize`,
-        signOutUri: `${authRoot}/logout`,
+        signInUri: devServer ? `${authRoot}/_oauth2_signin.html` : `${authRoot}/oauth2/authorize`,
+        signOutUri: devServer ? `${authRoot}/_oauth2_signout.html` : `${authRoot}/logout`,
         signInRedirectUri: `${siteRoot}/_oauth2_signin_complete.html`,
         signOutRedirectUri: `${siteRoot}/_oauth2_signout_complete.html`,
     };
@@ -156,6 +156,45 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             logLevel: 'info',
         }),
     ];
+    // If running the development server, then add the dummy OAuth2 service
+    if (devServer) {
+        scriptPaths.push(
+            path.resolve(__dirname, `./res/_oauth2_signin.ts`),
+            path.resolve(__dirname, `./res/_oauth2_signout.ts`),
+        );
+        plugins.push(
+            new HtmlWebpackPlugin({
+                title: 'Sign in',
+                filename: '_oauth2_signin.html',
+                template: path.resolve(__dirname, `./res/_oauth2_signin.html`),
+                chunks: ['_oauth2_signin'],
+                inject: true,
+                hash: false,
+            }),
+            new HtmlWebpackPlugin({
+                title: 'Sign out',
+                filename: '_oauth2_signout.html',
+                template: path.resolve(__dirname, `./res/_oauth2_signout.html`),
+                chunks: ['_oauth2_signout'],
+                inject: true,
+                hash: false,
+            }),
+            new HtmlWebpackPlugin({
+                filename: '_oauth2_signin_complete.html',
+                template: path.resolve(__dirname, `./res/_oauth2_signin_complete.html`),
+                chunks: [],
+                inject: false,
+                hash: false,
+            }),
+            new HtmlWebpackPlugin({
+                filename: '_oauth2_signout_complete.html',
+                template: path.resolve(__dirname, `./res/_oauth2_signout_complete.html`),
+                chunks: [],
+                inject: false,
+                hash: false,
+            }),
+        );
+    }
     /**
      * If icon source file is provided, generate icons for the app.
      * For configuration, see https://github.com/jantimon/favicons-webpack-plugin

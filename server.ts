@@ -84,12 +84,12 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
         });
     }
 
-    public async execute(request: HttpRequest): Promise<HttpResponse | null> {
+    public execute(request: HttpRequest): Promise<HttpResponse | null> {
         const {method} = request;
         const {endpoint, tables} = this;
         const {methods} = endpoint;
         const models = getModels(tables, request);
-        try {
+        return handleApiRequest(request, async () => {
             // TODO: Refactor so that there is no need to parse for every endpoint
             const input = endpoint.deserializeRequest(request);
             if (!input) {
@@ -116,21 +116,10 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
             }
             const response = await handler(input, models, request);
             if (!response.data) {
-                return convertApiResponse(response, request);
+                return response;
             }
-            return convertApiResponse({...response, data: endpoint.serializeResponseData(method, response.data)}, request);
-        } catch (error) {
-            // Determine if the error was a HTTP response
-            // tslint:disable-next-line:no-shadowed-variable
-            const {statusCode, data, headers} = error || {} as any;
-            if (typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object') {
-                // This was an intentional HTTP error, so it should be considered
-                // a successful execution of the lambda function.
-                return convertApiResponse(error, request);
-            }
-            // This doesn't seem like a HTTP response -> Pass through for the internal server error
-            throw error;
-        }
+            return {...response, data: endpoint.serializeResponseData(method, response.data)};
+        });
     }
 
     private extend(handlers: {[P in HttpMethod]?: EndpointHandler<any, any, D>}): EndpointImplementation<D, T, H> {
@@ -142,14 +131,34 @@ export function implement<D, T, H extends EndpointMethodMapping>(endpoint: Endpo
     return new EndpointImplementation<D, T, H>(endpoint, db, {});
 }
 
-function convertApiResponse(response: ApiResponse<any>, request: HttpRequest): HttpResponse {
+function handleApiRequest(request: HttpRequest, handler: () => Promise<ApiResponse<any> | null>): Promise<HttpResponse | null> {
+    return handler().then(
+        (apiResponse) => apiResponse && finalizeApiResponse(apiResponse, request.siteOrigin),
+        (error) => catchHttpException(error, request),
+    );
+}
+
+function catchHttpException(error: any, request: HttpRequest): HttpResponse {
+    // Determine if the error was a HTTP response
+    // tslint:disable-next-line:no-shadowed-variable
+    const {statusCode, data, headers} = error || {} as any;
+    if (typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object') {
+        // This was an intentional HTTP error, so it should be considered
+        // a successful execution of the lambda function.
+        return finalizeApiResponse(error, request.siteOrigin);
+    }
+    // This doesn't seem like a HTTP response -> Pass through for the internal server error
+    throw error;
+}
+
+export function finalizeApiResponse(response: ApiResponse<any>, siteOrigin: string): HttpResponse {
     const {statusCode, data, headers} = response;
     const encodedBody = data == null ? '' : JSON.stringify(data);
     return {
         statusCode,
         body: encodedBody,
         headers: {
-            'Access-Control-Allow-Origin': request.siteOrigin,
+            'Access-Control-Allow-Origin': siteOrigin,
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
             'Access-Control-Allow-Credentials': 'true',
             'Content-Type': 'application/json',

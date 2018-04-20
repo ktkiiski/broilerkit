@@ -1,14 +1,15 @@
 import { URL } from 'url';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
-import { BadRequest, HttpMethod, HttpRequest, HttpStatus } from './http';
-import { ApiService } from './server';
+import { BadRequest, HttpMethod, HttpRequest, HttpResponse, HttpStatus, HttpUser, Unauthorized } from './http';
+import { ApiService, finalizeApiResponse } from './server';
 import { readStream } from './utils/fs';
 import { forEachKey, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import * as http from 'http';
+import * as jwt from 'jsonwebtoken';
 import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
@@ -31,8 +32,8 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
     const compiler = webpack(getFrontendWebpackConfig({
         ...options, debug: true, devServer: true, analyze: false,
-        authClientId: '', // TODO!
-        authRoot: '', // TODO!
+        authClientId: 'LOCAL_AUTH_CLIENT_ID', // TODO!
+        authRoot: `${options.siteRoot}`, // TODO!
     }));
     const devServer = new WebpackDevServer(
         compiler,
@@ -118,12 +119,12 @@ export async function serveBackEnd(options: BroilerConfig) {
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const request = await nodeRequestToApiRequest(httpRequest, {
+                    const response = await nodeRequestToApiRequest(httpRequest, handler, {
                         siteOrigin, apiOrigin, siteRoot, apiRoot, environment,
                     });
-                    const response = await handler.execute(request);
+                    const textColor = httpRequest.method === 'OPTIONS' ? chalk.dim : (x: string) => x;
                     // tslint:disable-next-line:no-console
-                    console.log(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(response.statusCode)}`);
+                    console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
                     httpResponse.writeHead(response.statusCode, response.headers);
                     httpResponse.end(response.body);
                 } catch (error) {
@@ -153,32 +154,51 @@ function getRequestEnvironment(service: ApiService, directoryPath: string): {[ke
     return environment;
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {
+async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handler: ApiService, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}): Promise<HttpResponse> {
     const {method} = nodeRequest;
+    const {siteOrigin} = context;
+    const headers = flattenParameters(nodeRequest.headers);
+    const authHeader = headers.authorization;
+    let user: HttpUser | null = null;
+    if (authHeader) {
+        const authTokenMatch = /^Bearer\s+(\S+)$/.exec(authHeader);
+        if (!authTokenMatch) {
+            return finalizeApiResponse(new Unauthorized(`Invalid authorization header`), siteOrigin);
+        }
+        try {
+            const payload = jwt.verify(authTokenMatch[1], 'LOCAL_SECRET') as any;
+            user = {
+                id: payload.sub,
+                name: payload.name,
+                email: payload.email,
+            };
+        } catch {
+            return finalizeApiResponse(new Unauthorized(`Invalid access token`), siteOrigin);
+        }
+    }
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
     const request: HttpRequest = {
         method: method as HttpMethod,
         path: requestUrlObj.pathname as string,
         queryParameters: flattenParameters(requestUrlObj.query),
-        headers: flattenParameters(nodeRequest.headers),
+        headers,
         region: 'local',
-        user: null, // TODO
+        user,
         ...context,
     };
-    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
-        return request;
-    }
-    const chunks = await readStream(nodeRequest);
-    const body = chunks.map((chunk) => chunk.toString()).join('');
-    const response = {...request, body};
-    if (body) {
-        try {
-            response.payload = JSON.parse(body);
-        } catch {
-            throw new BadRequest(`Invalid JSON payload`);
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        const chunks = await readStream(nodeRequest);
+        const body = chunks.map((chunk) => chunk.toString()).join('');
+        request.body = body;
+        if (body) {
+            try {
+                request.payload = JSON.parse(body);
+            } catch {
+                return finalizeApiResponse(new BadRequest(`Invalid JSON payload`), siteOrigin);
+            }
         }
     }
-    return response;
+    return await handler.execute(request);
 }
 
 function colorizeStatusCode(statusCode: HttpStatus): string {
@@ -196,5 +216,5 @@ function colorizeStatusCode(statusCode: HttpStatus): string {
 }
 
 function flattenParameters<K extends string>(params: {[P in K]: string | string[] | undefined}): {[P in K]: string} {
-    return transformValues(params, (values) => Array.isArray(values) ? values[0] : String(values || ''));
+    return transformValues(params || {}, (values) => Array.isArray(values) ? values[0] : String(values || ''));
 }

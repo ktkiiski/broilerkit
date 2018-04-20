@@ -136,7 +136,7 @@ export function isWriteHttpMethod(method: string): method is 'POST' | 'PUT' | 'P
 
 /**
  * Represents a response from an API endpoint function.
- * Unlike in IHttpResponse, the data should be a response object
+ * Unlike in HttpResponse, the data should be a response object
  * that is not yet encoded as JSON string.
  */
 export interface ApiResponse<T> {
@@ -176,6 +176,10 @@ export class NoContent extends SuccesfulResponse<void> {
 
 export class NotFound extends ExceptionResponse {
     public readonly statusCode = HttpStatus.NotFound;
+}
+
+export class Unauthorized extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.Unauthorized;
 }
 
 export class BadRequest extends ExceptionResponse {
