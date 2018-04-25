@@ -305,7 +305,7 @@ function parseAuth(tokens: AuthTokens) {
         id: userId,
         name: idTokenPayload.name,
         email: idTokenPayload.email,
-        expiresAt: new Date(exp),
+        expiresAt: new Date(exp * 1000),
         ...tokens,
     };
 }
