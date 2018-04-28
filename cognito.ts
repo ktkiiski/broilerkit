@@ -94,6 +94,10 @@ export class CognitoModel<S extends User = User> implements Model<S, UserIdentit
 export const users: Table<CognitoModel> = {
     name: 'Users',
     getModel(uri: string): CognitoModel {
+        // TODO: Better handling for situation where user registry is not enabled
+        if (!uri) {
+            return {} as CognitoModel;
+        }
         if (uri.startsWith('arn:')) {
             const {service, region, resourceType, resourceId} = parseARN(uri);
             if (service !== 'cognito-idp') {

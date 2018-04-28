@@ -3,7 +3,6 @@ import { NotFound } from '../http';
 import { mapObject, spread } from '../utils/objects';
 import { retrievePages } from './utils';
 
-// TODO: Better typing for a user
 export interface CognitoUser {
     id: string;
     username: string;
