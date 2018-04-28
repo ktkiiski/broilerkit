@@ -11,8 +11,9 @@ if (element) {
         };
         const idTokenPayload = {
             ...accessTokenPayload,
-            email: 'john.smith@example.com',
-            name: 'John Smith',
+            'email': 'john.smith@example.com',
+            'name': 'John Smith',
+            'cognito:groups': ['Administrator'],
         };
         // Create the JWT token
         const accessToken = sign(accessTokenPayload, 'LOCAL_SECRET');

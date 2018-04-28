@@ -171,6 +171,7 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handle
                 id: payload.sub,
                 name: payload.name,
                 email: payload.email,
+                groups: payload['cognito:groups'] || [],
             };
         } catch {
             return finalizeApiResponse(new Unauthorized(`Invalid access token`), siteOrigin);

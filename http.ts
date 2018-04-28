@@ -40,6 +40,7 @@ export interface HttpUser {
     id: string;
     email: string;
     name: string;
+    groups: string[];
 }
 
 export interface HttpRequest {

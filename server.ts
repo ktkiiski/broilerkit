@@ -1,7 +1,7 @@
 import { AuthenticationType, AuthRequestMapping, CreateEndpoint, CreateEndpointMethodMapping, DestroyEndpoint, DestroyEndpointMethodMapping, EndpointDefinition, EndpointMethodMapping, IApiListPage, ListEndpoint, ListEndpointMethodMapping, ListParams, RetrieveEndpoint, RetrieveEndpointMethodMapping, UpdateEndpoint, UpdateEndpointMethodMapping } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
-import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent } from './http';
+import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
 import { compileUrl } from './url';
@@ -107,6 +107,18 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
                     },
                     body: '',
                 };
+            }
+            // Check the authentication
+            const authType = endpoint.getAuthenticationType(method);
+            if (authType !== 'none') {
+                const {user} = request;
+                if (!user) {
+                    throw new Unauthorized(`Unauthorized`);
+                }
+                if (authType === 'admin' && user.groups.indexOf('Administrators') < 0) {
+                    // Not an admin!
+                    throw new Unauthorized(`Administrator rights are missing.`);
+                }
             }
             const handler = this.handlers[method];
             // Check that the API function was called with an accepted HTTP method

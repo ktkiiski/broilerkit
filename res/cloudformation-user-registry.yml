@@ -55,7 +55,7 @@ Resources:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
       Description: Administrators of the application
-      GroupName: Administrator
+      GroupName: Administrators
       Precedence: 10
       UserPoolId:
         Ref: UserPool

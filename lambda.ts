@@ -68,10 +68,12 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
     const {method = null} = queryParameters;
     const authorizer = requestContext && requestContext.authorizer;
     const claims = authorizer && authorizer.claims || null;
+    const groupsStr = claims && claims['cognito:groups'];
     const user = claims && {
         id: claims.sub,
         name: claims.name,
         email: claims.email,
+        groups: groupsStr ? groupsStr.split(',') : [],
     };
     if (method) {
         // Allow changing the HTTP method with 'method' query string parameter
