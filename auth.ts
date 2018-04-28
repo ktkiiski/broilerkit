@@ -223,10 +223,14 @@ export class AuthClient {
                 window.removeEventListener('message', listener);
 
                 try {
-                    const {error, state, access_token, id_token} = parseQuery(resultStr.replace(/^#/, ''));
+                    const {error, error_description, state, access_token, id_token} = parseQuery(resultStr.replace(/^#/, ''));
                     // Check that no error attribute is present
                     if (error) {
-                        throw new Error(`Authentication failed due to '${error}'`);
+                        if (error_description) {
+                            throw new Error(`Authentication failed: ${error_description}`);
+                        } else {
+                            throw new Error(`Authentication failed due to '${error}'`);
+                        }
                     }
                     // The access token must be present
                     if (!access_token) {
