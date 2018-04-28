@@ -1,7 +1,7 @@
 import { URL } from 'url';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
-import { BadRequest, HttpMethod, HttpRequest, HttpResponse, HttpStatus, HttpUser, Unauthorized } from './http';
+import { BadRequest, HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
 import { ApiService, finalizeApiResponse } from './server';
 import { readStream } from './utils/fs';
 import { forEachKey, transformValues } from './utils/objects';
@@ -159,7 +159,7 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handle
     const {siteOrigin} = context;
     const headers = flattenParameters(nodeRequest.headers);
     const authHeader = headers.authorization;
-    let user: HttpUser | null = null;
+    let auth: HttpAuth | null = null;
     if (authHeader) {
         const authTokenMatch = /^Bearer\s+(\S+)$/.exec(authHeader);
         if (!authTokenMatch) {
@@ -167,7 +167,7 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handle
         }
         try {
             const payload = jwt.verify(authTokenMatch[1], 'LOCAL_SECRET') as any;
-            user = {
+            auth = {
                 id: payload.sub,
                 name: payload.name,
                 email: payload.email,
@@ -184,7 +184,7 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handle
         queryParameters: flattenParameters(requestUrlObj.query),
         headers,
         region: 'local',
-        user,
+        auth,
         ...context,
     };
     if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {

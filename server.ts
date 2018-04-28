@@ -111,11 +111,11 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
             // Check the authentication
             const authType = endpoint.getAuthenticationType(method);
             if (authType !== 'none') {
-                const {user} = request;
-                if (!user) {
+                const {auth} = request;
+                if (!auth) {
                     throw new Unauthorized(`Unauthorized`);
                 }
-                if (authType === 'admin' && user.groups.indexOf('Administrators') < 0) {
+                if (authType === 'admin' && auth.groups.indexOf('Administrators') < 0) {
                     // Not an admin!
                     throw new Unauthorized(`Administrator rights are missing.`);
                 }

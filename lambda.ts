@@ -69,7 +69,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
     const authorizer = requestContext && requestContext.authorizer;
     const claims = authorizer && authorizer.claims || null;
     const groupsStr = claims && claims['cognito:groups'];
-    const user = claims && {
+    const auth = claims && {
         id: claims.sub,
         name: claims.name,
         email: claims.email,
@@ -127,7 +127,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
         environment, region,
         apiRoot, siteRoot,
         apiOrigin, siteOrigin,
-        user,
+        auth,
         // Read the directory path from environment variables
         // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
     };

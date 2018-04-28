@@ -36,7 +36,7 @@ export interface HttpHeaders {
     [header: string]: string;
 }
 
-export interface HttpUser {
+export interface HttpAuth {
     id: string;
     email: string;
     name: string;
@@ -114,11 +114,11 @@ export interface HttpRequest {
      * User that has been authenticated for the request, containing basic the
      * information stored to the access or identity token.
      */
-    user: HttpUser | null;
+    auth: HttpAuth | null;
 }
 
 export interface AuthenticatedHttpRequest extends HttpRequest {
-    user: HttpUser;
+    auth: HttpAuth;
 }
 
 export interface HttpResponse {
