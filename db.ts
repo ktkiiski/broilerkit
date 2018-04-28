@@ -24,7 +24,7 @@ export type Query<T, P extends keyof T> = SlicedQuery<T, keyof T> | HashIndexQue
 export type Identity<S, PK extends keyof S, V extends keyof S> = Pick<S, PK | V> | Pick<S, PK>;
 export type PartialUpdate<S, V extends keyof S> = Pick<S, V> & Partial<S>;
 
-export interface Model<T, PK extends keyof T, V extends keyof T, D> {
+export interface Model<T, I, R, P, D> {
     /**
      * Gets the item from the database using the given identity
      * object, containing all the identifying attributes.
@@ -35,7 +35,7 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      * Results to the item object, with all of its attributes,
      * if found successfully.
      */
-    retrieve(identity: Identity<T, PK, V>, notFoundError?: Error): Promise<T>;
+    retrieve(identity: I, notFoundError?: Error): Promise<T>;
     /**
      * Inserts an item with the given ID to the database,
      * The given item must contain all model attributes, including
@@ -46,7 +46,7 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      *
      * Results to the given item object if inserted successfully.
      */
-    create(item: T, alreadyExistsError?: Error): Promise<T>;
+    create(item: R, alreadyExistsError?: Error): Promise<T>;
     /**
      * Replaces an existing item in the database, identified by the given
      * identity object. The given item object must contain all model attributes,
@@ -64,7 +64,7 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      *
      * Results to the updated item object if inserted successfully.
      */
-    replace(identity: Identity<T, PK, V>, item: T, notFoundError?: Error): Promise<T>;
+    replace(identity: I, item: R, notFoundError?: Error): Promise<T>;
     /**
      * Updates some of the attributes of an existing item in the database,
      * identified by the given identity object. The changes must contain
@@ -83,14 +83,14 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      * Results to the updated item object with all up-to-date attributes,
      * if updated successfully.
      */
-    update(identity: Identity<T, PK, V>, changes: PartialUpdate<T, V>, notFoundError?: Error): Promise<T>;
+    update(identity: I, changes: P, notFoundError?: Error): Promise<T>;
     /**
      * Same than patch, but instead resulting to the whole updated object,
      * only results to the changes given as parameter. Prefer this instead
      * of patch if you do not need to know all the up-to-date attributes of the
      * object after a successful patch, as this is more efficient.
      */
-    amend<C extends PartialUpdate<T, V>>(identity: Identity<T, PK, V>, changes: C, notFoundError?: Error): Promise<C>;
+    amend<C extends P>(identity: I, changes: C, notFoundError?: Error): Promise<C>;
     /**
      * Either creates an item or replaces an existing one.
      * Use this instead of create/put method if you don't care if the
@@ -103,12 +103,12 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
      * Deletes an item from the database, identified by the given
      * identity object. Fails if the item does not exists.
      */
-    destroy(identity: Pick<T, PK>, notFoundError?: Error): Promise<void>;
+    destroy(identity: I, notFoundError?: Error): Promise<void>;
     /**
      * Deletes an item from the database if it exists in the database.
      * Unlike destroy, this does not fail if the item didn't exists.
      */
-    clear(identity: Pick<T, PK>): Promise<void>;
+    clear(identity: I): Promise<void>;
     /**
      * Queries and finds the first items from the table.
      * Always returns at least `minCount` number of items, unless there are no
@@ -120,6 +120,8 @@ export interface Model<T, PK extends keyof T, V extends keyof T, D> {
     list(query: D): Promise<T[]>;
     // TODO: query(query: D): Observable<T>;
 }
+
+export type VersionedModel<T, PK extends keyof T, V extends keyof T, D> = Model<T, Identity<T, PK, V>, T, PartialUpdate<T, V>, D>;
 
 export interface Table<M> {
     /**
@@ -146,11 +148,11 @@ export interface Table<M> {
     getModel(uri: string): M;
 }
 
-export class TableDefinition<S, PK extends keyof S, V extends keyof S> implements Table<Model<S, PK, V, Query<S, PK>>> {
+export class TableDefinition<S, PK extends keyof S, V extends keyof S> implements Table<VersionedModel<S, PK, V, Query<S, PK>>> {
 
     constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
 
-    public getModel(uri: string): Model<S, PK, V, Query<S, PK>> {
+    public getModel(uri: string): VersionedModel<S, PK, V, Query<S, PK>> {
         const {resource, key, versionAttr} = this;
         if (uri.startsWith('arn:')) {
             const {service, region, resourceType, resourceId} = parseARN(uri);

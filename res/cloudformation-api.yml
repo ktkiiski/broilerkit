@@ -59,6 +59,19 @@ Resources:
             - sdb:Select
             Resource:
             - Fn::Sub: arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-*
+          # Allow access to the user pool
+          - Effect: Allow
+            Action:
+            - cognito-idp:AdminDeleteUser
+            - cognito-idp:AdminGetUser
+            - cognito-idp:AdminUpdateUserAttributes
+            - cognito-idp:DeleteUser
+            - cognito-idp:GetUser
+            - cognito-idp:ListUsers
+            - cognito-idp:UpdateUserAttributes
+            Resource:
+            # TODO: Could we restrict access to the particular userpool only?
+            - Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
       Path: "/"
       RoleName:
         Fn::Sub: "${AWS::StackName}-${AWS::Region}-lambdaRole"

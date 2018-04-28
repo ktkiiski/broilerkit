@@ -1,10 +1,10 @@
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
-import { Identity, isIndexQuery, Model, PartialUpdate, Query } from './db';
+import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource, Serializer } from './resources';
 import { Diff, keys, mapObject, omit, spread } from './utils/objects';
 
-export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements Model<S, PK, V, Query<S, PK>> {
+export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements VersionedModel<S, PK, V, Query<S, PK>> {
 
     private updateSerializer = this.serializer.optional<V, Diff<keyof S, PK | V>, never>({
         required: [this.versionAttr],

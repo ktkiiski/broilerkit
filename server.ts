@@ -8,7 +8,7 @@ import { spread, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
 export interface Models {
-    [name: string]: Model<any, any, any, any>;
+    [name: string]: Model<any, any, any, any, any>;
 }
 export type Tables<T> = {
     [P in keyof T]: Table<T[P]>;

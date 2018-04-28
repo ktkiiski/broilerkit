@@ -220,6 +220,13 @@ Resources:
       ProviderARNs:
         - Fn::GetAtt: UserPool.Arn
 
+  # Make the user pool ARN available for Lambda functions as a stage variable
+  ApiGatewayStage:
+    Properties:
+      Variables:
+        DatabaseTableUsersURI:
+          Fn::GetAtt: UserPool.Arn
+
 Outputs:
   UserPoolRoot:
     Description: "Root URL for the AWS Cognito user pool"

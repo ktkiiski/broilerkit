@@ -204,6 +204,15 @@ class RegexpField extends StringField {
     }
 }
 
+class EmailField extends RegexpField {
+    constructor() {
+        super(
+            /^(([^<>()\[\]\.,;:\s@\"]+(\.[^<>()\[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i,
+            `Value is not a valid email`,
+        );
+    }
+}
+
 class URLField extends RegexpField {
     constructor() {
         super(
@@ -311,6 +320,10 @@ export function datetime(): Field<Date, string> {
 
 export function uuid(version?: 1 | 4 | 5): Field<string> {
     return new UUIDField(version);
+}
+
+export function email(): Field<string> {
+    return new EmailField();
 }
 
 export function ulid(): Field<string> {
