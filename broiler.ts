@@ -84,18 +84,13 @@ export class Broiler {
      */
     public async deploy(): Promise<void> {
         await this.clean();
-        const backendCompile$ = this.compileBackend(false);
-        await this.initialize();
-        const customResourceUpload$ = this.uploadCustomResource();
-        await backendCompile$;
-        await this.uploadBackend();
-        await customResourceUpload$;
+        await this.prepareDeployment();
         await this.deployStack();
-        const stackOutput$ = this.cloudFormation.getStackOutput();
         // TODO: Figure out how to make the frontend independent of the stack deployment
-        await this.compileFrontend(false);
-        await this.uploadFrontend();
-        const output = await stackOutput$;
+        const [output] = await Promise.all([
+            this.cloudFormation.getStackOutput(),
+            this.compileFrontend(false).then(() => this.uploadFrontend()),
+        ]);
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
         this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
     }
@@ -155,10 +150,10 @@ export class Broiler {
 
     public async compile(): Promise<WebpackStats[]> {
         await this.clean();
-        const backend$ = this.compileBackend(true);
-        const frontend$ = this.compileFrontend(true);
-        const backend = await backend$;
-        const frontend = await frontend$;
+        const [backend, frontend] = await Promise.all([
+            this.compileBackend(true),
+            this.compileFrontend(true),
+        ]);
         return backend ? [backend, frontend] : [frontend];
     }
 
@@ -197,9 +192,11 @@ export class Broiler {
     public async preview() {
         await this.clean();
         await this.compileBackend(false);
-        const template$ = this.generateTemplate();
-        const parameters$ = this.getStackParameters();
-        const changeSet = await this.cloudFormation.createChangeSet(dumpTemplate(await template$), await parameters$);
+        const [template, parameters] = await Promise.all([
+            this.generateTemplate(),
+            this.getStackParameters(),
+        ]);
+        const changeSet = await this.cloudFormation.createChangeSet(dumpTemplate(template), parameters);
         this.logChangeSet(changeSet);
         await this.cloudFormation.deleteChangeSet(changeSet.ChangeSetName as string);
     }
@@ -309,10 +306,12 @@ export class Broiler {
         const page$ = searchFiles(this.buildDir, ['**/*.html']);
         const res$ = searchFiles(path.join(__dirname, 'res'), ['**/*.html']);
         const output = await this.cloudFormation.getStackOutput();
-        const assetUpload$ = toArray(this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false));
-        const pageUpload$ = toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true));
-        const resUpload$ = toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, res$, staticHtmlCacheDuration, true));
-        return [...await assetUpload$, ...await pageUpload$, ...await resUpload$];
+        const uploadArrays = await Promise.all([
+            toArray(this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false)),
+            toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true)),
+            toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, res$, staticHtmlCacheDuration, true)),
+        ]);
+        return ([] as IFileUpload[]).concat(...uploadArrays);
     }
 
     /**
@@ -327,9 +326,8 @@ export class Broiler {
         const apiRootUrl = apiRoot && new URL(apiRoot);
         const apiDomain = apiRootUrl && apiRootUrl.hostname;
         const apiFile$ = this.getCompiledApiFile();
-        const prevParams$ = auth && this.cloudFormation.getStackParameters() || undefined;
-        const apiFile = await apiFile$;
-        const prevParams = await prevParams$;
+        const prevParams$ = auth ? this.cloudFormation.getStackParameters() : Promise.resolve(undefined);
+        const [apiFile, prevParams] = await Promise.all([apiFile$, prevParams$]);
         const facebookClientId = auth && auth.facebookClientId || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
         if (auth && facebookClientSecret === undefined) {
@@ -386,6 +384,7 @@ export class Broiler {
                 return {file, bucketName, result} as IFileUpload;
             }));
         };
+        // TODO: This does not handle well rejections or errors! Improve!
         // Start 5 first uploads
         startNext(); startNext(); startNext(); startNext(); startNext();
         // Wait for each upload and yield them in order
@@ -419,6 +418,18 @@ export class Broiler {
     }
 
     /**
+     * Ensures that everything required for a deployment is uploaded to the initial stack.
+     * If the initial stack is not created, it will be created.
+     */
+    private async prepareDeployment(): Promise<void> {
+        const init$ = this.initialize();
+        const backendCompile$ = this.compileBackend(false);
+        const customResourceUpload$ = init$.then(() => this.uploadCustomResource());
+        const backendUpload$ = Promise.all([init$, backendCompile$]).then(() => this.uploadBackend());
+        await Promise.all([customResourceUpload$, backendUpload$]);
+    }
+
+    /**
      * Uploads a CloudFormation template and a Lambda JavaScript source code
      * required for custom CloudFormation resources. Any existing files
      * are overwritten.
@@ -427,10 +438,11 @@ export class Broiler {
         const templateFileName = 'cloudformation-custom-resource.yml';
         const bucketName$ = this.cloudFormation.getStackOutput().then((output) => output.DeploymentManagementS3BucketName);
         const templateFile$ = readFile(path.join(__dirname, 'res', templateFileName));
+        const [bucketName, templateFile] = await Promise.all([bucketName$, templateFile$]);
         const templateUpload$ = this.createS3File$({
-            Bucket: await bucketName$,
+            Bucket: bucketName,
             Key: templateFileName,
-            Body: await templateFile$,
+            Body: templateFile,
             ContentType: 'application/x-yaml',
         }, true);
         return (await templateUpload$) as S3.PutObjectOutput;
@@ -446,14 +458,15 @@ export class Broiler {
             return;
         }
         const zipFileData$ = zip(file.contents, 'api.js');
-        const output = await this.cloudFormation.getStackOutput();
+        const output$ = this.cloudFormation.getStackOutput();
+        const [output, zipFileData] = await Promise.all([output$, zipFileData$]);
         const bucketName = output.DeploymentManagementS3BucketName;
         const key = formatS3KeyName(file.relative, '.zip');
         this.log(`Zipped the API implementation as ${bold(key)}`);
         return this.createS3File$({
             Bucket: bucketName,
             Key: key,
-            Body: await zipFileData$,
+            Body: zipFileData,
             ACL: 'private',
             ContentType: 'application/zip',
         }, false);
@@ -475,9 +488,12 @@ export class Broiler {
         if (!server) {
             return await template$;
         }
-        const apiTemplate$ = this.generateApiTemplate(server);
-        const dbTemplate$ = this.generateDbTemplates(server);
-        return mergeTemplates(mergeTemplates(await template$, await apiTemplate$), await dbTemplate$);
+        const [template, apiTemplate, dbTemplate] = await Promise.all([
+            template$,
+            this.generateApiTemplate(server),
+            this.generateDbTemplates(server),
+        ]);
+        return mergeTemplates(mergeTemplates(template, apiTemplate), dbTemplate);
     }
 
     private async generateApiTemplate(server: ApiService): Promise<any> {
@@ -493,14 +509,16 @@ export class Broiler {
             // No API to be deployed
             return;
         }
+        // Collect all the template promises to an array
+        const templatePromises: Array<Promise<any>> = [];
         // Build templates for API Lambda functions
-        const apiFunctions$ = endpoints.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
+        templatePromises.push(...endpoints.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
             ApiFunctionName: getApiLambdaFunctionLogicalId(name),
             apiFunctionName: name,
-        }));
+        })));
         // Build templates for every API Gateway Resource
         const nestedApiResources = flatMap(endpoints, ({path}) => path.map((_, index) => path.slice(0, index + 1)));
-        const apiResources = {
+        templatePromises.push(Promise.resolve({
             Resources: nestedApiResources.map((path) => ({
                 [getApiResourceLogicalId(path)]: {
                     Type: 'AWS::ApiGateway::Resource',
@@ -515,7 +533,7 @@ export class Broiler {
                     },
                 },
             })).reduce((a, b) => spread(a, b), {}), // Shallow-merge required
-        };
+        }));
         // Build templates for every HTTP method, for every endpoint
         const apiMethods = flatMap(
             endpoints, ({endpoint, path, name}) => mapObject(
@@ -523,7 +541,7 @@ export class Broiler {
                 ({auth}: EndpointMethodHandler, method: HttpMethod) => ({method, path, name, auth}),
             ),
         );
-        const apiMethods$ = apiMethods.filter(({auth, name, path, method}) => {
+        templatePromises.push(...apiMethods.filter(({auth, name, path, method}) => {
             // Either ignore or fail if the user registry is not enabled but the endpoint requires one
             const config = this.config;
             if (config.auth || auth === 'none') {
@@ -542,36 +560,23 @@ export class Broiler {
                 ApiMethod: method,
                 AuthorizationType: auth === 'none' ? '"NONE"' : '"COGNITO_USER_POOLS"',
                 AuthorizerId: JSON.stringify(auth === 'none' ? '' : {Ref: 'ApiGatewayUserPoolAuthorizer'}),
-            }))
-        ;
+            })),
+        );
         // Enable CORS for every endpoint URL
-        const corsResources$ = endpoints.map(({path, endpoint: {methods}}) => {
+        templatePromises.push(...endpoints.map(({path, endpoint: {methods}}) => {
             return readTemplates(['cloudformation-api-resource-cors.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
                 ApiResourceName: getApiResourceLogicalId(path),
                 ApiResourceAllowedMethods: methods.join(','),
                 ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
             });
-        });
-        const templates: any[] = [];
-        // Yield the base template for all APIs
-        templates.push(await readTemplates(['cloudformation-api.yml'], {
+        }));
+        // Read the base template for the API Gateway
+        templatePromises.push(readTemplates(['cloudformation-api.yml'], {
             ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
         }));
-        // Yield each API function resource
-        for (const apiFunction$ of apiFunctions$) {
-            templates.push(await apiFunction$);
-        }
-        // Yield each API Gateway resource
-        templates.push(apiResources);
-        // Yield each API method
-        for (const apiMethod$ of apiMethods$) {
-            templates.push(await apiMethod$);
-        }
-        // Yield all CORS methods
-        for (const cors$ of corsResources$) {
-            templates.push(await cors$);
-        }
+        // Merge everything together
+        const templates = await Promise.all(templatePromises);
         return templates.reduce(mergeTemplates, {});
     }
 
