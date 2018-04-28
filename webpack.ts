@@ -465,6 +465,13 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             __AWS_REGION__: JSON.stringify(region),
         }),
         /**
+         * AWS Lambda does not support async iterators Symbol, so
+         * we need to provide a polyfill for it.
+         */
+        new webpack.ProvidePlugin({
+            Symbol: [require.resolve('./polyfill/symbol'), 'Symbol'],
+        }),
+        /**
          * Prevent all the MomentJS locales to be imported by default.
          */
         new webpack.ContextReplacementPlugin(
