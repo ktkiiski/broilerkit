@@ -13,7 +13,7 @@ if (element) {
             ...accessTokenPayload,
             'email': 'john.smith@example.com',
             'name': 'John Smith',
-            'cognito:groups': ['Administrator'],
+            'cognito:groups': ['Administrators'],
         };
         // Create the JWT token
         const accessToken = sign(accessTokenPayload, 'LOCAL_SECRET');

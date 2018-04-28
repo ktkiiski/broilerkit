@@ -2,10 +2,11 @@ import { toArray } from './async';
 import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { Model, Table } from './db';
+import { NeDbModel } from './nedb';
 import { Resource, Serializer } from './resources';
 import { User, userResource } from './users';
 import { order } from './utils/arrays';
-import { Omit } from './utils/objects';
+import { Omit, spread } from './utils/objects';
 
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
 export interface UserIdentity {
@@ -18,7 +19,9 @@ export interface UserQuery<S extends User> {
     maxCount?: number;
 }
 
-export class CognitoModel<S extends User = User> implements Model<S, UserIdentity, never, UserPartialUpdate<S>, UserQuery<S>> {
+export type CognitoModel<S extends User = User> = Model<S, UserIdentity, never, UserPartialUpdate<S>, UserQuery<S>>;
+
+export class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
     private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).partial() as Serializer<UserPartialUpdate<S>>;
     private identitySerializer = this.serializer.pick(['id']);
@@ -43,7 +46,6 @@ export class CognitoModel<S extends User = User> implements Model<S, UserIdentit
         throw new Error(`Replacing a user is not supported. Use an update instead.`);
     }
 
-    // tslint:disable-next-line:variable-name
     public async update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
         const {identitySerializer, updateSerializer} = this;
         const serializedIdentity = identitySerializer.serialize(identity);
@@ -91,6 +93,52 @@ export class CognitoModel<S extends User = User> implements Model<S, UserIdentit
     }
 }
 
+export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
+
+    private nedb = new NeDbModel(this.filePath, this.serializer, 'id', 'updatedAt');
+
+    constructor(private filePath: string, private serializer: Resource<S>) {}
+
+    public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
+        return this.nedb.retrieve(query, notFoundError);
+    }
+
+    public create(_: S): Promise<S> {
+        throw new Error(`Creating users is not supported. They need to sign up`);
+    }
+
+    // tslint:disable-next-line:variable-name
+    public replace(_identity: UserIdentity, _item: S, _notFoundError?: Error): Promise<S> {
+        throw new Error(`Replacing a user is not supported. Use an update instead.`);
+    }
+
+    public update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
+        return this.nedb.update(identity, spread(changes, {updatedAt: new Date()}), notFoundError);
+    }
+
+    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C, notFoundError?: Error): Promise<C> {
+        await this.update(identity, changes, notFoundError);
+        return changes;
+    }
+
+    public async write(_: S): Promise<S> {
+        throw new Error(`Not yet implemented!`);
+    }
+
+    public destroy(identity: UserIdentity, notFoundError?: Error) {
+        return this.nedb.destroy(identity, notFoundError);
+    }
+
+    public clear(identity: UserIdentity) {
+        return this.nedb.clear(identity);
+    }
+
+    public list({direction, maxCount = 99999999, ordering}: UserQuery<S>) {
+        // TODO: Max count!
+        return this.nedb.list({direction, minCount: 1, maxCount, ordering});
+    }
+}
+
 export const users: Table<CognitoModel> = {
     name: 'Users',
     getModel(uri: string): CognitoModel {
@@ -106,10 +154,11 @@ export const users: Table<CognitoModel> = {
             if (resourceType !== 'userpool') {
                 throw new Error(`Unknown AWS resource type "${resourceType}" for user registry`);
             }
-            return new CognitoModel(resourceId, region, userResource);
+            return new UserPoolCognitoModel(resourceId, region, userResource);
         }
         if (uri.startsWith('file://')) {
-            throw new Error(`Local user database not yet implemented!`);
+            const filePath = uri.slice('file://'.length);
+            return new LocalCognitoModel(filePath, userResource);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     },
