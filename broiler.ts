@@ -30,6 +30,7 @@ import * as File from 'vinyl';
 
 import chalk from 'chalk';
 import { EndpointMethodHandler } from './api';
+import { readAnswer } from './readline';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -283,9 +284,12 @@ export class Broiler {
         this.log(`Starting deployment of stack ${bold(this.stackName)} to region ${bold(this.config.region)}...`);
         const template$ = this.generateTemplate();
         const parameters$ = this.getStackParameters();
-        let oldStack = await this.cloudFormation.describeStackWithResources();
-        const changeSet = await this.cloudFormation.createChangeSet(dumpTemplate(await template$), await parameters$);
+        const currentStack$ = await this.cloudFormation.describeStackWithResources();
+        const [template, parameters, currentStack] = await Promise.all([template$, parameters$, currentStack$]);
+        const templateDump = dumpTemplate(template);
+        const changeSet = await this.cloudFormation.createChangeSet(templateDump, parameters);
         this.logChangeSet(changeSet);
+        let oldStack = currentStack;
         if (changeSet.Changes && changeSet.Changes.length) {
             const execution$ = this.cloudFormation.executeChangeSet(changeSet.ChangeSetName as string);
             for await (const newStack of execution$) {
@@ -315,14 +319,28 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteRoot, apiRoot, assetsRoot} = this.config;
+        const {siteRoot, apiRoot, assetsRoot, auth} = this.config;
         const siteRootUrl = new URL(siteRoot);
         const siteDomain = siteRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
         const assetsDomain = assetsRootUrl.hostname;
         const apiRootUrl = apiRoot && new URL(apiRoot);
         const apiDomain = apiRootUrl && apiRootUrl.hostname;
-        const apiFile = await this.getCompiledApiFile();
+        const apiFile$ = this.getCompiledApiFile();
+        const prevParams$ = auth && this.cloudFormation.getStackParameters() || undefined;
+        const apiFile = await apiFile$;
+        const prevParams = await prevParams$;
+        const facebookClientId = auth && auth.facebookClientId || undefined;
+        let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
+        if (auth && facebookClientSecret === undefined) {
+            facebookClientSecret = await readAnswer(
+                `Check your Facebook client app secret at ${underline(`https://developers.facebook.com/apps/${facebookClientId}/settings/basic/`)}\n` +
+                `Please enter the client secret:`,
+            );
+            if (!facebookClientSecret) {
+                throw new Error(`Facebook client app secret is required!`);
+            }
+        }
         return {
             SiteRoot: siteRoot,
             SiteOrigin: siteRootUrl.origin,
@@ -336,6 +354,9 @@ export class Broiler {
             ApiHostedZoneName: apiDomain && getHostedZone(apiDomain),
             ApiDomainName: apiDomain,
             ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),
+            // These parameters are only defined if 'auth' is enabled
+            FacebookClientId: facebookClientId,
+            FacebookClientSecret: facebookClientSecret,
         };
     }
 
@@ -445,11 +466,12 @@ export class Broiler {
     private async generateTemplate(): Promise<any> {
         const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
-        const template$ = readTemplates([
-            'cloudformation-init.yml',
-            'cloudformation-app.yml',
-            'cloudformation-user-registry.yml',
-        ]);
+        const templateFiles = ['cloudformation-init.yml', 'cloudformation-app.yml'];
+        if (this.config.auth) {
+            // User registry enabled
+            templateFiles.push('cloudformation-user-registry.yml');
+        }
+        const template$ = readTemplates(templateFiles);
         if (!server) {
             return await template$;
         }
@@ -501,7 +523,17 @@ export class Broiler {
                 ({auth}: EndpointMethodHandler, method: HttpMethod) => ({method, path, name, auth}),
             ),
         );
-        const apiMethods$ = apiMethods.map(
+        const apiMethods$ = apiMethods.filter(({auth, name, path, method}) => {
+            // Either ignore or fail if the user registry is not enabled but the endpoint requires one
+            const config = this.config;
+            if (config.auth || auth === 'none') {
+                return true;
+            } else if (config.debug) {
+                this.log(yellow(`${bold('WARNING!')} The endpoint ${name} (${method} /${path.join('/')}) is not deployed because no user registry for authentication is configured!`));
+                return false;
+            }
+            throw new Error(`The endpoint ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
+        }).map(
             ({method, path, name, auth}) => readTemplates(['cloudformation-api-method.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, method),
                 ApiFunctionName: getApiLambdaFunctionLogicalId(name),
@@ -592,7 +624,7 @@ export class Broiler {
         }
     }
 
-    private async getCompiledApiFile(): Promise<File | void> {
+    private async getCompiledApiFile(): Promise<File | undefined> {
         if (this.importServer()) {
             const files = await searchFiles(this.buildDir, ['_api*.js']);
             if (files.length !== 1) {

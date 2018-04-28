@@ -1,7 +1,7 @@
 import { CloudFormation } from 'aws-sdk';
 import { wait } from '../async';
-import { buildObject } from '../utils/objects';
-import { convertStackParameters, retrievePages } from './utils';
+import { buildObject, mapObject } from '../utils/objects';
+import { retrievePages } from './utils';
 
 export interface IStackWithResources extends CloudFormation.Stack {
     StackResources: CloudFormation.StackResource[];
@@ -10,6 +10,8 @@ export interface IStackWithResources extends CloudFormation.Stack {
 export interface IStackOutput {
     [key: string]: string;
 }
+
+export type StackParameterValue = string | null | undefined;
 
 /**
  * Wrapper class for Amazon S3 operations with a reactive interface.
@@ -79,6 +81,22 @@ export class AmazonCloudFormation {
     }
 
     /**
+     * Retrieves the original parameters of the CloudFormation stack.
+     */
+    public async getStackParameters(): Promise<{[key: string]: string | null}> {
+        const stack = await this.describeStack();
+        return buildObject(stack.Parameters || [], ({ParameterKey, ParameterValue, UsePreviousValue}) => {
+            if (ParameterKey) {
+                if (UsePreviousValue) {
+                    return [ParameterKey, null];
+                } else if (ParameterValue != null) {
+                    return [ParameterKey, ParameterValue];
+                }
+            }
+        });
+    }
+
+    /**
      * Creates a CloudFormation stack with the given template
      * This will fail if the stack already exists.
      * @param template CloudFormation stack template string as JSON/YAML
@@ -115,7 +133,7 @@ export class AmazonCloudFormation {
      * @param template CloudFormation stack template string as JSON/YAML
      * @param parameters Template parameters as a key-value object mapping
      */
-    public async createChangeSet(template: string, parameters: {[name: string]: any}, pollInterval = 2000): Promise<CloudFormation.DescribeChangeSetOutput> {
+    public async createChangeSet(template: string, parameters: {[name: string]: StackParameterValue}, pollInterval = 2000): Promise<CloudFormation.DescribeChangeSetOutput> {
         const date = new Date();
         const StackName = this.stackName;
         const ChangeSetName = `${StackName}${date.valueOf()}`;
@@ -231,4 +249,20 @@ export class AmazonCloudFormation {
             await wait(pollInterval);
         }
     }
+}
+
+/**
+ * Converts an object of parameter key-values to an
+ * array of stack parameter objects.
+ * @param parameters An object of parameter key-values
+ * @returns Array of parameter objects.
+ */
+export function convertStackParameters(parameters: {[key: string]: StackParameterValue}) {
+    return mapObject(parameters, (ParameterValue, ParameterKey) => {
+        if (ParameterValue === null) {
+            return {ParameterKey, UsePreviousValue: true};
+        } else {
+            return {ParameterKey, ParameterValue};
+        }
+    }).filter(({UsePreviousValue, ParameterValue}) => UsePreviousValue || ParameterValue !== undefined);
 }

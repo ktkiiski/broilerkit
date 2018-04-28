@@ -47,6 +47,13 @@ export interface WebPageConfig {
     scripts: string[];
 }
 
+export interface AuthConfig {
+    /**
+     * The Facebook client ID.
+     */
+    facebookClientId: string;
+}
+
 export interface AppConfig {
     /**
      * The name of the web app. Should include only letters, numbers, and dashes.
@@ -85,6 +92,10 @@ export interface AppConfig {
      * Other paths in this configuration are relative to this.
      */
     sourceDir: string;
+    /**
+     * Configuration for the user registry.
+     */
+    auth?: AuthConfig;
 }
 
 export interface ConfigOptions {

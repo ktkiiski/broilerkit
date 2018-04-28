@@ -59,7 +59,10 @@ Resources:
               }
               return obj;
             } else if (typeof obj === 'string') {
-              obj = obj === 'true' ? true : obj === 'false' ? false : obj === 'null' ? null : obj.replace(/\${Random}/, rand);
+              obj = obj === 'true' ? true : obj === 'false' ? false : obj === 'null' ? null : obj
+                .replace(/\${Random}/, rand)
+                .replace(/\${(true|false|null)}/g, '\1')
+              ;
               if (typeof obj === 'string' && id) obj = obj.replace(/\${PhysicalId}/, id).replace(/\${PhysicalResourceId}/, id);
               return obj;
             } else return obj;
