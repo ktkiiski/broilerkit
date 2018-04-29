@@ -3,13 +3,13 @@
   "version": "0.5.0",
   "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
   "main": "index.js",
-  "types": "index.d.ts",
+  "types": "index.ts",
   "engines": {
     "node": ">=8.2"
   },
   "scripts": {
     "build": "npm run compile",
-    "clean": "find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.js.map' \\) -exec rm {} \\;",
+    "clean": "find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.js.map' \\) -exec rm {} \\;",
     "clean-build": "npm run clean && npm run compile",
     "compile": "tsc -p .",
     "prepare": "npm run clean-build",
