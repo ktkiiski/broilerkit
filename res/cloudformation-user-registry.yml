@@ -6,7 +6,6 @@ Parameters:
   # Client secret of the Facebook app secret
   FacebookClientSecret:
     Type: String
-    NoEcho: true
 
 Resources:
   # Sub-stack for the custom resources
