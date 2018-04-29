@@ -1,11 +1,4 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Parameters:
-  # ID of the Facebook app client
-  FacebookClientId:
-    Type: String
-  # Client secret of the Facebook app secret
-  FacebookClientSecret:
-    Type: String
 
 Resources:
   # Sub-stack for the custom resources
@@ -97,7 +90,6 @@ Resources:
     Type: Custom::CognitoUserPoolClientSettings
     DependsOn:
     - CustomResourcePolicy
-    - FacebookIdentityProvider
     Properties:
       ServiceToken:
         Fn::GetAtt: CustomResource.Outputs.ServiceToken
@@ -116,75 +108,11 @@ Resources:
             - openid
           SupportedIdentityProviders:
             - COGNITO
-            - Facebook
           AllowedOAuthFlowsUserPoolClient: true
           CallbackURLs:
             - Fn::Sub: ${SiteRoot}/_oauth2_signin_complete.html
           LogoutURLs:
             - Fn::Sub: ${SiteRoot}/_oauth2_signout_complete.html
-
-  # Enable Facebook as an identity provider for users to sign in
-  FacebookIdentityProvider:
-    Type: Custom::CognitoIdentityProvider
-    DependsOn:
-    - CustomResourcePolicy
-    Properties:
-      ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
-      Service: CognitoIdentityServiceProvider
-      Create:
-        Action: createIdentityProvider
-        Parameters:
-          UserPoolId:
-            Ref: UserPool
-          ProviderName: Facebook
-          ProviderType: Facebook
-          ProviderDetails:
-            authorize_scopes: public_profile,email
-            # NOTE: We need to escape the 'true' string like this
-            attributes_url_add_attributes: "${true}"
-            authorize_url: https://www.facebook.com/v2.9/dialog/oauth
-            token_url: https://graph.facebook.com/v2.9/oauth/access_token
-            attributes_url: https://graph.facebook.com/me?fields=
-            token_request_method: GET
-            # TODO: From a parameter!
-            client_id:
-              Ref: FacebookClientId
-            # TODO: From a parameter!
-            client_secret:
-              Ref: FacebookClientSecret
-          AttributeMapping:
-            email: email
-            name: name
-      Update:
-        Action: updateIdentityProvider
-        Parameters:
-          UserPoolId:
-            Ref: UserPool
-          ProviderName: Facebook
-          ProviderDetails:
-            authorize_scopes: public_profile,email
-            # NOTE: We need to escape the 'true' string like this
-            attributes_url_add_attributes: "${true}"
-            authorize_url: https://www.facebook.com/v2.9/dialog/oauth
-            token_url: https://graph.facebook.com/v2.9/oauth/access_token
-            attributes_url: https://graph.facebook.com/me?fields=
-            token_request_method: GET
-            # TODO: From a parameter!
-            client_id:
-              Ref: FacebookClientId
-            # TODO: From a parameter!
-            client_secret:
-              Ref: FacebookClientSecret
-          AttributeMapping:
-            email: email
-            name: name
-      Delete:
-        Action: deleteIdentityProvider
-        Parameters:
-          ProviderName: Facebook
-          UserPoolId:
-            Ref: UserPool
 
   # The client secret is not available natively via CloudFormation
   # We retrieve it with the custom resource

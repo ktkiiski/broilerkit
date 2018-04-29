@@ -328,15 +328,28 @@ export class Broiler {
         const apiFile$ = this.getCompiledApiFile();
         const prevParams$ = auth ? this.cloudFormation.getStackParameters() : Promise.resolve(undefined);
         const [apiFile, prevParams] = await Promise.all([apiFile$, prevParams$]);
+        // Facebook client settings
         const facebookClientId = auth && auth.facebookClientId || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
-        if (auth && facebookClientSecret === undefined) {
+        if (facebookClientId && facebookClientSecret === undefined) {
             facebookClientSecret = await readAnswer(
                 `Check your Facebook client app secret at ${underline(`https://developers.facebook.com/apps/${facebookClientId}/settings/basic/`)}\n` +
                 `Please enter the client secret:`,
             );
             if (!facebookClientSecret) {
                 throw new Error(`Facebook client app secret is required!`);
+            }
+        }
+        // Google client settings
+        const googleClientId = auth && auth.googleClientId || undefined;
+        let googleClientSecret: string | null | undefined = prevParams && prevParams.GoogleClientSecret;
+        if (googleClientId && googleClientSecret === undefined) {
+            googleClientSecret = await readAnswer(
+                `Check your Google client app secret at ${underline(`https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`)}\n` +
+                `Please enter the client secret:`,
+            );
+            if (!googleClientSecret) {
+                throw new Error(`Google client app secret is required!`);
             }
         }
         return {
@@ -355,6 +368,8 @@ export class Broiler {
             // These parameters are only defined if 'auth' is enabled
             FacebookClientId: facebookClientId,
             FacebookClientSecret: facebookClientSecret,
+            GoogleClientId: googleClientId,
+            GoogleClientSecret: googleClientSecret,
         };
     }
 
@@ -480,9 +495,18 @@ export class Broiler {
         const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const templateFiles = ['cloudformation-init.yml', 'cloudformation-app.yml'];
-        if (this.config.auth) {
+        const {auth} = this.config;
+        if (auth) {
             // User registry enabled
             templateFiles.push('cloudformation-user-registry.yml');
+            if (auth.facebookClientId) {
+                // Enable Facebook login
+                templateFiles.push('cloudformation-facebook-login.yml');
+            }
+            if (auth.googleClientId) {
+                // Enable Google login
+                templateFiles.push('cloudformation-google-login.yml');
+            }
         }
         const template$ = readTemplates(templateFiles);
         if (!server) {

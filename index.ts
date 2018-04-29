@@ -49,9 +49,15 @@ export interface WebPageConfig {
 
 export interface AuthConfig {
     /**
-     * The Facebook client ID.
+     * The Facebook client ID for sign in.
+     * Enabling this will enable Facebook login possibility.
      */
-    facebookClientId: string;
+    facebookClientId?: string;
+    /**
+     * The Google client ID for sign in.
+     * Enabling this will enable Facebook login possibility.
+     */
+    googleClientId?: string;
 }
 
 export interface AppConfig {

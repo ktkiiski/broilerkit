@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  # ID of the Google app client
+  GoogleClientId:
+    Type: String
+  # Client secret of the Google app secret
+  GoogleClientSecret:
+    Type: String
+
+Resources:
+  # Enable Google as an identity provider for users to sign in
+  GoogleIdentityProvider:
+    Type: Custom::CognitoIdentityProvider
+    DependsOn:
+    - CustomResourcePolicy
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+      Service: CognitoIdentityServiceProvider
+      Create:
+        Action: createIdentityProvider
+        Parameters:
+          UserPoolId:
+            Ref: UserPool
+          ProviderName: Google
+          ProviderType: Google
+          ProviderDetails:
+            authorize_scopes: profile email openid
+            # NOTE: We need to escape the 'true' string like this
+            attributes_url_add_attributes: "${true}"
+            authorize_url: https://accounts.google.com/o/oauth2/v2/auth
+            token_url: https://www.googleapis.com/oauth2/v4/token
+            oidc_issuer: https://accounts.google.com
+            attributes_url: https://people.googleapis.com/v1/people/me?personFields=
+            token_request_method: POST
+            client_id:
+              Ref: GoogleClientId
+            client_secret:
+              Ref: GoogleClientSecret
+          AttributeMapping:
+            email: email
+            name: name
+      Update:
+        Action: updateIdentityProvider
+        Parameters:
+          UserPoolId:
+            Ref: UserPool
+          ProviderName: Google
+          ProviderDetails:
+            authorize_scopes: profile email openid
+            # NOTE: We need to escape the 'true' string like this
+            attributes_url_add_attributes: "${true}"
+            authorize_url: https://accounts.google.com/o/oauth2/v2/auth
+            token_url: https://www.googleapis.com/oauth2/v4/token
+            oidc_issuer: https://accounts.google.com
+            attributes_url: https://people.googleapis.com/v1/people/me?personFields=
+            token_request_method: POST
+            client_id:
+              Ref: GoogleClientId
+            client_secret:
+              Ref: GoogleClientSecret
+          AttributeMapping:
+            email: email
+            name: name
+      Delete:
+        Action: deleteIdentityProvider
+        Parameters:
+          ProviderName: Google
+          UserPoolId:
+            Ref: UserPool
+
+  # Settings for the user pool client that cannot be set natively in CloudFormation
+  UserPoolClientSettings:
+    DependsOn:
+    - GoogleIdentityProvider
+    Properties:
+      Create:
+        Parameters:
+          SupportedIdentityProviders:
+            - Google
