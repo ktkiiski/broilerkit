@@ -106,8 +106,6 @@ Resources:
             - implicit
           AllowedOAuthScopes:
             - openid
-          SupportedIdentityProviders:
-            - COGNITO
           AllowedOAuthFlowsUserPoolClient: true
           CallbackURLs:
             - Fn::Sub: ${SiteRoot}/_oauth2_signin_complete.html
