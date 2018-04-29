@@ -1,4 +1,5 @@
 import { parseJwt } from './jwt';
+import { sessionStorage } from './storage';
 import { parseQuery } from './url';
 import { randomize, stripPrefix } from './utils/strings';
 import { waitForClose } from './window';
@@ -27,6 +28,7 @@ export interface AuthOptions {
 
 export class AuthClient {
 
+    private readonly storageKey = 'auth';
     private readonly signInUri: string;
     private readonly signOutUri: string;
 
@@ -43,6 +45,10 @@ export class AuthClient {
             + '?logout_uri=' + encodeURIComponent(signOutRedirectUri)
             + '&client_id=' + encodeURIComponent(clientId)
             + '&response_type=token';
+        const tokens = sessionStorage.getItem(this.storageKey);
+        if (tokens && typeof tokens.accessToken === 'string' && typeof tokens.idToken === 'string') {
+            this.setTokens(tokens);
+        }
     }
 
     /**
@@ -290,6 +296,7 @@ export class AuthClient {
     private setTokens(tokens: AuthTokens): Auth;
     private setTokens(tokens: AuthTokens | null): Auth | null {
         const auth = this.auth = tokens && parseAuth(tokens);
+        sessionStorage.setItem(this.storageKey, tokens);
         // Call each observer
         Promise.resolve(auth).then((a) => {
             for (const observer of this.observers) {
