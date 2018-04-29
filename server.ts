@@ -20,7 +20,7 @@ export type EndpointHandlers<D> = {
 
 export interface HttpRequestHandler {
     endpoint: EndpointDefinition<any, EndpointMethodMapping>;
-    execute(request: HttpRequest): Promise<HttpResponse | null>;
+    execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<HttpResponse | null>;
 }
 
 export interface RetrievableEndpoint<I, O, A extends AuthenticationType> {
@@ -83,11 +83,11 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
         });
     }
 
-    public execute(request: HttpRequest): Promise<HttpResponse | null> {
+    public execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<HttpResponse | null> {
         const {method} = request;
         const {endpoint, tables} = this;
         const {methods} = endpoint;
-        const models = getModels(tables, request);
+        const models = getModels(tables, request, cache);
         return handleApiRequest(request, async () => {
             // TODO: Refactor so that there is no need to parse for every endpoint
             const input = endpoint.deserializeRequest(request);
@@ -186,12 +186,12 @@ export class ApiService {
         public readonly dbTables: Tables<{[name: string]: Model<any, any, any, any, any>}>,
     ) {}
 
-    public async execute(request: HttpRequest): Promise<HttpResponse> {
+    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<HttpResponse> {
         const {implementations} = this;
         for (const endpointName in implementations) {
             if (implementations.hasOwnProperty(endpointName)) {
                 const implementation = implementations[endpointName];
-                const response = await implementation.execute(request);
+                const response = await implementation.execute(request, cache);
                 if (response) {
                     return response;
                 }
@@ -217,14 +217,22 @@ export class ApiService {
             (error) => callback(error),
         );
     }
+
+    public extend(implementations: {[endpointName: string]: HttpRequestHandler}, dbTables?: Tables<{[name: string]: Model<any, any, any, any, any>}>) {
+        return new ApiService(
+            {...this.implementations, ...implementations},
+            {...this.dbTables, ...dbTables},
+        );
+    }
 }
 
-function getModels<M>(db: Tables<M>, request: HttpRequest): Models<M> {
+function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]: any} = {}): Models<M> {
     return transformValues(
         spread(db, {users}) as any,
         (table: Table<any>) => {
             const tableUri = request.environment[`DatabaseTable${upperFirst(table.name)}URI`];
-            return table.getModel(tableUri);
+            const model = cache[tableUri];
+            return model || (cache[tableUri] = table.getModel(tableUri));
         },
     ) as Models<M>;
 }

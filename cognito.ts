@@ -8,6 +8,7 @@ import { User, userResource } from './users';
 import { order } from './utils/arrays';
 import { Omit, spread } from './utils/objects';
 
+export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
 export interface UserIdentity {
     id: string;
@@ -19,7 +20,7 @@ export interface UserQuery<S extends User> {
     maxCount?: number;
 }
 
-export type CognitoModel<S extends User = User> = Model<S, UserIdentity, never, UserPartialUpdate<S>, UserQuery<S>>;
+export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, UserQuery<S>>;
 
 export class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
@@ -37,12 +38,12 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         return cognitoUser;
     }
 
-    public create(_: S): Promise<S> {
+    public create(_: UserCreateAttributes<S>): Promise<S> {
         throw new Error(`Creating users is not supported. They need to sign up`);
     }
 
     // tslint:disable-next-line:variable-name
-    public replace(_identity: UserIdentity, _item: S, _notFoundError?: Error): Promise<S> {
+    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>, _notFoundError?: Error): Promise<S> {
         throw new Error(`Replacing a user is not supported. Use an update instead.`);
     }
 
@@ -103,12 +104,13 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
         return this.nedb.retrieve(query, notFoundError);
     }
 
-    public create(_: S): Promise<S> {
-        throw new Error(`Creating users is not supported. They need to sign up`);
+    public create(attrs: UserCreateAttributes<S>): Promise<S> {
+        const now = new Date();
+        return this.nedb.create(spread(attrs, {updatedAt: now, createdAt: now}) as any);
     }
 
     // tslint:disable-next-line:variable-name
-    public replace(_identity: UserIdentity, _item: S, _notFoundError?: Error): Promise<S> {
+    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>, _notFoundError?: Error): Promise<S> {
         throw new Error(`Replacing a user is not supported. Use an update instead.`);
     }
 

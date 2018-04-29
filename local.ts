@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
+import * as authLocalServer from './auth-local-server';
 
 import chalk from 'chalk';
 const { cyan, green, red, yellow } = chalk;
@@ -82,6 +83,7 @@ export async function serveBackEnd(options: BroilerConfig) {
     if (enableHttps) {
         throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiRoot.replace(/^https/, 'http')} instead!`);
     }
+    const cache: {[uri: string]: any} = {};
     const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
     let server: http.Server | undefined;
     try {
@@ -109,19 +111,23 @@ export async function serveBackEnd(options: BroilerConfig) {
             const apiRequestHandlerFilePath = path.resolve(options.projectRootPath, buildDir, apiRequestHandlerFileName);
             // Ensure that module will be re-loaded
             delete require.cache[apiRequestHandlerFilePath];
-            const handler: ApiService = require(apiRequestHandlerFilePath);
+            let handler: ApiService = require(apiRequestHandlerFilePath);
             if (!handler || typeof handler.execute !== 'function') {
                 // tslint:disable-next-line:no-console
                 console.error(red(`The exported API module must have a 'execute' callable!`));
                 continue;
             }
+            // If user registry is enabled then add APIs for local sign in functionality
+            if (options.auth) {
+                handler = handler.extend(authLocalServer);
+            }
             const environment = getRequestEnvironment(handler, stageDirPath);
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const response = await nodeRequestToApiRequest(httpRequest, handler, {
+                    const response = await handleNodeRequest(httpRequest, handler, {
                         siteOrigin, apiOrigin, siteRoot, apiRoot, environment,
-                    });
+                    }, cache);
                     const textColor = httpRequest.method === 'OPTIONS' ? chalk.dim : (x: string) => x;
                     // tslint:disable-next-line:no-console
                     console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
@@ -156,7 +162,7 @@ function getRequestEnvironment(service: ApiService, directoryPath: string): {[ke
     return environment;
 }
 
-async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handler: ApiService, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}): Promise<HttpResponse> {
+async function handleNodeRequest(nodeRequest: http.IncomingMessage, handler: ApiService, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}, cache: {[uri: string]: any}): Promise<HttpResponse> {
     const {method} = nodeRequest;
     const {siteOrigin} = context;
     const headers = flattenParameters(nodeRequest.headers);
@@ -201,7 +207,7 @@ async function nodeRequestToApiRequest(nodeRequest: http.IncomingMessage, handle
             }
         }
     }
-    return await handler.execute(request);
+    return await handler.execute(request, cache);
 }
 
 function colorizeStatusCode(statusCode: HttpStatus): string {

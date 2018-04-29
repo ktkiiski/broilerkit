@@ -9,6 +9,18 @@
 </head>
 <body>
 <h1>Log in</h1>
-<p><button id="login-button">Log in as John Smith</button></p>
+<p><label>
+    <input type="checkbox" id="login-as-admin-checkbox"> Log in as an admin
+</label></p>
+<h4>Sign up as a new user</h4>
+<form id="registration-form">
+    <div><label>Email</label></div>
+    <div><input type="email" id="email-input" placeholder="Type an unique email address"></div>
+    <div><label>Name</label></div>
+    <div><input type="text" id="name-input" placeholder="Type the full name"></div>
+    <div><button type="submit">Sign up</button></div>
+</form>
+<hr>
+<h4>Sign in with an existing user</h4>
 </body>
 </html>
