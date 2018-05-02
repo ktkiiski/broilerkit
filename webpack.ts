@@ -257,12 +257,20 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             }),
         );
     }
+    const entries = buildObject(scriptPaths, (entry) => {
+        const entryName = path.basename(entry).replace(/\..*?$/, '');
+        const entryPaths = [path.resolve(sourceDirPath, entry)];
+        if (devServer) {
+            // Enable auto-reloading when running the Webpack dev server
+            // TODO: Is this configuration for the inline livereloading still required?
+            // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
+            entryPaths.unshift(`webpack-dev-server/client?${siteRoot}`);
+        }
+        return [entryName, entryPaths];
+    });
     return {
         // The main entry points for source files.
-        entry: buildObject(scriptPaths, (entry) => [
-            path.basename(entry).replace(/\..*?$/, ''),
-            path.resolve(sourceDirPath, entry),
-        ]),
+        entry: entries,
 
         output: {
             // Output files are placed to this folder

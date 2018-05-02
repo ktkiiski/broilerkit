@@ -29,13 +29,12 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     const siteProtocol = siteRootUrl.protocol;
     const serverPort = parseInt(siteRootUrl.port, 10);
     const enableHttps = assetsProtocol === 'https:' || siteProtocol === 'https:';
-    // TODO: Is this configuration for the inline livereloading still required?
-    // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
-    const compiler = webpack(getFrontendWebpackConfig({
+    const config = getFrontendWebpackConfig({
         ...options, debug: true, devServer: true, analyze: false,
         authClientId: 'LOCAL_AUTH_CLIENT_ID', // TODO!
         authRoot: `${options.siteRoot}`, // TODO!
-    }));
+    });
+    const compiler = webpack(config);
     const devServer = new WebpackDevServer(
         compiler,
         {
