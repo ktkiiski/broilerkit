@@ -1,3 +1,4 @@
+import { BehaviorSubject, CompletionObserver, ErrorObserver, NextObserver, Subscribable, Unsubscribable } from 'rxjs';
 import { parseJwt } from './jwt';
 import { sessionStorage } from './storage';
 import { parseQuery } from './url';
@@ -26,14 +27,12 @@ export interface AuthOptions {
     signOutRedirectUri: string;
 }
 
-export class AuthClient {
+export class AuthClient implements Subscribable<Auth | null> {
 
     private readonly storageKey = 'auth';
     private readonly signInUri: string;
     private readonly signOutUri: string;
-
-    private auth: Auth | null = null;
-    private observers: AuthSubscriber[] = [];
+    private readonly subject = new BehaviorSubject<Auth | null>(null);
 
     constructor(options: AuthOptions) {
         const {clientId, signInUri, signOutUri, signInRedirectUri, signOutRedirectUri} = options;
@@ -149,7 +148,7 @@ export class AuthClient {
      * has not expired yet. Otherwise returns null.
      */
     public getAccessToken(now = new Date()): string | null {
-        const auth = this.auth;
+        const auth = this.subject.getValue();
         return auth && now < auth.expiresAt && auth.accessToken || null;
     }
 
@@ -158,7 +157,7 @@ export class AuthClient {
      * has not expired yet. Otherwise returns null.
      */
     public getIdToken(now = new Date()): string | null {
-        const auth = this.auth;
+        const auth = this.subject.getValue();
         return auth && now < auth.expiresAt && auth.idToken || null;
     }
 
@@ -167,12 +166,12 @@ export class AuthClient {
      * The access token may or may not be expired. If not signed in, returns null.
      */
     public getAuthentication(): Auth | null {
-        return this.auth;
+        return this.subject.getValue();
     }
 
     /**
-     * Observe the currently authenticated user.
-     * The given callback will be called with the current authentication
+     * Subscribe the currently authenticated user.
+     * The given callback (or subscriber) will be called with the current authentication
      * state immediately, and then whenever the state changes.
      *
      * The state can be:
@@ -183,22 +182,14 @@ export class AuthClient {
      *      - `email`: email of the user
      *      - `accessToken`: the latest access token (which may or may not be expired)
      *
-     * This returns a function that when called, will cancel the observation,
-     * ensuring that the callback will no more be called.
+     * This returns a subscription for cancelling.
      *
      * Use this to:
      * - Render and switch between "Sign in" and "Sign out" button in the UI
      * - Render the user's name or email in the UI
      */
-    public observeAuthentication(callback: AuthSubscriber): () => void {
-        const {observers} = this;
-        observers.push(callback);
-        return () => {
-            const index = observers.indexOf(callback);
-            if (index >= 0) {
-                observers.splice(index, 1);
-            }
-        };
+    public subscribe(observerOrNext?: NextObserver<Auth | null> | ErrorObserver<Auth | null> | CompletionObserver<Auth | null> | ((value: Auth | null) => void) | undefined, error?: ((error: any) => void) | undefined, complete?: (() => void) | undefined): Unsubscribable {
+        return this.subject.subscribe(observerOrNext as any, error, complete);
     }
 
     private launchUri(uri: string): Window {
@@ -295,14 +286,9 @@ export class AuthClient {
     private setTokens(tokens: null): null;
     private setTokens(tokens: AuthTokens): Auth;
     private setTokens(tokens: AuthTokens | null): Auth | null {
-        const auth = this.auth = tokens && parseAuth(tokens);
+        const auth = tokens && parseAuth(tokens);
         sessionStorage.setItem(this.storageKey, tokens);
-        // Call each observer
-        Promise.resolve(auth).then((a) => {
-            for (const observer of this.observers) {
-                observer(a);
-            }
-        });
+        this.subject.next(auth);
         return auth;
     }
 }
