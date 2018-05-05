@@ -1,5 +1,6 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
+import { concat, never, Observable, of } from 'rxjs';
 import { ajax } from './ajax';
 import { AuthClient } from './auth';
 import { choice, Field, nullable, url } from './fields';
@@ -63,6 +64,8 @@ export interface ListEndpoint<I, O> {
     getPage(query: I): Promise<IApiListPage<O>>;
     getAll(query: I): Promise<O[]>;
     validateGet(query: I): I;
+    observeAll(query: I): Observable<O[]>;
+    observeCollection(query: I): Observable<Observable<O>>;
 }
 
 export interface CreateEndpoint<I1, I2, O> {
@@ -158,6 +161,31 @@ class ListEndpointModel<I, O> extends ApiModel implements ListEndpoint<I, O> {
     }
     public validateGet(input: I): I {
         return this.validate('GET', input);
+    }
+    public observeAll(input: I): Observable<O[]> {
+        return concat(this.getAll(input), never());
+    }
+    public observeCollection(input: I): Observable<Observable<O>> {
+        return concat(of(new Observable<O>((subscriber) => {
+            const handleError = (error?: any) => {
+                subscriber.error(error);
+            };
+            const handlePage = ({next, results}: IApiListPage<O>): void => {
+                for (const item of results) {
+                    if (!subscriber.closed) {
+                        subscriber.next(item);
+                    }
+                }
+                if (next) {
+                    if (!subscriber.closed) {
+                        this.ajax('GET', next).then(handlePage, handleError);
+                    }
+                } else {
+                    subscriber.complete();
+                }
+            };
+            this.getPage(input).then(handlePage, handleError);
+        })), never());
     }
 }
 
