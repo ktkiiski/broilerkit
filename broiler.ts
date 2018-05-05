@@ -318,7 +318,7 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteRoot, apiRoot, assetsRoot, auth} = this.config;
+        const {siteRoot, apiRoot, assetsRoot, auth, defaultPage} = this.config;
         const siteRootUrl = new URL(siteRoot);
         const siteDomain = siteRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
@@ -357,6 +357,7 @@ export class Broiler {
             SiteOrigin: siteRootUrl.origin,
             SiteDomainName: siteDomain,
             SiteHostedZoneName: getHostedZone(siteDomain),
+            SiteDefaultPage: defaultPage != null ? defaultPage : undefined,
             AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
@@ -495,7 +496,11 @@ export class Broiler {
         const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const templateFiles = ['cloudformation-init.yml', 'cloudformation-app.yml'];
-        const {auth} = this.config;
+        const {auth, defaultPage} = this.config;
+        if (defaultPage) {
+            // Enable fallback page for single-page apps using HTML5 History API
+            templateFiles.push('cloudformation-spa.yml');
+        }
         if (auth) {
             // User registry enabled
             templateFiles.push('cloudformation-user-registry.yml');

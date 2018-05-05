@@ -29,6 +29,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     const siteProtocol = siteRootUrl.protocol;
     const serverPort = parseInt(siteRootUrl.port, 10);
     const enableHttps = assetsProtocol === 'https:' || siteProtocol === 'https:';
+    const defaultPage = options.defaultPage;
     const config = getFrontendWebpackConfig({
         ...options, debug: true, devServer: true, analyze: false,
         authClientId: 'LOCAL_AUTH_CLIENT_ID', // TODO!
@@ -50,6 +51,9 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
                 poll: 1000,
             },
             publicPath: '/',
+            // If default page is provided then serve that page if no
+            // other matching page is found.
+            historyApiFallback: defaultPage && {index: path.join('/', defaultPage)},
         } as WebpackDevServer.Configuration,
     );
     return new Promise((resolve, reject) => {

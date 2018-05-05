@@ -75,6 +75,14 @@ export interface AppConfig {
      */
     pages: WebPageConfig[];
     /**
+     * Optional default web page that will be served when no web page file
+     * is found by the requested URL. If null or undefined, an 404 error page will be
+     * shown. Otherwise, the defined file will be served with 200 response.
+     *
+     * This is useful for single page apps using HTML5 History API.
+     */
+    defaultPage?: string;
+    /**
      * To which Amazon region the web app will be hosted.
      * Currently, only 'us-east-1' is supported!
      */
