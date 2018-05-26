@@ -11,6 +11,10 @@ export class Location extends Observable<string> {
         super((subscriber) => {
             let path = this.get();
             if (path != null) {
+                // Ensure that the address bar contains the normalized URL
+                if (path !== '/' && path !== location.pathname + location.search) {
+                    history.replaceState(null, document.title, path);
+                }
                 subscriber.next(path);
             }
             return this.change$.subscribe(() => {
@@ -26,12 +30,12 @@ export class Location extends Observable<string> {
             });
         });
     }
-    public push(path: string, title: string = '') {
+    public push(path: string, title: string = document.title) {
         const fullPath = this.prefix + normalizeUrl(path);
         history.pushState(null, title, fullPath);
         this.subject.next(fullPath);
     }
-    public replace(path: string, title: string = '') {
+    public replace(path: string, title: string = document.title) {
         const fullPath = this.prefix + normalizeUrl(path);
         history.replaceState(null, title, fullPath);
         this.subject.next(fullPath);
