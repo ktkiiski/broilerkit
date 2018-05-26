@@ -6,7 +6,8 @@ import { AuthClient } from './auth';
 import { choice, Field, nullable, url } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
-import { compileUrl, makeUrlRegexp } from './url';
+import { Route, route } from './routes';
+import { pattern, Url } from './url';
 import { keys, spread, transformValues } from './utils/objects';
 
 export { Field };
@@ -21,8 +22,7 @@ export type AuthenticationType = keyof AuthRequestMapping;
 
 export interface ApiRequest {
     method: HttpMethod;
-    path: string;
-    queryParameters: {[key: string]: string};
+    url: Url;
     payload?: any;
 }
 
@@ -43,17 +43,6 @@ export interface MethodHandlerRequest {
 }
 
 export type ListParams<R, K extends keyof R> = {[P in K]: {ordering: P, direction: 'asc' | 'desc', since?: R[P]}}[K];
-
-function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
-    const components: string[] = [];
-    for (let i = 0; i < strings.length; i ++) {
-        components.push(strings[i]);
-        if (i < keywords.length) {
-            components.push(`{${keywords[i]}}`);
-        }
-    }
-    return components.join('');
-}
 
 export interface RetrieveEndpoint<I, O> {
     get(query: I): Promise<O>;
@@ -87,7 +76,7 @@ export interface DestroyEndpoint<I> {
 export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
     methodHandlers: X;
     methods: HttpMethod[];
-    pathPattern: string;
+    route: Route<any, any>;
     bind(rootUrl: string, authClient?: AuthClient): T;
     validate(method: HttpMethod, input: any): any;
     serializeRequest(method: HttpMethod, input: any): ApiRequest;
@@ -105,9 +94,8 @@ class ApiModel {
     ) { }
 
     public request(method: HttpMethod, input: any): Promise<any> {
-        const {path, queryParameters, payload} = this.endpoint.serializeRequest(method, input);
-        const url = compileUrl(this.rootUrl, path, queryParameters);
-        return this.ajax(method, url, payload);
+        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        return this.ajax(method, `${this.rootUrl}${url}`, payload);
     }
 
     public validate(method: HttpMethod, input: any): any {
@@ -221,79 +209,27 @@ class DestroyEndpointModel<I> extends ApiModel implements DestroyEndpoint<I> {
 
 export interface EndpointMethodHandler<A extends AuthenticationType = AuthenticationType> {
     auth: A;
-    validate(input: any): any;
-    serializeRequest(input: any): MethodHandlerRequest;
-    deserializeRequest(request: MethodHandlerRequest): any;
-    serializeResponseData(data: any): any;
-    deserializeResponseData(data: any): any;
+    route: Route<any, any>;
+    payloadSerializer?: Serializer;
+    resourceSerializer?: Serializer;
 }
 
-export class PayloadMethodHandler<A extends AuthenticationType> implements EndpointMethodHandler<A> {
-    constructor(private urlSerializer: Serializer, private payloadSerializer: Serializer, private resourceSerializer: Serializer, public auth: A) {}
-
-    public validate(input: any) {
-        return {
-            ...this.payloadSerializer.validate(input),
-            ...this.urlSerializer.validate(input),
-        };
-    }
-    public serializeRequest(input: any): MethodHandlerRequest {
-        const urlParameters = this.urlSerializer.encode(input);
-        const payload = this.payloadSerializer.serialize(input);
-        return {urlParameters, payload};
-    }
-    public deserializeRequest(request: MethodHandlerRequest): any {
-        return {
-            ...this.payloadSerializer.deserialize(request.payload),
-            ...this.urlSerializer.decode(request.urlParameters),
-        };
-    }
-    public serializeResponseData(output: any): any {
-        return this.resourceSerializer.serialize(output);
-    }
-    public deserializeResponseData(output: any): any {
-        return this.resourceSerializer.deserialize(output);
-    }
+export interface PayloadMethodHandler<A extends AuthenticationType> {
+    auth: A;
+    route: Route<any, any>;
+    payloadSerializer: Serializer;
+    resourceSerializer: Serializer;
 }
 
-export class ReadMethodHandler<A extends AuthenticationType> implements EndpointMethodHandler<A> {
-    constructor(private urlSerializer: Serializer, private resourceSerializer: Serializer, public auth: A) {}
-
-    public validate(input: any) {
-        return this.urlSerializer.validate(input);
-    }
-    public serializeRequest(input: any): MethodHandlerRequest {
-        return {urlParameters: this.urlSerializer.encode(input)};
-    }
-    public deserializeRequest(request: MethodHandlerRequest) {
-        return this.urlSerializer.decode(request.urlParameters);
-    }
-    public serializeResponseData(output: any): any {
-        return this.resourceSerializer.serialize(output);
-    }
-    public deserializeResponseData(output: any): any {
-        return this.resourceSerializer.deserialize(output);
-    }
+export interface ReadMethodHandler<A extends AuthenticationType> {
+    auth: A;
+    route: Route<any, any>;
+    resourceSerializer: Serializer;
 }
 
-export class NoContentMethodHandler<A extends AuthenticationType> implements EndpointMethodHandler<A> {
-    constructor(private urlSerializer: Serializer, public auth: A) {}
-
-    public validate(input: any) {
-        return this.urlSerializer.validate(input);
-    }
-    public serializeRequest(input: any): MethodHandlerRequest {
-        return {urlParameters: this.urlSerializer.encode(input)};
-    }
-    public deserializeRequest(request: MethodHandlerRequest) {
-        return this.urlSerializer.decode(request.urlParameters);
-    }
-    public serializeResponseData(data: any): void {
-        return data;
-    }
-    public deserializeResponseData(data: any): void {
-        return data;
-    }
+export interface NoContentMethodHandler<A extends AuthenticationType> {
+    auth: A;
+    route: Route<any, any>;
 }
 
 export interface OptionsEndpointMethodMapping {
@@ -365,18 +301,15 @@ class ListParamSerializer<T, U extends keyof T, K extends keyof T> implements Se
 
 export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMapping> implements EndpointDefinition<T, X> {
 
-    public static create<S, U extends keyof S>(resource: Resource<S>, pathPattern: string, pathKeywords: U[]) {
-        return new ApiEndpoint(resource, pathPattern, pathKeywords, ['OPTIONS'], {
-            OPTIONS: new NoContentMethodHandler(resource.pick(pathKeywords), 'none'),
+    public static create<S, U extends keyof S>(resource: Resource<S>, route: Route<Pick<S, U>, U>) {
+        return new ApiEndpoint(resource, route, ['OPTIONS'], {
+            OPTIONS: {auth: 'none', route},
         });
     }
 
-    private urlResource = this.resource.pick(this.pathKeywords);
-    private pathRegexp = makeUrlRegexp(this.pathPattern);
-
     private constructor(
         public readonly resource: Resource<S>,
-        public readonly pathPattern: string, public readonly pathKeywords: U[],
+        public readonly route: Route<Pick<S, U>, U>,
         public readonly methods: HttpMethod[],
         public readonly methodHandlers: X,
         private readonly modelPrototypes: ApiModel[] = [],
@@ -387,23 +320,24 @@ export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMappin
     public listable<K extends keyof S, A extends AuthenticationType = 'none'>(options: K[] | {auth?: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X> {
         const orderingKeys = Array.isArray(options) ? options : options.orderingKeys;
         const auth = !Array.isArray(options) && options.auth || 'none' as A;
-        const urlSerializer = new ListParamSerializer(this.resource, this.pathKeywords, orderingKeys);
+        const urlSerializer = new ListParamSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
         const pageResource = resource({
             next: nullable(url()),
             results: nestedList(this.resource),
         });
         return new ApiEndpoint(
-            this.resource, this.pathPattern, this.pathKeywords, [...this.methods, 'GET'],
-            spread(this.methodHandlers, {GET: new ReadMethodHandler(urlSerializer, pageResource, auth)}),
+            this.resource, this.route, [...this.methods, 'GET'],
+            spread(this.methodHandlers, {GET: {auth, route: route(this.route.pattern, urlSerializer), resourceSerializer: pageResource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, ListEndpointModel.prototype],
         );
     }
 
     public retrievable<A extends AuthenticationType = 'none'>(options?: {auth: A}): RetrieveEndpointDefinition<S, U, A, T, X> {
         const auth = options && options.auth || 'none' as A;
+        const {resource, route} = this;
         return new ApiEndpoint(
-            this.resource, this.pathPattern, this.pathKeywords, [...this.methods, 'GET'],
-            spread(this.methodHandlers, {GET: new ReadMethodHandler(this.urlResource, this.resource, auth)}),
+            resource, route, [...this.methods, 'GET'],
+            spread(this.methodHandlers, {GET: {auth, route, resourceSerializer: resource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, RetrieveEndpointModel.prototype],
         );
     }
@@ -411,9 +345,10 @@ export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMappin
     public creatable<R extends keyof S, O extends keyof S, D extends keyof S, A extends AuthenticationType = 'none'>(options: {auth?: A, required: R[], optional: O[], defaults: {[P in D]: S[P]}}): CreateEndpointDefinition<S, U, R, O, D, A, T, X> {
         const payloadResource = this.resource.optional(options);
         const auth = options.auth || 'none' as A;
+        const {resource, route} = this;
         return new ApiEndpoint(
-            this.resource, this.pathPattern, this.pathKeywords, [...this.methods, 'POST'],
-            spread(this.methodHandlers, {POST: new PayloadMethodHandler(this.urlResource, payloadResource, this.resource, auth)}),
+            resource, route, [...this.methods, 'POST'],
+            spread(this.methodHandlers, {POST: {auth, route, payloadSerializer: payloadResource, resourceSerializer: resource} as PayloadMethodHandler<A>}),
             [...this.modelPrototypes, CreateEndpointModel.prototype],
         );
     }
@@ -421,13 +356,14 @@ export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMappin
     public updateable<R extends keyof S, O extends keyof S, D extends keyof S, A extends AuthenticationType = 'none'>(options: {auth?: A, required: R[], optional: O[], defaults: {[P in D]: S[P]}}): UpdateEndpointDefinition<S, U, R, O, D, A, T, X> {
         const {required, optional, defaults} = options;
         const auth = options.auth || 'none' as A;
-        const replaceResource = this.resource.optional(options);
-        const updateResource = this.resource.pick([...required, ...optional, ...keys(defaults)]).partial();
+        const {resource, route} = this;
+        const replaceResource = resource.optional(options);
+        const updateResource = resource.pick([...required, ...optional, ...keys(defaults)]).partial();
         return new ApiEndpoint(
-            this.resource, this.pathPattern, this.pathKeywords, [...this.methods, 'PUT', 'PATCH'],
+            resource, this.route, [...this.methods, 'PUT', 'PATCH'],
             spread(this.methodHandlers, {
-                PUT: new PayloadMethodHandler(this.urlResource, replaceResource, this.resource, auth),
-                PATCH: new PayloadMethodHandler(this.urlResource, updateResource, this.resource, auth),
+                PUT: {auth, route, payloadSerializer: replaceResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
+                PATCH: {auth, route, payloadSerializer: updateResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
             }),
             [...this.modelPrototypes, UpdateEndpointModel.prototype],
         );
@@ -435,9 +371,10 @@ export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMappin
 
     public destroyable<A extends AuthenticationType = 'none'>(options?: {auth: A}): DestroyEndpointDefinition<S, U, A, T, X> {
         const auth = options && options.auth || 'none' as A;
+        const {resource, route} = this;
         return new ApiEndpoint(
-            this.resource, this.pathPattern, this.pathKeywords, [...this.methods, 'DELETE'],
-            spread(this.methodHandlers, {DELETE: new NoContentMethodHandler(this.urlResource, auth)}),
+            resource, route, [...this.methods, 'DELETE'],
+            spread(this.methodHandlers, {DELETE: {auth, route} as NoContentMethodHandler<A>}),
             [...this.modelPrototypes, DestroyEndpointModel.prototype],
         );
     }
@@ -450,49 +387,44 @@ export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMappin
 
     public validate(method: HttpMethod, input: any): any {
         const handler = this.getMethodHandler(method);
-        return handler.validate(input);
+        const {payloadSerializer, route} = handler;
+        return {
+            ...route.serializer.validate(input),
+            ...payloadSerializer && payloadSerializer.validate(input),
+        };
     }
 
     public serializeRequest(method: HttpMethod, input: any): ApiRequest {
         const handler = this.getMethodHandler(method);
-        const {urlParameters, payload} = handler.serializeRequest(input);
-        const queryParameters = {...urlParameters};
-        const path = this.pathPattern.replace(/\{(\w+)\}/g, (_, urlKeyword: string) => {
-            const urlValue = queryParameters[urlKeyword];
-            delete queryParameters[urlKeyword];
-            return urlEncode(urlValue);
-        });
-        return {method, path, queryParameters, payload};
+        const url = handler.route.compile(input);
+        const payload = handler.payloadSerializer && handler.payloadSerializer.serialize(input);
+        return {method, url, payload};
     }
 
     public deserializeRequest(request: ApiRequest) {
-        const {method, queryParameters, payload} = request;
-        const pathMatch = this.pathRegexp.exec(request.path);
-        if (!this.hasMethod(method) || !pathMatch) {
+        const {method, url, payload} = request;
+        if (!this.hasMethod(method)) {
+            // Non-supported HTTP method
+            return null;
+        }
+        const handler = this.methodHandlers[method];
+        const urlParameters = handler.route.match(url);
+        if (!urlParameters) {
             // The path does not match this endpoint!
             return null;
         }
-        const {pathKeywords} = this;
-        const urlParameters = {...queryParameters};
-        for (let i = 0; i < pathKeywords.length; i++) {
-            const pathKey = pathKeywords[i];
-            try {
-                urlParameters[pathKey] = decodeURIComponent(pathMatch[i + 1]);
-            } catch {
-                // Malformed URI component -> do not accept this URL
-                return null;
-            }
-        }
-        const handler = this.methodHandlers[method];
-        return handler.deserializeRequest({payload, urlParameters});
+        const deserializedPayload = handler.payloadSerializer && handler.payloadSerializer.deserialize(payload);
+        return {...urlParameters, ...deserializedPayload};
     }
 
     public serializeResponseData(method: HttpMethod, data: any) {
-        return this.getMethodHandler(method).serializeResponseData(data);
+        const {resourceSerializer} = this.getMethodHandler(method);
+        return resourceSerializer ? resourceSerializer.serialize(data) : undefined;
     }
 
     public deserializeResponseData(method: HttpMethod, data: any) {
-        return this.getMethodHandler(method).deserializeResponseData(data);
+        const {resourceSerializer} = this.getMethodHandler(method);
+        return resourceSerializer ? resourceSerializer.deserialize(data) : undefined;
     }
 
     public getAuthenticationType(method: HttpMethod): AuthenticationType {
@@ -513,7 +445,7 @@ export class ApiEndpoint<S, U extends keyof S, T, X extends EndpointMethodMappin
 
 export function endpoint<R>(resource: Resource<R>) {
     function url<K extends keyof R = never>(strings: TemplateStringsArray, ...keywords: K[]): ApiEndpoint<R, K, {}, OptionsEndpointMethodMapping> {
-        return ApiEndpoint.create(resource, buildUrl(strings, keywords), keywords);
+        return ApiEndpoint.create(resource, route(pattern(strings, ...keywords), resource.pick(keywords)));
     }
     return {url};
 }
@@ -523,5 +455,3 @@ export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P], Endpoint
 export function initApi<T>(rootUrl: string, endpoints: ApiEndpoints<T>, authClient?: AuthClient): T {
     return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(rootUrl, authClient)) as T;
 }
-
-const urlEncode = encodeURIComponent;

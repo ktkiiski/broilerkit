@@ -416,7 +416,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         },
 
         // Enable sourcemaps for debugging webpack's output.
-        devtool: devServer ? 'cheap-eval-source-map' : 'source-map',
+        devtool: devServer ? 'eval-source-map' : 'source-map',
 
         // Plugins
         plugins,

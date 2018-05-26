@@ -4,7 +4,7 @@ import { BehaviorSubject, Observable, Subscribable, Subscription } from 'rxjs';
 /**
  * Creates a React component whose state is bound to the subscribed RxJS Observable.
  */
-export function observe<T, P>(getObservable: (props: Observable<P>) => Subscribable<T>, render: (state: T | undefined, props: P) => ReactNode) {
+export function observe<T, P>(observable: ((props: Observable<P>) => Subscribable<T>) | Subscribable<T>, render: (state: T | undefined, props: P) => ReactNode) {
     class ObservingComponent extends Component<P, {value?: T}> {
         public state: {value?: T} = {};
         private propSubject: BehaviorSubject<P>;
@@ -14,8 +14,8 @@ export function observe<T, P>(getObservable: (props: Observable<P>) => Subscriba
             this.propSubject = new BehaviorSubject(props);
         }
         public componentDidMount() {
-            const observable = getObservable(this.propSubject);
-            this.subscription.add(observable.subscribe(this.onNext));
+            const obs = typeof observable === 'function' ? observable(this.propSubject) : observable;
+            this.subscription.add(obs.subscribe(this.onNext));
         }
         public componentDidUpdate(_: any, newProps: any) {
             this.propSubject.next(newProps);

@@ -4,7 +4,7 @@ import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
-import { compileUrl } from './url';
+import { Url } from './url';
 import { spread, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
@@ -64,8 +64,8 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
             }
             const last = results[length - 1];
             const nextInput = spread(input, {since: last[ordering]});
-            const {path, queryParameters} = endpoint.serializeRequest('GET', nextInput);
-            const next = compileUrl(request.apiRoot, path, queryParameters);
+            const {url} = endpoint.serializeRequest('GET', nextInput);
+            const next = `${request.apiRoot}${url}`;
             const headers = {Link: `${next}; rel="next"`};
             return new OK({next, results}, headers);
         };
@@ -84,13 +84,13 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
     }
 
     public execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<HttpResponse | null> {
-        const {method} = request;
+        const {method, payload} = request;
         const {endpoint, tables} = this;
         const {methods} = endpoint;
         const models = getModels(tables, request, cache);
         return handleApiRequest(request, async () => {
-            // TODO: Refactor so that there is no need to parse for every endpoint
-            const input = endpoint.deserializeRequest(request);
+            const url = new Url(request.path, request.queryParameters);
+            const input = endpoint.deserializeRequest({method, url, payload});
             if (!input) {
                 return null;
             }

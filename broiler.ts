@@ -529,9 +529,9 @@ export class Broiler {
         const endpoints = sort(
             mapObject(server && server.implementations || {}, ({endpoint}, name) => ({
                 endpoint, name,
-                path: endpoint.pathPattern.replace(/^\/|\/$/g, '').split('/'),
+                path: endpoint.route.pattern.pattern.replace(/^\/|\/$/g, '').split('/'),
             })),
-            ({endpoint}) => endpoint.pathPattern,
+            ({endpoint}) => endpoint.route.pattern.pattern,
         );
         const hash = await this.getApiHash();
         if (!hash) {
