@@ -233,7 +233,13 @@ class UUIDField extends RegexpField {
 
 class ULIDField extends RegexpField {
     constructor() {
-        super(/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/);
+        super(/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/, `Value is not a valid ULID`);
+    }
+}
+
+class IdField extends RegexpField {
+    constructor() {
+        super(/^[0123456789abcdefghjkmnpqrstvwxyz]{25}$/, `Value is not a valid ID`);
     }
 }
 
@@ -328,6 +334,10 @@ export function email(): Field<string> {
 
 export function ulid(): Field<string> {
     return new ULIDField();
+}
+
+export function id(): Field<string> {
+    return new IdField();
 }
 
 export function url(): Field<string> {
