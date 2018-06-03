@@ -101,6 +101,8 @@ export class UrlPattern<T extends string = string> {
     }
 }
 
+export function pattern(strings: TemplateStringsArray): UrlPattern<never>;
+export function pattern<T extends string>(strings: TemplateStringsArray, ...keywords: T[]): UrlPattern<T>;
 export function pattern<T extends string>(strings: TemplateStringsArray, ...keywords: T[]) {
     return new UrlPattern<T>(buildUrl(strings, keywords));
 }
