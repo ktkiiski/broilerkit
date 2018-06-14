@@ -47,6 +47,7 @@ export type ListParams<R, K extends keyof R> = {[P in K]: {ordering: P, directio
 export interface RetrieveEndpoint<I, O> {
     get(query: I): Promise<O>;
     validateGet(query: I): I;
+    observe(query: I): Observable<O>;
 }
 
 export interface ListEndpoint<I, O> {
@@ -130,6 +131,10 @@ class RetrieveEndpointModel<I, O> extends ApiModel implements RetrieveEndpoint<I
     }
     public validateGet(input: I): I {
         return this.validate('GET', input);
+    }
+    public observe(input: I): Observable<O> {
+        // TODO: Improve!
+        return concat(this.get(input), never());
     }
 }
 

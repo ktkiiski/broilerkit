@@ -1,19 +1,23 @@
-import { BehaviorSubject, CompletionObserver, ErrorObserver, NextObserver, Subscribable, Unsubscribable } from 'rxjs';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { distinctUntilChanged, map } from 'rxjs/operators';
 import { parseJwt } from './jwt';
 import { sessionStorage } from './storage';
 import { parseQuery } from './url';
 import { randomize, stripPrefix } from './utils/strings';
 import { waitForClose } from './window';
 
+export interface AuthUser {
+    id: string;
+    email: string;
+    name?: string;
+}
+
 export interface AuthTokens {
     accessToken: string;
     idToken: string;
 }
 
-export interface Auth extends AuthTokens {
-    id: string;
-    email: string;
-    name?: string;
+export interface Auth extends AuthUser, AuthTokens {
     expiresAt: Date;
 }
 
@@ -27,7 +31,7 @@ export interface AuthOptions {
     signOutRedirectUri: string;
 }
 
-export class AuthClient implements Subscribable<Auth | null> {
+export class AuthClient {
 
     private readonly storageKey = 'auth';
     private readonly signInUri: string;
@@ -170,7 +174,7 @@ export class AuthClient implements Subscribable<Auth | null> {
     }
 
     /**
-     * Subscribe the currently authenticated user.
+     * Returns an Observable for the currently authenticated user.
      * The given callback (or subscriber) will be called with the current authentication
      * state immediately, and then whenever the state changes.
      *
@@ -188,8 +192,15 @@ export class AuthClient implements Subscribable<Auth | null> {
      * - Render and switch between "Sign in" and "Sign out" button in the UI
      * - Render the user's name or email in the UI
      */
-    public subscribe(observerOrNext?: NextObserver<Auth | null> | ErrorObserver<Auth | null> | CompletionObserver<Auth | null> | ((value: Auth | null) => void) | undefined, error?: ((error: any) => void) | undefined, complete?: (() => void) | undefined): Unsubscribable {
-        return this.subject.subscribe(observerOrNext as any, error, complete);
+    public observe(): Observable<Auth | null> {
+        return this.subject;
+    }
+
+    public observeUserId(): Observable<string | null> {
+        return this.subject.pipe(
+            map((auth) => auth && auth.id),
+            distinctUntilChanged(),
+        );
     }
 
     private launchUri(uri: string): Window {

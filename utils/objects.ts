@@ -115,7 +115,7 @@ export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, K> {
  * Picks every other attribute but the given keys of the given object.
  */
 export function omit<T, K extends keyof T>(obj: T, props: K[]): Omit<T, K> {
-    return __rest(obj, props);
+    return __rest(obj, props as string[]);
 }
 
 /**
@@ -131,6 +131,7 @@ export function spread(...args: any[]): any {
     return __assign({}, ...args);
 }
 
+function hasOwnProperty<T>(obj: T, propName: keyof T): true;
 function hasOwnProperty(obj: any, propName: string) {
     return Object.prototype.hasOwnProperty.call(obj, propName);
 }

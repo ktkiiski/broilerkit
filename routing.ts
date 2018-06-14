@@ -1,7 +1,6 @@
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Location } from './location';
-import { observe } from './react';
 import { Route } from './routes';
 
 export interface State<T, K extends keyof T = keyof T> {
@@ -41,24 +40,5 @@ export class Router<T> extends Observable<State<T> | null> {
             }
         }
         return null;
-    }
-    public components(mappings: {[P in keyof T]?: (params: T[P]) => JSX.Element | null}, options?: {default: () => JSX.Element | null}) {
-        const defaultRenderer = options && options.default;
-        const renderer$ = this.pipe(
-            map((state) => {
-                if (!state) {
-                    return null;
-                }
-                const render = mappings[state.name];
-                if (!render) {
-                    return null;
-                }
-                return {...state, render};
-            }),
-        );
-        return observe(renderer$, (state) => state && state.render
-            ? state.render(state.params)
-            : defaultRenderer && defaultRenderer(),
-        );
     }
 }
