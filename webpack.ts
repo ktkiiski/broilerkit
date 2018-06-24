@@ -21,7 +21,7 @@ export interface WebpackConfigOptions extends BroilerConfig {
 
 export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
     authClientId: string;
-    authRoot: string;
+    authRoot?: string;
 }
 
 /**
@@ -157,7 +157,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         }),
     ];
     // If running the development server, then add the dummy OAuth2 service
-    if (devServer) {
+    if (devServer && config.auth) {
         scriptPaths.push(
             path.resolve(__dirname, `./res/_oauth2_signin.ts`),
             path.resolve(__dirname, `./res/_oauth2_signout.ts`),
