@@ -162,12 +162,12 @@ export class Broiler {
      */
     public async compileFrontend(analyze: boolean): Promise<WebpackStats> {
         this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.config.stage)}...`);
-        const output = await this.cloudFormation.getStackOutput();
+        const output = this.config.auth && await this.cloudFormation.getStackOutput();
         const stats = await compile(getFrontendWebpackConfig({
             ...this.config,
             devServer: false,
-            authRoot: output.UserPoolRoot,
-            authClientId: output.UserPoolClientId,
+            authRoot: output ? output.UserPoolRoot : '<NO AUTH ROOT>',
+            authClientId: output ? output.UserPoolClientId : '<NO AUTH CLIENT>',
             analyze,
         }));
         this.log(stats.toString({colors: true}));
