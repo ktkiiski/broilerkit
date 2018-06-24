@@ -75,6 +75,10 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
 export async function serveBackEnd(options: BroilerConfig) {
     const {siteRoot, stageDir, buildDir, projectRootPath} = options;
     const apiRoot = options.apiRoot as string;
+    if (!apiRoot) {
+        // The app does not have an API -> Nothing to serve
+        return;
+    }
     const stageDirPath = path.resolve(projectRootPath, stageDir);
     const siteRootUrl = new URL(siteRoot);
     const siteOrigin = siteRootUrl.origin;
