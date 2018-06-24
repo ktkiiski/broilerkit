@@ -35,7 +35,7 @@ export interface WebPageConfig {
     /**
      * Title of this web page.
      */
-    title: string;
+    title?: string;
     /**
      * The HTML file path relative to the source directory.
      */

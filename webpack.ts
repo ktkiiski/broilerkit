@@ -71,7 +71,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         // Create HTML plugins for each webpage
         ...pages.map(
             ({file, title, scripts}) => new HtmlWebpackPlugin({
-                title,
+                title: title == null ? path.basename(file) : title,
                 filename: path.format({...pick(path.parse(file), ['dir', 'name']), ext: '.html'}),
                 template: path.resolve(sourceDirPath, file),
                 chunks: scripts.map((name) => path.basename(name).replace(/\..*?$/, '')),
