@@ -10,7 +10,7 @@
   "scripts": {
     "build": "npm run compile",
     "clean": "find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.js.map' \\) -exec rm {} \\;",
-    "clean-build": "npm run clean && npm run compile",
+    "clean-build": "npm run clean && npm run compile && npm run lint",
     "compile": "tsc -p .",
     "prepare": "npm run clean-build",
     "lint": "tslint --project .",
