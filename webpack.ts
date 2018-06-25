@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as url from 'url';
 import * as webpack from 'webpack';
 
 import { AuthOptions } from './auth';
@@ -39,6 +40,15 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
+    // Determine the directory for the assets and the site
+    const assetsRootUrl = url.parse(assetsRoot);
+    const assetsPath = assetsRootUrl.pathname || '/';
+    const assetsDir = assetsPath.replace(/^\/+/, '');
+    const assetsFilePrefix = assetsDir && (assetsDir + '/');
+    const assetsOrigin = `${assetsRootUrl.protocol}//${assetsRootUrl.host}`;
+    const sitePath = url.parse(siteRoot).pathname || '/';
+    const siteDir = sitePath.replace(/^\/+/, '');
+    const siteFilePrefix = siteDir && (siteDir + '/');
     // Determine options for the AuthClient
     const authOptions: AuthOptions = {
         clientId: authClientId,
@@ -66,13 +76,13 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         // Extract stylesheets to separate files in production
         new ExtractTextPlugin({
             disable: devServer,
-            filename: devServer && debug ? '[name].css' : '[name].[hash].css',
+            filename: devServer && debug ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[hash].css`,
         }),
         // Create HTML plugins for each webpage
         ...pages.map(
             ({file, title, scripts}) => new HtmlWebpackPlugin({
                 title: title == null ? path.basename(file) : title,
-                filename: path.format({...pick(path.parse(file), ['dir', 'name']), ext: '.html'}),
+                filename: siteFilePrefix + path.format({...pick(path.parse(file), ['dir', 'name']), ext: '.html'}),
                 template: path.resolve(sourceDirPath, file),
                 chunks: scripts.map((name) => path.basename(name).replace(/\..*?$/, '')),
                 // Insert tags for stylesheets and scripts
@@ -205,7 +215,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                 // Your source logo
                 logo: path.resolve(sourceDirPath, iconFile),
                 // The prefix for all image files (might be a folder or a name)
-                prefix: devServer && debug ? 'icons/' : 'icons/[hash]/',
+                prefix: devServer && debug ? `${assetsFilePrefix}icons/` : `${assetsFilePrefix}icons/[hash]/`,
                 // Emit all stats of the generated icons
                 emitStats: true,
                 // Generate a cache file with control hashes and
@@ -276,9 +286,10 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             // Output files are placed to this folder
             path: buildDirPath,
             // The file name template for the entry chunks
-            filename: devServer && debug ? '[name].js' : '[name].[chunkhash].js',
+            filename: devServer && debug ? `${assetsFilePrefix}[name].js` : `${assetsFilePrefix}[name].[chunkhash].js`,
             // The URL to the output directory resolved relative to the HTML page
-            publicPath: `${assetsRoot}/`,
+            // This will be the origin, not including the path, because that will be used as a subdirectory for files.
+            publicPath: `${assetsOrigin}/`,
             // The name of the exported library, e.g. the global variable name
             library: 'app',
             // How the library is exported? E.g. 'var', 'this'
@@ -369,7 +380,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                             // Max bytes to be converted to inline data URI
                             limit: 100,
                             // If larger, then convert to a file instead
-                            name: 'images/[name].[hash].[ext]',
+                            name: `${assetsFilePrefix}images/[name].[hash].[ext]`,
                         },
                     }, {
                         loader: 'image-webpack-loader',
@@ -389,7 +400,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                         // Max bytes to be converted to inline data URI
                         limit: 100,
                         // If larger, then convert to a file instead
-                        name: 'fonts/[name].[hash].[ext]',
+                        name: `${assetsFilePrefix}fonts/[name].[hash].[ext]`,
                     },
                 },
             ],

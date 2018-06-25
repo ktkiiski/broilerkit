@@ -50,7 +50,6 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
             watchOptions: {
                 poll: 1000,
             },
-            publicPath: '/',
             // If default page is provided then serve that page if no
             // other matching page is found.
             historyApiFallback: defaultPage && {index: path.join('/', defaultPage)},
