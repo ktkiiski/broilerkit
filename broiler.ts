@@ -2,22 +2,25 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
+import { EndpointMethodHandler } from './api';
 import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
+import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
-import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
+import { isDoesNotExistsError } from './aws/utils';
 import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
 import { HttpMethod } from './http';
 import { AppStageConfig } from './index';
 import { serveBackEnd, serveFrontEnd } from './local';
+import { readAnswer } from './readline';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
+import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
-import { flatMap } from './utils/arrays';
 import { readFile, searchFiles } from './utils/fs';
 import { mapObject, spread, toPairs, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
@@ -29,8 +32,6 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
-import { EndpointMethodHandler } from './api';
-import { readAnswer } from './readline';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -58,6 +59,7 @@ export class Broiler {
     private readonly cloudFormation: AmazonCloudFormation;
     private readonly cloudFront: CloudFront;
     private readonly cloudWatch: AmazonCloudWatch;
+    private readonly route53: AmazonRoute53;
     private readonly s3: AmazonS3;
 
     /**
@@ -73,6 +75,7 @@ export class Broiler {
         this.cloudFormation = new AmazonCloudFormation(region, stackName);
         this.cloudFront = new CloudFront({region, apiVersion: '2017-03-25'});
         this.cloudWatch = new AmazonCloudWatch(region);
+        this.route53 = new AmazonRoute53(region);
         this.s3 = new AmazonS3(region);
 
         this.config = {...config, stackName, stageDir, buildDir};
@@ -96,28 +99,17 @@ export class Broiler {
     }
 
     /**
-     * Ensures that the CloudFormation stack exists. If it does, this does
-     * nothing. If it doesn't, then it an initial stack will be created,
-     * containing just the deployment AWS S3 bucket.
+     * Ensures that everything required for the deployment exists.
+     *
+     * This includes:
+     * - An (initial) CloudFormation stack, probably containing just the deployment AWS S3 bucket.
+     * - Required hosted zones (which may be shared with other deployments)
      */
-    public async initialize(): Promise<IStackWithResources> {
-        try {
-            return await this.cloudFormation.describeStackWithResources();
-        } catch (error) {
-            // Check if the message indicates that the stack was not found
-            if (!isDoesNotExistsError(error)) {
-                // Pass the error through
-                throw error;
-            }
-        }
-        this.log(`Creating a new stack...`);
-        const template = await readTemplates(['cloudformation-init.yml']);
-        let oldStack = {} as IStackWithResources;
-        for await (const newStack of this.cloudFormation.createStack(dumpTemplate(template), {})) {
-            this.logStackChanges(oldStack, newStack);
-            oldStack = newStack;
-        }
-        return oldStack;
+    public async initialize() {
+        await Promise.all([
+            this.initializeHostedZones(),
+            this.initializeStack(),
+        ]);
     }
 
     /**
@@ -126,11 +118,16 @@ export class Broiler {
     public async undeploy(): Promise<CloudFormation.Stack> {
         this.log(`Removing the stack ${bold(this.stackName)} from region ${bold(this.config.region)}`);
         const output = await this.cloudFormation.getStackOutput();
-        const emptyAssets$ = this.s3.emptyBucket(output.AssetsS3BucketName);
-        const emptySite$ = this.s3.emptyBucket(output.SiteS3BucketName);
-        const emptyDeployment$ = this.s3.emptyBucket(output.DeploymentManagementS3BucketName);
+        // Empty the deployement bucket
+        const iterators = [this.s3.emptyBucket(output.DeploymentManagementS3BucketName)];
+        if (output.AssetsS3BucketName) {
+            iterators.push(this.s3.emptyBucket(output.AssetsS3BucketName));
+        }
+        if (output.SiteS3BucketName) {
+            iterators.push(this.s3.emptyBucket(output.SiteS3BucketName));
+        }
         let count = 0;
-        for await (const item of mergeAsync(emptyAssets$, emptySite$, emptyDeployment$)) {
+        for await (const item of mergeAsync(...iterators)) {
             if (item.VersionId) {
                 this.log(`Deleted ${bold(item.Key)} version ${bold(item.VersionId)} from bucket ${item.Bucket}`);
             } else {
@@ -270,6 +267,48 @@ export class Broiler {
         for await (const event of logStream) {
             this.log(formatLogEvent(event, this.stackName));
         }
+    }
+
+    /**
+     * Ensures that the CloudFormation stack exists. If it does, this does
+     * nothing. If it doesn't, then an initial stack will be created,
+     * containing just the deployment AWS S3 bucket.
+     */
+    public async initializeStack(): Promise<IStackWithResources> {
+        try {
+            return await this.cloudFormation.describeStackWithResources();
+        } catch (error) {
+            // Check if the message indicates that the stack was not found
+            if (!isDoesNotExistsError(error)) {
+                // Pass the error through
+                throw error;
+            }
+        }
+        this.log(`Creating a new stack...`);
+        const template = await readTemplates(['cloudformation-init.yml']);
+        let oldStack = {} as IStackWithResources;
+        for await (const newStack of this.cloudFormation.createStack(dumpTemplate(template), {})) {
+            this.logStackChanges(oldStack, newStack);
+            oldStack = newStack;
+        }
+        return oldStack;
+    }
+
+    /**
+     * Ensures that the required hosted zone(s) exist, creating them if not.
+     */
+    public async initializeHostedZones() {
+        const {siteRoot, assetsRoot, apiRoot} = this.config;
+        const siteRootUrl = new URL(siteRoot);
+        const siteHostedZone = getHostedZone(siteRootUrl.hostname);
+        const assetsRootUrl = new URL(assetsRoot);
+        const assetsHostedZone = getHostedZone(assetsRootUrl.hostname);
+        const apiRootUrl = apiRoot && new URL(apiRoot);
+        const apiHostedZone = apiRootUrl && getHostedZone(apiRootUrl.hostname);
+        const rawHostedZones = [siteHostedZone, assetsHostedZone, apiHostedZone];
+        const hostedZones = union(rawHostedZones.filter((hostedZone) => !!hostedZone) as string[]);
+        // Wait until every hosted zone is available
+        await Promise.all(hostedZones.map((hostedZone) => this.initializeHostedZone(hostedZone)));
     }
 
     /**
@@ -486,6 +525,38 @@ export class Broiler {
             ACL: 'private',
             ContentType: 'application/zip',
         }, false);
+    }
+
+    /**
+     * Creates the hosted zone if does not exist.
+     * @param domain Hosted zone domain name
+     */
+    private async initializeHostedZone(domain: string) {
+        try {
+            const {DelegationSet} = await this.route53.getHostedZone(domain);
+            this.log(dim(`Hosted zone for domain ${bold(domain)} exists`), green('✔︎'));
+            if (this.config.debug && DelegationSet) {
+                this.log(`Set up your domain name registrar (e.g. GoDaddy) to use these DNS servers:\n`);
+                for (const nameServer of DelegationSet.NameServers) {
+                    this.log(`    ${nameServer}`);
+                }
+            }
+        } catch (error) {
+            if (!isDoesNotExistsError(error)) {
+                // Unknown error -> fail!
+                throw error;
+            }
+            // Hosted zone does not exist yet -> create it!
+            this.log(`Hosted zone for domain ${bold(domain)} does not exist yet. Creating it...`);
+            const {DelegationSet} = await this.route53.createHostedZone(domain);
+            this.log(`Hosted zone ${bold(domain)} created successfully!`, green('✔︎'));
+            if (DelegationSet) {
+                this.log(`Set up your domain name registrar (e.g. GoDaddy) to use these DNS servers:\n`);
+                for (const nameServer of DelegationSet.NameServers) {
+                    this.log(`    ${cyan(nameServer)}`);
+                }
+            }
+        }
     }
 
     private clean(): Promise<string[]> {
@@ -714,11 +785,13 @@ export class Broiler {
     }
 
     private logStackChanges(oldStack: IStackWithResources, newStack: IStackWithResources): IStackWithResources {
-        const oldResourceStates = oldStack.StackResources.map(formatResourceChange);
-        const newResourceStates = newStack.StackResources.map(formatResourceChange);
+        const oldStackResources = oldStack.StackResources || [];
+        const newStackResources = newStack.StackResources || [];
+        const oldResourceStates = oldStackResources.map(formatResourceChange);
+        const newResourceStates = newStackResources.map(formatResourceChange);
         const deletedResourceStates = differenceBy(
-            oldStack.StackResources,
-            newStack.StackResources,
+            oldStackResources,
+            newStackResources,
             (resource) => resource.LogicalResourceId,
         ).map(formatResourceDelete);
         const alteredResourcesStates = difference(newResourceStates.concat(deletedResourceStates), oldResourceStates);
