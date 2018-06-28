@@ -118,13 +118,14 @@ export class Broiler {
     public async undeploy(): Promise<CloudFormation.Stack> {
         this.log(`Removing the stack ${bold(this.stackName)} from region ${bold(this.config.region)}`);
         const output = await this.cloudFormation.getStackOutput();
+        const {DeploymentManagementS3BucketName, AssetsS3BucketName, SiteS3BucketName} = output;
         // Empty the deployement bucket
-        const iterators = [this.s3.emptyBucket(output.DeploymentManagementS3BucketName)];
-        if (output.AssetsS3BucketName) {
-            iterators.push(this.s3.emptyBucket(output.AssetsS3BucketName));
+        const iterators = [this.s3.emptyBucket(DeploymentManagementS3BucketName)];
+        if (AssetsS3BucketName) {
+            iterators.push(this.s3.emptyBucket(AssetsS3BucketName));
         }
-        if (output.SiteS3BucketName) {
-            iterators.push(this.s3.emptyBucket(output.SiteS3BucketName));
+        if (SiteS3BucketName && SiteS3BucketName !== AssetsS3BucketName) {
+            iterators.push(this.s3.emptyBucket(SiteS3BucketName));
         }
         let count = 0;
         for await (const item of mergeAsync(...iterators)) {

@@ -23,6 +23,16 @@ Parameters:
   AssetsHostedZoneName:
     Type: String
 
+Conditions:
+  # Condition whether the assets and the website are stored
+  # to separate AWS S3 buckets and have their own CloudFront distributions.
+  # If false, then they are stored to the shared bucket.
+  SeparateAssetsAndSiteS3Buckets:
+    Fn::Not:
+      - Fn::Equals:
+        - Ref: SiteDomainName
+        - Ref: AssetsDomainName
+
 Resources:
   # S3 bucket for storing the website HTML files
   SiteS3Bucket:
@@ -37,6 +47,8 @@ Resources:
   AssetsS3Bucket:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
+    # Only create if separate assets and website buckets
+    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       BucketName:
         Fn::Sub: "${AWS::StackName}-assets"
@@ -60,6 +72,8 @@ Resources:
   # Make static asset files public for everyone
   AssetsS3BucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
+    # Only create if separate assets and website buckets
+    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       Bucket:
         Ref: AssetsS3Bucket
@@ -75,6 +89,8 @@ Resources:
   # CloudFront distribution for the static asset files cached forever
   AssetsCloudFrontDistribution:
     Type: "AWS::CloudFront::Distribution"
+    # Only create if separate assets and website buckets
+    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       DistributionConfig:
         # Use a cheaper price class for now.
@@ -141,6 +157,8 @@ Resources:
   # DNS domain name for the host of the static asset files
   AssetsDNS:
     Type: "AWS::Route53::RecordSetGroup"
+    # Only create if separate assets and website buckets
+    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       HostedZoneName:
         Fn::Sub: "${AssetsHostedZoneName}."
@@ -175,7 +193,10 @@ Resources:
       DomainName:
         Ref: SiteDomainName
       SubjectAlternativeNames:
-        - Ref: AssetsDomainName
+        Fn::If:
+          - SeparateAssetsAndSiteS3Buckets
+          - [{Ref: AssetsDomainName}]
+          - Ref: AWS::NoValue
 
 Outputs:
   SiteS3BucketName:
@@ -183,10 +204,16 @@ Outputs:
       Ref: SiteS3Bucket
   AssetsS3BucketName:
     Value:
-      Ref: AssetsS3Bucket
+      Fn::If:
+        - SeparateAssetsAndSiteS3Buckets
+        - Ref: AssetsS3Bucket
+        - Ref: SiteS3Bucket
   SiteCloudFrontDistributionId:
     Value:
       Ref: SiteCloudFrontDistribution
   AssetsCloudFrontDistributionId:
     Value:
-      Ref: AssetsCloudFrontDistribution
+      Fn::If:
+        - SeparateAssetsAndSiteS3Buckets
+        - Ref: AssetsCloudFrontDistribution
+        - Ref: SiteCloudFrontDistribution
