@@ -29,6 +29,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         const encodedItem = await sdb.getAttributes<EncodedResource>({
             DomainName: this.domainName,
             ItemName: encodedId,
+            ConsistentRead: true,
         });
         if (!keys(encodedItem).length) {
             throw notFoundError || new NotFound(`Item was not found.`);
