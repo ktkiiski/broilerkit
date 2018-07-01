@@ -1,7 +1,7 @@
 import { toArray } from './async';
 import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { Model, Table } from './db';
+import { Identity, Model, Table } from './db';
 import { NeDbModel } from './nedb';
 import { Resource, Serializer } from './resources';
 import { User, userResource } from './users';
@@ -101,7 +101,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     constructor(private filePath: string, private serializer: Resource<S>) {}
 
     public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
-        return this.nedb.retrieve(query, notFoundError);
+        return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>, notFoundError);
     }
 
     public create(attrs: UserCreateAttributes<S>): Promise<S> {
@@ -115,7 +115,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
-        return this.nedb.update(identity, spread(changes, {updatedAt: new Date()}), notFoundError);
+        return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, spread(changes, {updatedAt: new Date()}), notFoundError);
     }
 
     public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C, notFoundError?: Error): Promise<C> {
@@ -128,11 +128,11 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     }
 
     public destroy(identity: UserIdentity, notFoundError?: Error) {
-        return this.nedb.destroy(identity, notFoundError);
+        return this.nedb.destroy(identity as Identity<S, 'id', 'updatedAt'>, notFoundError);
     }
 
     public clear(identity: UserIdentity) {
-        return this.nedb.clear(identity);
+        return this.nedb.clear(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
     public list({direction, maxCount = 99999999, ordering}: UserQuery<S>) {

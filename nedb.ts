@@ -12,9 +12,9 @@ export class NeDbModel<S, PK extends keyof S, V extends keyof S> implements Vers
         optional: keys(this.serializer.fields).filter((key) => key !== this.versionAttr),
         defaults: {},
     }) as Serializer<PartialUpdate<S, V>>;
-    private identitySerializer = this.serializer.optional({
+    private identitySerializer = this.serializer.optional<PK, Diff<keyof S, PK>, never>({
         required: [this.key],
-        optional: [this.versionAttr],
+        optional: keys(this.serializer.fields).filter((key) => key !== this.key),
         defaults: {},
     }) as Serializer<Identity<S, PK, V>>;
     private db = getDb(this.filePath);

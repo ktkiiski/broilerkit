@@ -21,7 +21,7 @@ export interface HashIndexQuery<T, P extends keyof T, S extends keyof T> extends
 
 export type Query<T, P extends keyof T> = SlicedQuery<T, keyof T> | HashIndexQuery<T, keyof T, P>;
 
-export type Identity<S, PK extends keyof S, V extends keyof S> = Pick<S, PK | V> | Pick<S, PK>;
+export type Identity<S, PK extends keyof S, V extends keyof S> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends keyof S> = Pick<S, V> & Partial<S>;
 
 export interface Model<T, I, R, P, D> {

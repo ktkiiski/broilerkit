@@ -3,6 +3,13 @@ import { keys } from './objects';
 const isArray = Array.isArray;
 const hasProp = Object.prototype.hasOwnProperty;
 
+/**
+ * Compares the two given values with deep comparison
+ * and returns whether or not they are equal.
+ *
+ * @param a First value to compare
+ * @param b Second value to compare
+ */
 export function isEqual(a: any, b: any): boolean {
     if (a === b) {
         return true;
@@ -64,4 +71,13 @@ export function isEqual(a: any, b: any): boolean {
         return true;
     }
     return a !== a && b !== b;
+}
+
+export function hasAttributes(obj: {[key: string]: any}, values: {[key: string]: any}): boolean {
+    for (const key in values) {
+        if (!isEqual(values[key], obj[key])) {
+            return false;
+        }
+    }
+    return true;
 }

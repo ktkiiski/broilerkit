@@ -2,6 +2,7 @@ import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/s
 import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource, Serializer } from './resources';
+import { hasAttributes } from './utils/compare';
 import { Diff, keys, mapObject, omit, spread } from './utils/objects';
 
 export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements VersionedModel<S, PK, V, Query<S, PK>> {
@@ -23,7 +24,6 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
         const {identitySerializer, serializer} = this;
         const primaryKey = this.key;
         const encodedQuery = identitySerializer.encode(query);
-        // TODO: Filter by version!
         const encodedId = encodedQuery[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItem = await sdb.getAttributes<EncodedResource>({
@@ -31,7 +31,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
             ItemName: encodedId,
             ConsistentRead: true,
         });
-        if (!keys(encodedItem).length) {
+        if (!hasAttributes(encodedItem, encodedQuery)) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
         return serializer.decode(encodedItem);
@@ -80,7 +80,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
             DomainName: this.domainName,
             ItemName: encodedId,
         });
-        if (!keys(encodedItem).length) {
+        if (!hasAttributes(encodedItem, encodedIdentity)) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
         const encodedVersion: string = encodedItem[versionAttr];
@@ -123,16 +123,34 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
     public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
         const {identitySerializer} = this;
         const primaryKey = this.key;
+        const versionAttr = this.versionAttr;
         const encodedIdentity = identitySerializer.encode(identity);
         const encodedId = encodedIdentity[primaryKey];
+        let encodedVersion = encodedIdentity[versionAttr];
+        const otherFilters = omit(encodedIdentity, [primaryKey, versionAttr]);
         const sdb = new AmazonSimpleDB(this.region);
+        // If there are other filters, then we first need to check if the
+        // instance matches these filtering criteria.
+        if (keys(otherFilters).length) {
+            // Get the current item's state
+            const encodedItem = await sdb.getAttributes<EncodedResource>({
+                DomainName: this.domainName,
+                ItemName: encodedId,
+            });
+            if (!hasAttributes(encodedItem, encodedIdentity)) {
+                throw notFoundError || new NotFound(`Item was not found.`);
+            }
+            // For the next deletion, use the given version ID
+            // TODO: Retry conflicts?
+            encodedVersion = encodedItem[versionAttr];
+        }
         try {
             await sdb.deleteAttributes({
                 DomainName: this.domainName,
                 ItemName: encodedId,
                 Expected: {
-                    Name: primaryKey,
-                    Value: encodedId,
+                    Name: encodedVersion == null ? primaryKey : versionAttr,
+                    Value: encodedVersion == null ? encodedId : encodedVersion,
                     Exists: true,
                 },
             });
