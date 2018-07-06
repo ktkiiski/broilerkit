@@ -1,12 +1,12 @@
 import { toArray } from './async';
 import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { Identity, Model, Table } from './db';
+import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
 import { Resource, Serializer } from './resources';
 import { User, userResource } from './users';
 import { order } from './utils/arrays';
-import { Omit, spread } from './utils/objects';
+import { Key, Omit, spread } from './utils/objects';
 
 export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
@@ -15,7 +15,7 @@ export interface UserIdentity {
 }
 export type UserPartialUpdate<S extends User> = Partial<UserMutableAttributes<S>>;
 export interface UserQuery<S extends User> {
-    ordering: keyof UserMutableAttributes<S>;
+    ordering: Key<UserMutableAttributes<S>>;
     direction: 'asc' | 'desc';
     maxCount?: number;
 }
@@ -24,7 +24,7 @@ export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCre
 
 export class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).partial() as Serializer<UserPartialUpdate<S>>;
+    private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<UserPartialUpdate<S>>;
     private identitySerializer = this.serializer.pick(['id']);
 
     constructor(private userPoolId: string, private region: string, private serializer: Resource<S>) {}
@@ -115,7 +115,8 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
-        return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, spread(changes, {updatedAt: new Date()}), notFoundError);
+        const update = spread(changes, {updatedAt: new Date()});
+        return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>, notFoundError);
     }
 
     public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C, notFoundError?: Error): Promise<C> {

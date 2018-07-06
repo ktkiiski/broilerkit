@@ -1,22 +1,14 @@
 import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
-import { Resource, SerializedResource, Serializer } from './resources';
-import { Diff, keys } from './utils/objects';
+import { Resource, SerializedResource } from './resources';
+import { Key } from './utils/objects';
 
 import * as Datastore from 'nedb';
 
-export class NeDbModel<S, PK extends keyof S, V extends keyof S> implements VersionedModel<S, PK, V, Query<S, PK>> {
+export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
 
-    private updateSerializer = this.serializer.optional<V, Diff<keyof S, PK | V>, never>({
-        required: [this.versionAttr],
-        optional: keys(this.serializer.fields).filter((key) => key !== this.versionAttr),
-        defaults: {},
-    }) as Serializer<PartialUpdate<S, V>>;
-    private identitySerializer = this.serializer.optional<PK, Diff<keyof S, PK>, never>({
-        required: [this.key],
-        optional: keys(this.serializer.fields).filter((key) => key !== this.key),
-        defaults: {},
-    }) as Serializer<Identity<S, PK, V>>;
+    private updateSerializer = this.serializer.partial([this.versionAttr]);
+    private identitySerializer = this.serializer.partial([this.key]);
     private db = getDb(this.filePath);
 
     constructor(private filePath: string, private serializer: Resource<S>, private key: PK, private versionAttr: V) {

@@ -1,9 +1,10 @@
 import { Field, list } from './fields';
 import { ValidationError } from './http';
-import { keys, omit, Omit, Optional, pick, spread } from './utils/objects';
+import { difference } from './utils/arrays';
+import { forEachKey, Key, keys, omit, Omit, Optional, pick, Require, spread } from './utils/objects';
 
-export type Fields<I> = {
-    [P in keyof I]: Field<I[P], any>;
+export type Fields<T> = {
+    [P in keyof T]: Field<T[P], any>;
 };
 
 export interface SerializedResource {
@@ -26,24 +27,31 @@ export interface Serializer<I = any, O = I> {
 export class Resource<T> implements Serializer<T> {
     constructor(public readonly fields: Fields<T>) {}
 
-    public pick<K extends keyof T & keyof Fields<T>>(attrs: K[]): Resource<Pick<T, K>> {
+    public pick<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): Resource<Pick<T, K>> {
         return new Resource(pick(this.fields, attrs) as Fields<Pick<T, K>>);
     }
-    public omit<K extends keyof T>(attrs: K[]): Resource<Omit<T, K>> {
-        return new Resource<Omit<T, K>>(omit(this.fields, attrs));
+    public omit<K extends Key<T>>(attrs: K[]): Resource<Omit<T, K>> {
+        return new Resource(omit(this.fields, attrs) as Fields<Omit<T, K>>);
     }
-    public optional<R extends keyof T, O extends keyof T, D extends keyof T>(options: OptionalOptions<T, R, O, D>): OptionalSerializer<T, R, O, D> {
-        return new OptionalSerializer(options, this.fields);
+    public partial<K extends Key<T>>(attrs: K[]): Serializer<Require<T, K>> {
+        return this.optional({
+            required: attrs,
+            optional: difference(keys(this.fields), attrs),
+            defaults: {},
+        }) as Serializer<Require<T, K>>;
     }
-    public extend<E>(fields: Fields<E>): Resource<T & E> {
-        return new Resource(spread(this.fields, fields) as Fields<T & E>);
-    }
-    public partial(): Serializer<Partial<T>> {
+    public fullPartial(): Serializer<Partial<T>> {
         return this.optional({
             required: [],
             optional: keys(this.fields),
             defaults: {},
         });
+    }
+    public optional<R extends Key<T>, O extends Key<T>, D extends Key<T>>(options: OptionalOptions<T, R, O, D>): OptionalSerializer<T, R, O, D> {
+        return new OptionalSerializer(options, this.fields);
+    }
+    public extend<E>(fields: Fields<E>): Resource<T & E> {
+        return new Resource(spread(this.fields, fields) as Fields<T & E>);
     }
     public validate(input: T): T {
         return serializeWith(this.fields, input, (field, value) => field.validate(value)) as T;
@@ -63,38 +71,35 @@ export class Resource<T> implements Serializer<T> {
     public decode(input: EncodedResource): T {
         return this.deserializeWith(input, (field, value) => field.decode(value));
     }
-    private deserializeWith(input: any, callback: (field: Field<T[keyof T]>, value: any, key: keyof T) => T[keyof T]): T {
+    private deserializeWith(input: any, callback: (field: Field<T[Key<T>]>, value: any, key: Key<T>) => T[Key<T>]): T {
         if (!input || typeof input !== 'object') {
             throw new ValidationError(`Invalid object`);
         }
         const {fields} = this;
-        const output = {} as T;
+        const output = {} as Partial<T>;
         // Deserialize each field
-        for (const key in fields) {
-            if (fields.hasOwnProperty(key)) {
-                const value = input[key];
-                if (value === undefined) {
-                    // TODO: Gather errors
-                    throw new ValidationError(`Missing required value for "${key}"`);
-                } else {
-                    output[key] = callback(fields[key], value, key);
-                }
+        forEachKey(fields, (key, value) => {
+            if (value === undefined) {
+                // TODO: Gather errors
+                throw new ValidationError(`Missing required value for "${key}"`);
+            } else {
+                output[key as keyof T] = callback(fields[key], value, key);
             }
-        }
-        return output;
+        });
+        return output as T;
     }
 }
 
-export interface OptionalOptions<S, R extends keyof S, O extends keyof S, D extends keyof S> {
+export interface OptionalOptions<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> {
     required: R[];
     optional: O[];
     defaults: {[P in D]: S[P]};
 }
 
-export type OptionalInput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Optional<Pick<S, R | O | D>, O | D>;
-export type OptionalOutput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Optional<Pick<S, R | O | D>, O>;
+export type OptionalInput<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> = Optional<Pick<S, R | O | D>, O | D>;
+export type OptionalOutput<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> = Optional<Pick<S, R | O | D>, O>;
 
-export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D extends keyof S> implements Serializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+export class OptionalSerializer<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> implements Serializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
     private readonly requiredFields: R[];
     private readonly optionalFields: Array<O | D>;
     private readonly defaults: {[P in D]: S[P]};
@@ -124,7 +129,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     public decode(input: EncodedResource): OptionalOutput<S, R, O, D> {
         return this.deserializeWith(input, (field, value) => field.decode(value));
     }
-    private deserializeWith(input: any, callback: (field: Field<S[keyof S]>, value: any) => S[keyof S]): OptionalOutput<S, R, O, D> {
+    private deserializeWith(input: any, callback: (field: Field<S[Key<S>]>, value: any) => S[Key<S>]): OptionalOutput<S, R, O, D> {
         if (!input || typeof input !== 'object') {
             throw new ValidationError(`Invalid object`);
         }

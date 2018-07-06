@@ -1,22 +1,14 @@
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
 import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
-import { EncodedResource, Resource, Serializer } from './resources';
+import { EncodedResource, Resource } from './resources';
 import { hasAttributes } from './utils/compare';
-import { Diff, keys, mapObject, omit, spread } from './utils/objects';
+import { Key, keys, mapObject, omit, spread } from './utils/objects';
 
-export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements VersionedModel<S, PK, V, Query<S, PK>> {
+export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
 
-    private updateSerializer = this.serializer.optional<V, Diff<keyof S, PK | V>, never>({
-        required: [this.versionAttr],
-        optional: keys(this.serializer.fields).filter((key) => key !== this.versionAttr),
-        defaults: {},
-    }) as Serializer<PartialUpdate<S, V>>;
-    private identitySerializer = this.serializer.optional({
-        required: [this.key],
-        optional: [this.versionAttr],
-        defaults: {},
-    }) as Serializer<Identity<S, PK, V>>;
+    private updateSerializer = this.serializer.partial([this.versionAttr]);
+    private identitySerializer = this.serializer.pick([this.key, this.versionAttr]).partial([this.key]);
 
     constructor(private domainName: string, private region: string, private serializer: Resource<S>, private key: PK, private versionAttr: V) {}
 
@@ -63,7 +55,7 @@ export class SimpleDbModel<S, PK extends keyof S, V extends keyof S> implements 
     public replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
         // TODO: Implement separately
         const update = omit(item, [this.key]);
-        return this.update(identity, update, notFoundError);
+        return this.update(identity, update as PartialUpdate<S, V>, notFoundError);
     }
 
     public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {

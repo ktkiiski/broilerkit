@@ -1,8 +1,9 @@
 import {__assign, __rest} from 'tslib';
 
-export type Diff<T extends string, U extends string> = ({[P in T]: P } & {[P in U]: never } & { [x: string]: never })[T];
-export type Omit<T, K extends keyof T> = Pick<T, Diff<keyof T, K>>;
-export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K & string>>;
+export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<T>;
+export type Require<T, K extends keyof T> = Pick<T, K> & Partial<T>;
+export type Key<T> = keyof T & string;
 
 /**
  * Iterates through each own enumerable property of the given
@@ -10,9 +11,9 @@ export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
  * @param obj Object to iterate
  * @param iterator Function to be called for each key
  */
-export function forEachKey<T>(obj: T, iterator: (key: keyof T, value: T[keyof T]) => void): void {
+export function forEachKey<T>(obj: T, iterator: (key: Key<T>, value: T[Key<T>]) => void): void {
     for (const key in obj) {
-        if (hasOwnProperty(obj, key)) {
+        if (hasOwnStringProperty(obj, key)) {
             iterator(key, obj[key]);
         }
     }
@@ -25,7 +26,7 @@ export function forEachKey<T>(obj: T, iterator: (key: keyof T, value: T[keyof T]
  * @param obj Object whose values are mapped
  * @param iterator Function that returns new value for each key
  */
-export function mapObject<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof T, obj: T) => R): R[] {
+export function mapObject<T, R>(obj: T, iterator: (value: T[Key<T>], key: Key<T>, obj: T) => R): R[] {
     const result: R[] = [];
     forEachKey(obj, (key, value) => {
         result.push(iterator(value, key, obj));
@@ -39,8 +40,8 @@ export function mapObject<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof
  * @param obj Object whose values are mapped
  * @param iterator Function that returns new value for each key
  */
-export function transformValues<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof T, obj: T) => R): {[P in keyof T]: R} {
-    const result = {} as {[P in keyof T]: R};
+export function transformValues<T, R>(obj: T, iterator: (value: T[Key<T>], key: Key<T>, obj: T) => R): {[P in Key<T>]: R} {
+    const result = {} as {[P in Key<T>]: R};
     forEachKey(obj, (key, value) => {
         result[key] = iterator(value, key, obj);
     });
@@ -66,30 +67,31 @@ export function buildObject<T, V, K extends string>(source: T[], iterator: (item
 }
 
 /**
- * Returns the keys of the given object as an array.
+ * Returns the string keys of the given object as an array.
  * @param obj Object whose keys are returned
  */
-export function keys<T>(obj: T): Array<keyof T> {
-    const keyArray: Array<keyof T> = [];
+export function keys<T>(obj: T): Array<Key<T>> {
+    const keyArray: Array<Key<T>> = [];
     forEachKey(obj, (key) => keyArray.push(key));
     return keyArray;
 }
 
 /**
- * Returns the values of each of the key of the given object as an array.
+ * Returns the values of each of the string key of the given object as an array.
  * @param obj Object whose values are returned
  */
-export function values<T>(obj: T): Array<T[keyof T]> {
-    const valueArray: Array<T[keyof T]> = [];
+export function values<T>(obj: T): Array<T[Key<T>]> {
+    const valueArray: Array<T[Key<T>]> = [];
     forEachKey(obj, (_, value) => valueArray.push(value));
     return valueArray;
 }
 
-export type KeyValuePair<T> = {[P in keyof T]: [P, T[P]]}[keyof T];
+export type KeyValuePair<T> = {[P in Key<T>]: [P, T[P]]}[Key<T>];
 
 /**
  * Returns the item pairs of the given object as an array.
  * Each pair is an array of exactly two values: [key, value]
+ * Only string keys are included.
  * @param obj Object whose items are returned.
  */
 export function toPairs<T>(obj: T): Array<KeyValuePair<T>> {
@@ -100,11 +102,12 @@ export function toPairs<T>(obj: T): Array<KeyValuePair<T>> {
 
 /**
  * Picks only the given keys of the given object.
+ * Also ignores everything else than string attributes.
  */
-export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, K> {
+export function pick<T, K extends Key<T>>(obj: T, props: K[]): Pick<T, Extract<K, string>> {
     const output = {} as Pick<T, K>;
     for (const key of props) {
-        if (hasOwnProperty(obj, key)) {
+        if (hasOwnStringProperty(obj, key)) {
             output[key] = obj[key];
         }
     }
@@ -113,8 +116,9 @@ export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, K> {
 
 /**
  * Picks every other attribute but the given keys of the given object.
+ * Also ignores everything else than string attributes.
  */
-export function omit<T, K extends keyof T>(obj: T, props: K[]): Omit<T, K> {
+export function omit<T, K extends Key<T>>(obj: T, props: K[]): Omit<T, K> {
     return __rest(obj, props as string[]);
 }
 
@@ -131,7 +135,10 @@ export function spread(...args: any[]): any {
     return __assign({}, ...args);
 }
 
-function hasOwnProperty<T>(obj: T, propName: keyof T): true;
-function hasOwnProperty(obj: any, propName: string) {
+export function hasOwnStringProperty<T>(obj: T, propName: string | number | symbol): propName is Key<T> {
+    return typeof propName === 'string' && hasOwnProperty(obj, propName);
+}
+
+function hasOwnProperty<T>(obj: T, propName: string | number | symbol): propName is keyof T {
     return Object.prototype.hasOwnProperty.call(obj, propName);
 }

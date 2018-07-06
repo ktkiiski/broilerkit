@@ -2,14 +2,15 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Location } from './location';
 import { Route } from './routes';
+import { Key } from './utils/objects';
 
-export interface State<T, K extends keyof T = keyof T> {
+export interface State<T, K extends Key<T> = Key<T>> {
     name: K;
     params: T[K];
 }
 
 export class Router<T> extends Observable<State<T> | null> {
-    constructor(private location: Location, private routings: {[P in keyof T]: Route<T[P], keyof T[P]>}) {
+    constructor(private location: Location, private routings: {[P in keyof T]: Route<T[P], Key<T[P]>>}) {
         super((subscriber) => {
             return this.location
                 .pipe(map((url) => this.match(url)))

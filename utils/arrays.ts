@@ -58,6 +58,7 @@ export function sort<T, V>(values: T[], iterator: (item: T, index: number, src: 
  * Returns an array of items that exist in the first given
  * array but do NOT exist in the second array.
  */
+export function difference<A, B>(a: A[], b: B[]): Array<Exclude<A, B>>;
 export function difference<T>(a: T[], b: T[]): T[] {
     return a.filter((x) => b.indexOf(x) < 0);
 }

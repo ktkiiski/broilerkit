@@ -2,27 +2,28 @@ import { parseARN } from './aws/arn';
 import { NeDbModel } from './nedb';
 import { Resource } from './resources';
 import { SimpleDbModel } from './simpledb';
+import { Key, Require } from './utils/objects';
 
-export interface OrderedQuery<T, K extends keyof T> {
+export interface OrderedQuery<T, K extends Key<T>> {
     ordering: K;
     direction: 'asc' | 'desc';
     since?: T[K] | undefined;
 }
 
-export interface SlicedQuery<T, K extends keyof T> extends OrderedQuery<T, K> {
+export interface SlicedQuery<T, K extends Key<T>> extends OrderedQuery<T, K> {
     minCount: number;
     maxCount: number;
 }
 
-export interface HashIndexQuery<T, P extends keyof T, S extends keyof T> extends SlicedQuery<T, S> {
+export interface HashIndexQuery<T, P extends Key<T>, S extends Key<T>> extends SlicedQuery<T, S> {
     key: P;
     value: T[P];
 }
 
-export type Query<T, P extends keyof T> = SlicedQuery<T, keyof T> | HashIndexQuery<T, keyof T, P>;
+export type Query<T, P extends Key<T>> = SlicedQuery<T, Key<T>> | HashIndexQuery<T, Key<T>, P>;
 
-export type Identity<S, PK extends keyof S, V extends keyof S> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
-export type PartialUpdate<S, V extends keyof S> = Pick<S, V> & Partial<S>;
+export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
+export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
 export interface Model<T, I, R, P, D> {
     /**
@@ -121,7 +122,7 @@ export interface Model<T, I, R, P, D> {
     // TODO: query(query: D): Observable<T>;
 }
 
-export type VersionedModel<T, PK extends keyof T, V extends keyof T, D> = Model<T, Identity<T, PK, V>, T, PartialUpdate<T, V>, D>;
+export type VersionedModel<T, PK extends Key<T>, V extends Key<T>, D> = Model<T, Identity<T, PK, V>, T, PartialUpdate<T, V>, D>;
 
 export interface Table<M> {
     /**
@@ -148,7 +149,7 @@ export interface Table<M> {
     getModel(uri: string): M;
 }
 
-export class TableDefinition<S, PK extends keyof S, V extends keyof S> implements Table<VersionedModel<S, PK, V, Query<S, PK>>> {
+export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements Table<VersionedModel<S, PK, V, Query<S, PK>>> {
 
     constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
 
@@ -175,8 +176,8 @@ export class TableDefinition<S, PK extends keyof S, V extends keyof S> implement
 export function table(tableName: string) {
     // tslint:disable-next-line:no-shadowed-variable
     function resource<S>(resource: Resource<S>) {
-        function identifyBy<K extends keyof S>(key: K) {
-            function versionBy<V extends keyof S>(versionAttr: V) {
+        function identifyBy<K extends Key<S>>(key: K) {
+            function versionBy<V extends Key<S>>(versionAttr: V) {
                 return new TableDefinition(tableName, resource, key, versionAttr);
             }
             return {versionBy};
@@ -186,6 +187,6 @@ export function table(tableName: string) {
     return {resource};
 }
 
-export function isIndexQuery<I, PK extends keyof I>(query: Query<I, PK>): query is HashIndexQuery<I, keyof I, PK> {
-    return (query as HashIndexQuery<I, keyof I, PK>).key != null;
+export function isIndexQuery<I, PK extends Key<I>>(query: Query<I, PK>): query is HashIndexQuery<I, Key<I>, PK> {
+    return (query as HashIndexQuery<I, Key<I>, PK>).key != null;
 }
