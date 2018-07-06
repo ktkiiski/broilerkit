@@ -11,3 +11,6 @@
 
 # Ignore OS X hidden files
 .DS_Store
+
+# Ignore packed npm packages
+*.tgz
