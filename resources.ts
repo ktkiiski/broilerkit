@@ -78,12 +78,13 @@ export class Resource<T> implements Serializer<T> {
         const {fields} = this;
         const output = {} as Partial<T>;
         // Deserialize each field
-        forEachKey(fields, (key, value) => {
+        forEachKey(fields, (key, field) => {
+            const value = input[key];
             if (value === undefined) {
                 // TODO: Gather errors
                 throw new ValidationError(`Missing required value for "${key}"`);
             } else {
-                output[key as keyof T] = callback(fields[key], value, key);
+                output[key as keyof T] = callback(field, value, key);
             }
         });
         return output as T;
