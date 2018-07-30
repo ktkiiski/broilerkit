@@ -73,6 +73,24 @@ export function isEqual(a: any, b: any): boolean {
     return a !== a && b !== b;
 }
 
+/**
+ * Compares the given values and return 1, -1 or 0 depending on
+ * whether the first value is larger, smaller or equal to the second.
+ * @param a First value
+ * @param b Second value
+ * @param direction Which order is used, 'asc' or 'desc'
+ */
+export function compare<T>(a: T, b: T, direction: 'asc' | 'desc' = 'asc') {
+    const factor = direction === 'desc' ? -1 : 1;
+    if (a > b) {
+        return factor;
+    }
+    if (a < b) {
+        return -factor;
+    }
+    return 0;
+}
+
 export function hasAttributes(obj: {[key: string]: any}, values: {[key: string]: any}): boolean {
     for (const key in values) {
         if (!isEqual(values[key], obj[key])) {

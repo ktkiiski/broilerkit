@@ -1,3 +1,5 @@
+import { compare } from './compare';
+
 /**
  * Maps each item in the given array to zero or more items,
  * returning them in a single flattened array of items.
@@ -42,13 +44,7 @@ export function sort<T, V>(values: T[], iterator: (item: T, index: number, src: 
     // Sort the items
     const factor = direction === 'asc' ? 1 : -1;
     items.sort(([, value1, index1], [, value2, index2]) => {
-        if (value1 > value2) {
-            return factor;
-        }
-        if (value1 < value2) {
-            return -factor;
-        }
-        return (index1 - index2) * factor;
+        return compare(value1, value2, direction) || (index1 - index2) * factor;
     });
     // Do not return the indexes or comparison values, just the actual items
     return items.map((item) => item[0]);

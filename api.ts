@@ -1,10 +1,16 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
-import { concat, never, Observable, of } from 'rxjs';
+import { concat, defer, merge, never, Observable } from 'rxjs';
+import { filter, finalize, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
+import { toArray } from './async';
 import { AuthClient } from './auth';
+import { Client } from './client';
+import { applyCollectionChange, isCollectionChange, ResourceChange } from './collections';
 import { choice, Field, nullable, url } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
+import { shareIterator } from './iteration';
+import { observeIterable } from './observables';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
 import { Route, route } from './routes';
 import { pattern, Url } from './url';
@@ -54,8 +60,9 @@ export interface ListEndpoint<I, O> {
     getPage(query: I): Promise<IApiListPage<O>>;
     getAll(query: I): Promise<O[]>;
     validateGet(query: I): I;
+    observe(query: I): Observable<Observable<O>>;
+    observeIterable(query: I): Observable<AsyncIterable<O>>;
     observeAll(query: I): Observable<O[]>;
-    observeCollection(query: I): Observable<Observable<O>>;
 }
 
 export interface CreateEndpoint<I1, I2, O> {
@@ -78,7 +85,7 @@ export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
     methodHandlers: X;
     methods: HttpMethod[];
     route: Route<any, any> | Route<any, never>;
-    bind(rootUrl: string, authClient?: AuthClient): T;
+    bind(rootUrl: string, client: Client, authClient?: AuthClient): T;
     validate(method: HttpMethod, input: any): any;
     serializeRequest(method: HttpMethod, input: any): ApiRequest;
     deserializeRequest(request: ApiRequest): any;
@@ -90,20 +97,20 @@ export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
 class ApiModel {
     constructor(
         public rootUrl: string,
-        private endpoint: EndpointDefinition<any, EndpointMethodMapping>,
+        protected idAttribute: string,
+        protected client: Client,
+        protected endpoint: EndpointDefinition<any, EndpointMethodMapping>,
         private authClient?: AuthClient,
     ) { }
-
-    public request(method: HttpMethod, input: any): Promise<any> {
-        const {url, payload} = this.endpoint.serializeRequest(method, input);
-        return this.ajax(method, `${this.rootUrl}${url}`, payload);
-    }
 
     public validate(method: HttpMethod, input: any): any {
         return this.endpoint.validate(method, input);
     }
 
-    protected async ajax(method: HttpMethod, url: string, payload?: any) {
+    protected async ajax(method: HttpMethod, url: Url | string, payload?: any) {
+        if (typeof url !== 'string') {
+            url = `${this.rootUrl}${url}`;
+        }
         const token = await this.getToken(method);
         const headers: {[header: string]: string} = token ? {Authorization: `Bearer ${token}`} : {};
         const response = await ajax({url, method, payload, headers});
@@ -126,21 +133,60 @@ class ApiModel {
 }
 
 class RetrieveEndpointModel<I, O> extends ApiModel implements RetrieveEndpoint<I, O> {
+    private resource$?: Observable<O>;
     public get(input: I): Promise<O> {
-        return this.request('GET', input);
+        const method = 'GET';
+        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        return this.ajax(method, url, payload);
     }
     public validateGet(input: I): I {
         return this.validate('GET', input);
     }
     public observe(input: I): Observable<O> {
-        // TODO: Improve!
-        return concat(this.get(input), never());
+        const {url, payload} = this.endpoint.serializeRequest('GET', input);
+        return defer(() => {
+            // Use a cached observable, if available
+            let {resource$} = this;
+            if (resource$) {
+                return resource$;
+            }
+            const update$ = this.client.resourceUpdate$.pipe(
+                filter((update) => update.resourceUrl === url.path),
+                map((update) => update.resource as Partial<O>),
+            );
+            const removal$ = this.client.resourceRemoval$.pipe(
+                filter((removal) => removal.resourceUrl === url.path),
+            );
+            resource$ = this.resource$ = concat(
+                // Start with the retrieved state of the resource
+                this.ajax('GET', url, payload),
+                // Then emit all the updates to the resource
+                update$,
+            ).pipe(
+                // Combine all the changes with the latest state to the resource.
+                scan<Partial<O>, O>((res, update) => spread(res, update), {} as O),
+                // Complete when the resource is removed
+                takeUntil(removal$),
+                // When this Observable is unsubscribed, then remove from the cache.
+                finalize(() => {
+                    if (this.resource$ === resource$) {
+                        delete this.resource$;
+                    }
+                }),
+                // Emit the latest state for all the new subscribers.
+                shareReplay(1),
+            );
+            return resource$;
+        });
     }
 }
 
-class ListEndpointModel<I, O> extends ApiModel implements ListEndpoint<I, O> {
+class ListEndpointModel<I extends ListParams<any, any>, O> extends ApiModel implements ListEndpoint<I, O> {
+    private collection$?: Observable<AsyncIterable<O>>;
     public getPage(input: I): Promise<IApiListPage<O>> {
-        return this.request('GET', input);
+        const method = 'GET';
+        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        return this.ajax(method, url, payload);
     }
     public getAll(input: I): Promise<O[]> {
         const handlePage = async ({next, results}: IApiListPage<O>): Promise<O[]> => {
@@ -152,39 +198,88 @@ class ListEndpointModel<I, O> extends ApiModel implements ListEndpoint<I, O> {
         };
         return this.getPage(input).then(handlePage);
     }
+    public getIterable(input: I): AsyncIterable<O> {
+        return shareIterator(this.iterate(input));
+    }
+    public async *iterate(input: I) {
+        let page = await this.getPage(input);
+        while (true) {
+            for (const item of page.results) {
+                yield item;
+            }
+            if (page.next) {
+                page = await this.ajax('GET', page.next);
+            } else {
+                break;
+            }
+        }
+    }
     public validateGet(input: I): I {
         return this.validate('GET', input);
     }
-    public observeAll(input: I): Observable<O[]> {
-        return concat(this.getAll(input), never());
+    public observe(input: I): Observable<Observable<O>> {
+        return this.observeIterable(input).pipe(map(observeIterable));
     }
-    public observeCollection(input: I): Observable<Observable<O>> {
-        return concat(of(new Observable<O>((subscriber) => {
-            const handleError = (error?: any) => {
-                subscriber.error(error);
-            };
-            const handlePage = ({next, results}: IApiListPage<O>): void => {
-                for (const item of results) {
-                    if (!subscriber.closed) {
-                        subscriber.next(item);
+    public observeIterable(input: I): Observable<AsyncIterable<O>> {
+        const {url} = this.endpoint.serializeRequest('GET', input);
+        const {direction, ordering} = input;
+        const idAttribute = this.idAttribute as Key<O>;
+        return defer(() => {
+            // Use a cached observable, if available
+            let {collection$} = this;
+            if (collection$) {
+                return collection$;
+            }
+            const iterable = this.getIterable(input);
+            const addition$ = this.client.resourceAddition$;
+            const update$ = this.client.resourceUpdate$;
+            const removal$ = this.client.resourceRemoval$;
+            const change$ = merge(addition$, update$, removal$).pipe(
+                filter((change) => isCollectionChange(url.path, change)),
+            );
+            collection$ = this.collection$ = change$.pipe(
+                // Combine all the changes with the latest state to the resource.
+                scan<ResourceChange<O, keyof O>, AsyncIterable<O>>(
+                    (collection, change) => applyCollectionChange(collection, change, idAttribute, ordering, direction),
+                    iterable,
+                ),
+                // Always start with the initial state
+                startWith(iterable),
+                // Complete when the resource is removed
+                takeUntil(removal$),
+                // When this Observable is unsubscribed, then remove from the cache.
+                finalize(() => {
+                    if (this.collection$ === collection$) {
+                        delete this.collection$;
                     }
-                }
-                if (next) {
-                    if (!subscriber.closed) {
-                        this.ajax('GET', next).then(handlePage, handleError);
-                    }
-                } else {
-                    subscriber.complete();
-                }
-            };
-            this.getPage(input).then(handlePage, handleError);
-        })), never());
+                }),
+                // Emit the latest state for all the new subscribers.
+                shareReplay(1),
+            );
+            return collection$;
+        });
+    }
+    public observeAll(input: I): Observable<O[]> {
+        return this.observeIterable(input).pipe(
+            switchMap((iterable) => toArray(iterable)),
+        );
+        return concat(this.getAll(input), never());
     }
 }
 
 class CreateEndpointModel<I1, I2, O> extends ApiModel implements CreateEndpoint<I1, I2, O> {
-    public post(input: I1): Promise<O> {
-        return this.request('POST', input);
+    public async post(input: I1): Promise<O> {
+        const method = 'POST';
+        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        const resource = await this.ajax(method, url, payload);
+        const resourceId = resource[this.idAttribute];
+        this.client.resourceAddition$.next({
+            type: 'addition',
+            collectionUrl: url.path,
+            resource,
+            resourceId,
+        });
+        return resource;
     }
     public validatePost(input: I1): I2 {
         return this.validate('POST', input);
@@ -193,22 +288,42 @@ class CreateEndpointModel<I1, I2, O> extends ApiModel implements CreateEndpoint<
 
 class UpdateEndpointModel<I1, I2, P, S> extends ApiModel implements UpdateEndpoint<I1, I2, P, S> {
     public put(input: I1): Promise<S> {
-        return this.request('PUT', input);
+        return this.update('PUT', input);
     }
     public validatePut(input: I1): I2 {
         return this.validate('PUT', input);
     }
     public patch(input: P): Promise<S> {
-        return this.request('PATCH', input);
+        return this.update('PATCH', input);
     }
     public validatePatch(input: P): P {
         return this.validate('PATCH', input);
     }
+    private async update(method: 'PUT' | 'PATCH', input: I1 | P): Promise<S> {
+        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        const resource = await this.ajax(method, url, payload);
+        const resourceId = resource[this.idAttribute];
+        this.client.resourceUpdate$.next({
+            type: 'update',
+            resourceUrl: url.path,
+            resource,
+            resourceId,
+        });
+        return resource;
+    }
 }
 
 class DestroyEndpointModel<I> extends ApiModel implements DestroyEndpoint<I> {
-    public delete(query: I): Promise<void> {
-        return this.request('DELETE', query);
+    public async delete(query: I): Promise<void> {
+        const method = 'DELETE';
+        const {url, payload} = this.endpoint.serializeRequest(method, query);
+        await this.ajax(method, url, payload);
+        const resourceId = query[this.idAttribute as keyof I];
+        this.client.resourceRemoval$.next({
+            type: 'removal',
+            resourceUrl: url.path,
+            resourceId,
+        });
     }
 }
 
@@ -306,32 +421,30 @@ class ListParamSerializer<T, U extends Key<T>, K extends Key<T>> implements Seri
 
 export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping> implements EndpointDefinition<T, X> {
 
-    public static create<S, U extends Key<S>>(resource: Resource<S>, route: Route<Pick<S, U>, U>) {
-        return new ApiEndpoint(resource, route, ['OPTIONS'], {
+    public static create<S, U extends Key<S>>(resource: Resource<S>, idAttribute: Key<S>, route: Route<Pick<S, U>, U>) {
+        return new ApiEndpoint(resource, idAttribute, route, ['OPTIONS'], {
             OPTIONS: {auth: 'none', route},
         });
     }
 
     private constructor(
         public readonly resource: Resource<S>,
+        private readonly idAttribute: Key<S>,
         public readonly route: Route<Pick<S, U>, U>,
         public readonly methods: HttpMethod[],
         public readonly methodHandlers: X,
         private readonly modelPrototypes: ApiModel[] = [],
     ) {}
 
-    public listable<K extends Key<S>>(orderingKeys: K[]): ListEndpointDefinition<S, U, K, 'none', T, X>;
-    public listable<K extends Key<S>, A extends AuthenticationType>(options: {auth: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X>;
-    public listable<K extends Key<S>, A extends AuthenticationType = 'none'>(options: K[] | {auth?: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X> {
-        const orderingKeys = Array.isArray(options) ? options : options.orderingKeys;
-        const auth = !Array.isArray(options) && options.auth || 'none' as A;
+    public listable<K extends Key<S>, A extends AuthenticationType = 'none'>(options: {auth?: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X> {
+        const {orderingKeys, auth = 'none' as A} = options;
         const urlSerializer = new ListParamSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
         const pageResource = resource({
             next: nullable(url()),
             results: nestedList(this.resource),
         });
         return new ApiEndpoint(
-            this.resource, this.route, [...this.methods, 'GET'],
+            this.resource, this.idAttribute, this.route, [...this.methods, 'GET'],
             spread(this.methodHandlers, {GET: {auth, route: route(this.route.pattern, urlSerializer), resourceSerializer: pageResource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, ListEndpointModel.prototype],
         );
@@ -341,7 +454,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options && options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, route, [...this.methods, 'GET'],
+            resource, this.idAttribute, route, [...this.methods, 'GET'],
             spread(this.methodHandlers, {GET: {auth, route, resourceSerializer: resource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, RetrieveEndpointModel.prototype],
         );
@@ -352,7 +465,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, route, [...this.methods, 'POST'],
+            resource, this.idAttribute, route, [...this.methods, 'POST'],
             spread(this.methodHandlers, {POST: {auth, route, payloadSerializer: payloadResource, resourceSerializer: resource} as PayloadMethodHandler<A>}),
             [...this.modelPrototypes, CreateEndpointModel.prototype],
         );
@@ -365,7 +478,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const replaceResource = resource.optional(options);
         const updateResource = resource.pick([...required, ...optional, ...keys(defaults)]).fullPartial();
         return new ApiEndpoint(
-            resource, this.route, [...this.methods, 'PUT', 'PATCH'],
+            resource, this.idAttribute, this.route, [...this.methods, 'PUT', 'PATCH'],
             spread(this.methodHandlers, {
                 PUT: {auth, route, payloadSerializer: replaceResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
                 PATCH: {auth, route, payloadSerializer: updateResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
@@ -378,16 +491,16 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options && options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, route, [...this.methods, 'DELETE'],
+            resource, this.idAttribute, route, [...this.methods, 'DELETE'],
             spread(this.methodHandlers, {DELETE: {auth, route} as NoContentMethodHandler<A>}),
             [...this.modelPrototypes, DestroyEndpointModel.prototype],
         );
     }
 
-    public bind(rootUrl: string, authClient?: AuthClient): T {
+    public bind(rootUrl: string, client: Client, authClient?: AuthClient): T {
         class BoundApiEndpoint extends ApiModel {}
         Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(rootUrl, this, authClient) as any;
+        return new BoundApiEndpoint(rootUrl, this.idAttribute, client, this, authClient) as any;
     }
 
     public validate(method: HttpMethod, input: any): any {
@@ -449,9 +562,9 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
     }
 }
 
-export function endpoint<R>(resource: Resource<R>) {
+export function endpoint<R>(resource: Resource<R>, idAttribute: Key<R>) {
     function url<K extends Key<R> = never>(strings: TemplateStringsArray, ...keywords: K[]): ApiEndpoint<R, K, {}, OptionsEndpointMethodMapping> {
-        return ApiEndpoint.create(resource, route(pattern(strings, ...keywords), resource.pick(keywords)));
+        return ApiEndpoint.create(resource, idAttribute, route(pattern(strings, ...keywords), resource.pick(keywords)));
     }
     return {url};
 }
@@ -459,5 +572,6 @@ export function endpoint<R>(resource: Resource<R>) {
 export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P], EndpointMethodMapping>};
 
 export function initApi<T>(rootUrl: string, endpoints: ApiEndpoints<T>, authClient?: AuthClient): T {
-    return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(rootUrl, authClient)) as any;
+    const client = new Client();
+    return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(rootUrl, client, authClient)) as any;
 }

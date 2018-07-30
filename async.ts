@@ -1,7 +1,14 @@
+import { compare } from './utils/compare';
+
 export function wait(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
     });
+}
+
+export function asap<T>(callback: () => void): Promise<void>;
+export function asap<T>(callback: () => T): Promise<T> {
+    return Promise.resolve().then(callback);
 }
 
 export async function *buffer<T>(iterator: AsyncIterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
@@ -26,6 +33,24 @@ export async function toArray<T>(iterator: AsyncIterable<T>): Promise<T[]> {
     return items;
 }
 
+export async function *mapAsync<T, R>(iterable: AsyncIterable<T> | AsyncIterator<T>, iteratee: (item: T, index: number) => R) {
+    let index = 0;
+    for await (const item of iterable) {
+        yield iteratee(item, index);
+        index += 1;
+    }
+}
+
+export async function *filterAsync<T>(iterable: AsyncIterable<T> | AsyncIterator<T>, iteratee: (item: T, index: number) => boolean): AsyncIterableIterator<T> {
+    let index = 0;
+    for await (const item of iterable) {
+        if (iteratee(item, index)) {
+            yield item;
+        }
+        index += 1;
+    }
+}
+
 export async function *concatAsync<T>(...iterables: Array<AsyncIterable<T>>) {
     for (const iterator of iterables) {
         yield *iterator;
@@ -41,6 +66,43 @@ export function mergeAsync<T>(...iterables: Array<AsyncIterable<T>>): AsyncItera
         });
         Promise.all(promises).then(complete, error);
     });
+}
+
+export async function *mergeSortedAsync<T, K extends keyof T>(iterables: Array<AsyncIterable<T>>, ordering: K, direction: 'asc' | 'desc'): AsyncIterableIterator<T> {
+    const iterators = iterables.map((iterable) => iterable[Symbol.asyncIterator]());
+    const nextPromises: Array<Promise<IteratorResult<T>>> = iterators.map((iterator) => iterator.next());
+    const len = iterables.length;
+    while (true) {
+        const nextResults = await Promise.all(nextPromises);
+        let minIndex: number | undefined;
+        let minItem!: T;
+        for (let index = 0; index < len; index += 1) {
+            const result = nextResults[index];
+            if (!result.done) {
+                const item = result.value;
+                if (minIndex === undefined || compare(item[ordering], minItem[ordering], direction) < 0) {
+                    minIndex = index;
+                    minItem = item;
+                }
+            }
+        }
+        if (minIndex === undefined) {
+            break;
+        }
+        yield minItem;
+        nextPromises[minIndex] = iterators[minIndex].next();
+    }
+}
+
+export async function *flatMapAsync<T, R>(iterable: AsyncIterable<T> | AsyncIterator<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterableIterator<R> | R[] | undefined): AsyncIterableIterator<R> {
+    let index = 0;
+    for await (const sourceItem of iterable) {
+        const targetItems = callback(sourceItem, index);
+        if (targetItems) {
+            yield *targetItems;
+        }
+        index += 1;
+    }
 }
 
 export async function reduceAsync<T, R>(iterable: AsyncIterable<T>, callback: (accumulator: R, currentValue: T) => R, ...initialValues: R[]): Promise<R> {
@@ -63,6 +125,10 @@ export async function reduceAsync<T, R>(iterable: AsyncIterable<T>, callback: (a
         throw new TypeError('Reduce of empty iterable with no initial value');
     }
     return value as R;
+}
+
+export async function *toAsync<T>(values: T[] | Iterable<T> | Iterator<T> | AsyncIterable<T> | AsyncIterator<T>) {
+    yield *values;
 }
 
 export interface ExecutorParams<T> {
