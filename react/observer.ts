@@ -101,7 +101,7 @@ export function renderUser<P>({auth, render}: RenderUserOptions<P>): ComponentCl
     class AuthComponent extends ObserverComponent<P, {user: AuthUser | null}> {
         protected state$ = user$.pipe(map((user) => ({user})));
         public render() {
-            return render(this.state.user, this.props);
+            return render(this.state.user || null, this.props);
         }
     }
     return AuthComponent;
