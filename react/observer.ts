@@ -45,16 +45,16 @@ export abstract class ObserverComponent<P, T extends {}> extends Component<P, T>
 
 export interface SimpleRenderObservableOptions<P, T> {
     observable: ObservableInput<T> | ((props: P) => ObservableInput<T>);
-    render: (value: T | undefined, props: P) => ReactNode;
+    render: (value: T | undefined, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 export interface UserRenderObservableOptions<P, T> {
     auth: AuthClient;
     observable: (props: P, user: AuthUser | null) => ObservableInput<T>;
-    render: (value: T | undefined, user: AuthUser | null, props: P) => ReactNode;
+    render: (value: T | undefined, user: AuthUser | null, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 export interface RenderUserOptions<P> {
     auth: AuthClient;
-    render: (user: AuthUser | null, props: P) => ReactNode;
+    render: (user: AuthUser | null, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 
 export function renderObservable<P, T>({render, observable}: SimpleRenderObservableOptions<P, T>): ComponentClass<P> {
