@@ -133,7 +133,7 @@ class ApiModel {
 }
 
 class RetrieveEndpointModel<I, O> extends ApiModel implements RetrieveEndpoint<I, O> {
-    private resource$?: Observable<O>;
+    private resourceCache?: Map<string, Observable<O>>;
     public get(input: I): Promise<O> {
         const method = 'GET';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
@@ -144,9 +144,12 @@ class RetrieveEndpointModel<I, O> extends ApiModel implements RetrieveEndpoint<I
     }
     public observe(input: I): Observable<O> {
         const {url, payload} = this.endpoint.serializeRequest('GET', input);
+        const cacheKey = url.toString();
         return defer(() => {
             // Use a cached observable, if available
-            let {resource$} = this;
+            const resourceCache = this.resourceCache || new Map<string, Observable<O>>();
+            this.resourceCache = resourceCache;
+            let resource$ = resourceCache.get(cacheKey);
             if (resource$) {
                 return resource$;
             }
@@ -157,7 +160,7 @@ class RetrieveEndpointModel<I, O> extends ApiModel implements RetrieveEndpoint<I
             const removal$ = this.client.resourceRemoval$.pipe(
                 filter((removal) => removal.resourceUrl === url.path),
             );
-            resource$ = this.resource$ = concat(
+            resource$ = concat(
                 // Start with the retrieved state of the resource
                 this.ajax('GET', url, payload),
                 // Then emit all the updates to the resource
@@ -169,20 +172,21 @@ class RetrieveEndpointModel<I, O> extends ApiModel implements RetrieveEndpoint<I
                 takeUntil(removal$),
                 // When this Observable is unsubscribed, then remove from the cache.
                 finalize(() => {
-                    if (this.resource$ === resource$) {
-                        delete this.resource$;
+                    if (resourceCache.get(cacheKey) === resource$) {
+                        resourceCache.delete(cacheKey);
                     }
                 }),
                 // Emit the latest state for all the new subscribers.
                 shareReplay(1),
             );
+            resourceCache.set(cacheKey, resource$);
             return resource$;
         });
     }
 }
 
 class ListEndpointModel<I extends ListParams<any, any>, O> extends ApiModel implements ListEndpoint<I, O> {
-    private collection$?: Observable<AsyncIterable<O>>;
+    private collectionCache?: Map<string, Observable<AsyncIterable<O>>>;
     public getPage(input: I): Promise<IApiListPage<O>> {
         const method = 'GET';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
@@ -222,11 +226,14 @@ class ListEndpointModel<I extends ListParams<any, any>, O> extends ApiModel impl
     }
     public observeIterable(input: I): Observable<AsyncIterable<O>> {
         const {url} = this.endpoint.serializeRequest('GET', input);
+        const cacheKey = url.toString();
         const {direction, ordering} = input;
         const idAttribute = this.idAttribute as Key<O>;
         return defer(() => {
             // Use a cached observable, if available
-            let {collection$} = this;
+            const collectionCache = this.collectionCache || new Map<string, Observable<AsyncIterable<O>>>();
+            this.collectionCache = collectionCache;
+            let collection$ = collectionCache.get(cacheKey);
             if (collection$) {
                 return collection$;
             }
@@ -237,7 +244,7 @@ class ListEndpointModel<I extends ListParams<any, any>, O> extends ApiModel impl
             const change$ = merge(addition$, update$, removal$).pipe(
                 filter((change) => isCollectionChange(url.path, change)),
             );
-            collection$ = this.collection$ = change$.pipe(
+            collection$ = change$.pipe(
                 // Combine all the changes with the latest state to the resource.
                 scan<ResourceChange<O, keyof O>, AsyncIterable<O>>(
                     (collection, change) => applyCollectionChange(collection, change, idAttribute, ordering, direction),
@@ -249,13 +256,14 @@ class ListEndpointModel<I extends ListParams<any, any>, O> extends ApiModel impl
                 takeUntil(removal$),
                 // When this Observable is unsubscribed, then remove from the cache.
                 finalize(() => {
-                    if (this.collection$ === collection$) {
-                        delete this.collection$;
+                    if (collectionCache.get(cacheKey) === collection$) {
+                        collectionCache.delete(cacheKey);
                     }
                 }),
                 // Emit the latest state for all the new subscribers.
                 shareReplay(1),
             );
+            collectionCache.set(cacheKey, collection$);
             return collection$;
         });
     }

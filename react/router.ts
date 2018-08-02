@@ -22,7 +22,7 @@ export interface UserRenderRouterOptions<S, P> {
     default?: (props: P) => ReactNode;
 }
 
-export function renderTest<S>(router: Router<S>) {
+export function renderRoute<S>(router: Router<S>) {
     function withDefault<D>(defaultRenderer: (props: D) => ReactNode) {
         function withStatesAndDefault<P>(renderers: {[K in keyof S]?: (params: S[K], props: P) => ReactNode}) {
             return renderRouteWithOptions<S, P & D>({router, renderers, default: defaultRenderer});
