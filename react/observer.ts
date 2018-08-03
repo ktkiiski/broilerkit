@@ -8,28 +8,29 @@ import { pick } from '../utils/objects';
 /**
  * React component whose state is bound to the emitted values of an RxJS Observable.
  */
-export abstract class ObserverComponent<P, T extends {}> extends Component<P, T> {
+export abstract class ObserverComponent<P, T extends object> extends Component<P, Partial<T>> {
+
     public state: T = {} as T;
     /**
-     * Observable for the props of this component.
+     * Observable for the `props` of this component.
+     * This can be used for the `state$` Observable.
      */
     protected props$ = new BehaviorSubject(this.props);
     /**
-     * The subscription for the observable.
-     */
-    protected subscription = new Subscription();
-    /**
      * The observable for the component's state.
      * This will be subscribed when mounting the component
-     * and unsubscribed once unmounted.
+     * and unsubscribed once unmounted. Emitted values
+     * will be called as a parameter for `setState(...)`
      *
-     * You should use the props$ if the state depends
-     * on the component props.
+     * You should use the `props$` property if the state
+     * depends on the component `props`.
      */
     protected abstract state$: Subscribable<T>;
-    constructor(props: P) {
-        super(props);
-    }
+    /**
+     * The subscription for the state$ observable.
+     */
+    private subscription = new Subscription();
+
     public componentDidMount() {
         this.subscription.add(
             this.state$.subscribe((state) => this.setState(state)),
