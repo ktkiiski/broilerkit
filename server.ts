@@ -24,13 +24,13 @@ export interface HttpRequestHandler {
 }
 
 export interface RetrievableEndpoint<I, O, A extends AuthenticationType> {
-    endpoint: EndpointDefinition<RetrieveEndpoint<I, O>, RetrieveEndpointMethodMapping<A>>;
+    endpoint: EndpointDefinition<RetrieveEndpoint<I, O, any>, RetrieveEndpointMethodMapping<A>>;
 }
 export interface CreatableEndpoint<I1, I2, O, A extends AuthenticationType> {
     endpoint: EndpointDefinition<CreateEndpoint<I1, I2, O>, CreateEndpointMethodMapping<A>>;
 }
 export interface ListableEndpoint<I, O, K extends keyof O, A extends AuthenticationType> {
-    endpoint: EndpointDefinition<ListEndpoint<I & ListParams<O, K>, O>, ListEndpointMethodMapping<A>>;
+    endpoint: EndpointDefinition<ListEndpoint<I & ListParams<O, K>, O, any>, ListEndpointMethodMapping<A>>;
 }
 export interface UpdateableEndpoint<I1, I2, P, S, A extends AuthenticationType> {
     endpoint: EndpointDefinition<UpdateEndpoint<I1, I2, P, S>, UpdateEndpointMethodMapping<A>>;
