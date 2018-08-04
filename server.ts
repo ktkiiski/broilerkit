@@ -108,10 +108,15 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
                     body: '',
                 };
             }
+            const handler = this.handlers[method];
+            // Check that the API function was called with an accepted HTTP method
+            if (!handler) {
+                throw new MethodNotAllowed(`Method ${method} is not allowed`);
+            }
             // Check the authentication
+            const {auth} = request;
             const authType = endpoint.getAuthenticationType(method);
             if (authType !== 'none') {
-                const {auth} = request;
                 if (!auth) {
                     throw new Unauthorized(`Unauthorized`);
                 }
@@ -120,11 +125,12 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
                     throw new Unauthorized(`Administrator rights are missing.`);
                 }
             }
-            const handler = this.handlers[method];
-            // Check that the API function was called with an accepted HTTP method
-            if (!handler) {
-                throw new MethodNotAllowed(`Method ${method} is not allowed`);
+            // Check the authorization
+            const {userIdAttribute} = endpoint;
+            if (auth && userIdAttribute && input[userIdAttribute] !== auth.id) {
+                throw new Unauthorized(`Unauthorized resource`);
             }
+            // Handle the request
             const response = await handler(input, models, request);
             if (!response.data) {
                 return response;

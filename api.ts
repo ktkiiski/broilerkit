@@ -54,7 +54,7 @@ export interface RetrieveEndpoint<I, O, B extends undefined | keyof I> {
     get(query: I): Promise<O>;
     validateGet(query: I): I;
     observe(query: I): Observable<O>;
-    observeForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null>;
+    observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null>;
 }
 
 export interface ListEndpoint<I, O, B extends undefined | keyof I> {
@@ -64,9 +64,9 @@ export interface ListEndpoint<I, O, B extends undefined | keyof I> {
     observe(query: I): Observable<Observable<O>>;
     observeIterable(query: I): Observable<AsyncIterable<O>>;
     observeAll(query: I): Observable<O[]>;
-    observeForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<Observable<O> | null>;
-    observeAllForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O[] | null>;
-    observeIterableForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<AsyncIterable<O> | null>;
+    observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<Observable<O> | null>;
+    observeAllWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O[] | null>;
+    observeIterableWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<AsyncIterable<O> | null>;
 }
 
 export interface CreateEndpoint<I1, I2, O> {
@@ -89,6 +89,7 @@ export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
     methodHandlers: X;
     methods: HttpMethod[];
     route: Route<any, any> | Route<any, never>;
+    userIdAttribute: string | undefined;
     bind(rootUrl: string, client: Client, authClient?: AuthClient): T;
     validate(method: HttpMethod, input: any): any;
     serializeRequest(method: HttpMethod, input: any): ApiRequest;
@@ -201,7 +202,7 @@ class RetrieveEndpointModel<I, O, B extends undefined | keyof I> extends ApiMode
             return resource$;
         });
     }
-    public observeForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null> {
+    public observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null> {
         return this.withUserId(query, (input: I) => this.observe(input));
     }
 }
@@ -294,13 +295,13 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B extends undefined |
         );
         return concat(this.getAll(input), never());
     }
-    public observeForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<Observable<O> | null> {
+    public observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<Observable<O> | null> {
         return this.withUserId(query, (input: I) => this.observe(input));
     }
-    public observeAllForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O[] | null> {
+    public observeAllWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O[] | null> {
         return this.withUserId(query, (input: I) => this.observeAll(input));
     }
-    public observeIterableForUser(query: Pick<I, Exclude<keyof I, B>>): Observable<AsyncIterable<O> | null> {
+    public observeIterableWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<AsyncIterable<O> | null> {
         return this.withUserId(query, (input: I) => this.observeIterable(input));
     }
 }
@@ -469,7 +470,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         public readonly resource: Resource<S>,
         private readonly idAttribute: Key<S>,
         public readonly route: Route<Pick<S, U>, U>,
-        public readonly userIdKey: B,
+        public readonly userIdAttribute: B,
         public readonly methods: HttpMethod[],
         public readonly methodHandlers: X,
         private readonly modelPrototypes: ApiModel[] = [],
@@ -487,7 +488,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
             results: nestedList(this.resource),
         });
         return new ApiEndpoint(
-            this.resource, this.idAttribute, this.route, this.userIdKey, [...this.methods, 'GET'],
+            this.resource, this.idAttribute, this.route, this.userIdAttribute, [...this.methods, 'GET'],
             spread(this.methodHandlers, {GET: {auth, route: route(this.route.pattern, urlSerializer), resourceSerializer: pageResource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, ListEndpointModel.prototype],
         );
@@ -497,7 +498,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options && options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, this.idAttribute, route, this.userIdKey, [...this.methods, 'GET'],
+            resource, this.idAttribute, route, this.userIdAttribute, [...this.methods, 'GET'],
             spread(this.methodHandlers, {GET: {auth, route, resourceSerializer: resource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, RetrieveEndpointModel.prototype],
         );
@@ -508,7 +509,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, this.idAttribute, route, this.userIdKey, [...this.methods, 'POST'],
+            resource, this.idAttribute, route, this.userIdAttribute, [...this.methods, 'POST'],
             spread(this.methodHandlers, {POST: {auth, route, payloadSerializer: payloadResource, resourceSerializer: resource} as PayloadMethodHandler<A>}),
             [...this.modelPrototypes, CreateEndpointModel.prototype],
         );
@@ -521,7 +522,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const replaceResource = resource.optional(options);
         const updateResource = resource.pick([...required, ...optional, ...keys(defaults)]).fullPartial();
         return new ApiEndpoint(
-            resource, this.idAttribute, this.route, this.userIdKey, [...this.methods, 'PUT', 'PATCH'],
+            resource, this.idAttribute, this.route, this.userIdAttribute, [...this.methods, 'PUT', 'PATCH'],
             spread(this.methodHandlers, {
                 PUT: {auth, route, payloadSerializer: replaceResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
                 PATCH: {auth, route, payloadSerializer: updateResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
@@ -534,7 +535,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options && options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, this.idAttribute, route, this.userIdKey, [...this.methods, 'DELETE'],
+            resource, this.idAttribute, route, this.userIdAttribute, [...this.methods, 'DELETE'],
             spread(this.methodHandlers, {DELETE: {auth, route} as NoContentMethodHandler<A>}),
             [...this.modelPrototypes, DestroyEndpointModel.prototype],
         );
@@ -543,7 +544,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
     public bind(rootUrl: string, client: Client, authClient?: AuthClient): T {
         class BoundApiEndpoint extends ApiModel {}
         Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(rootUrl, this.idAttribute, this.userIdKey, client, this, authClient) as any;
+        return new BoundApiEndpoint(rootUrl, this.idAttribute, this.userIdAttribute, client, this, authClient) as any;
     }
 
     public validate(method: HttpMethod, input: any): any {
