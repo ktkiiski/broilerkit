@@ -1,7 +1,7 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
-import { concat, defer, merge, never, Observable } from 'rxjs';
-import { filter, finalize, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
+import { concat, defer, merge, never, Observable, Subscribable } from 'rxjs';
+import { distinctUntilChanged, filter, finalize, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { toArray } from './async';
 import { AuthClient } from './auth';
@@ -10,10 +10,11 @@ import { applyCollectionChange, isCollectionChange, ResourceChange } from './col
 import { choice, Field, nullable, url } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
 import { shareIterator } from './iteration';
-import { observeIterable } from './observables';
+import { observeIterable, observeValues } from './observables';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
 import { Route, route } from './routes';
 import { pattern, Url } from './url';
+import { isEqual } from './utils/compare';
 import { Key, keys, spread, transformValues } from './utils/objects';
 
 export { Field };
@@ -48,12 +49,14 @@ export interface MethodHandlerRequest {
     payload?: any;
 }
 
+export type ApiInput<I> = {[P in keyof I]: I[P] | Subscribable<I[P]>};
+
 export type ListParams<R, K extends keyof R> = {[P in K]: {ordering: P, direction: 'asc' | 'desc', since?: R[P]}}[K];
 
 export interface RetrieveEndpoint<I, O, B extends undefined | keyof I> {
     get(query: I): Promise<O>;
     validateGet(query: I): I;
-    observe(query: I): Observable<O>;
+    observe(query: ApiInput<I>): Observable<O>;
     observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null>;
 }
 
@@ -161,46 +164,51 @@ class RetrieveEndpointModel<I, O, B extends undefined | keyof I> extends ApiMode
     public validateGet(input: I): I {
         return this.validate('GET', input);
     }
-    public observe(input: I): Observable<O> {
-        const {url, payload} = this.endpoint.serializeRequest('GET', input);
-        const cacheKey = url.toString();
-        return defer(() => {
-            // Use a cached observable, if available
-            const resourceCache = this.resourceCache || new Map<string, Observable<O>>();
-            this.resourceCache = resourceCache;
-            let resource$ = resourceCache.get(cacheKey);
-            if (resource$) {
-                return resource$;
-            }
-            const update$ = this.client.resourceUpdate$.pipe(
-                filter((update) => update.resourceUrl === url.path),
-                map((update) => update.resource as Partial<O>),
-            );
-            const removal$ = this.client.resourceRemoval$.pipe(
-                filter((removal) => removal.resourceUrl === url.path),
-            );
-            resource$ = concat(
-                // Start with the retrieved state of the resource
-                this.ajax('GET', url, payload),
-                // Then emit all the updates to the resource
-                update$,
-            ).pipe(
-                // Combine all the changes with the latest state to the resource.
-                scan<Partial<O>, O>((res, update) => spread(res, update), {} as O),
-                // Complete when the resource is removed
-                takeUntil(removal$),
-                // When this Observable is unsubscribed, then remove from the cache.
-                finalize(() => {
-                    if (resourceCache.get(cacheKey) === resource$) {
-                        resourceCache.delete(cacheKey);
+    public observe(input$: ApiInput<I>): Observable<O> {
+        return observeValues(input$).pipe(
+            distinctUntilChanged(isEqual),
+            switchMap((input) => {
+                const {url, payload} = this.endpoint.serializeRequest('GET', input);
+                const cacheKey = url.toString();
+                return defer(() => {
+                    // Use a cached observable, if available
+                    const resourceCache = this.resourceCache || new Map<string, Observable<O>>();
+                    this.resourceCache = resourceCache;
+                    let resource$ = resourceCache.get(cacheKey);
+                    if (resource$) {
+                        return resource$;
                     }
-                }),
-                // Emit the latest state for all the new subscribers.
-                shareReplay(1),
-            );
-            resourceCache.set(cacheKey, resource$);
-            return resource$;
-        });
+                    const update$ = this.client.resourceUpdate$.pipe(
+                        filter((update) => update.resourceUrl === url.path),
+                        map((update) => update.resource as Partial<O>),
+                    );
+                    const removal$ = this.client.resourceRemoval$.pipe(
+                        filter((removal) => removal.resourceUrl === url.path),
+                    );
+                    resource$ = concat(
+                        // Start with the retrieved state of the resource
+                        this.ajax('GET', url, payload),
+                        // Then emit all the updates to the resource
+                        update$,
+                    ).pipe(
+                        // Combine all the changes with the latest state to the resource.
+                        scan<Partial<O>, O>((res, update) => spread(res, update), {} as O),
+                        // Complete when the resource is removed
+                        takeUntil(removal$),
+                        // When this Observable is unsubscribed, then remove from the cache.
+                        finalize(() => {
+                            if (resourceCache.get(cacheKey) === resource$) {
+                                resourceCache.delete(cacheKey);
+                            }
+                        }),
+                        // Emit the latest state for all the new subscribers.
+                        shareReplay(1),
+                    );
+                    resourceCache.set(cacheKey, resource$);
+                    return resource$;
+                });
+            }),
+        );
     }
     public observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null> {
         return this.withUserId(query, (input: I) => this.observe(input));

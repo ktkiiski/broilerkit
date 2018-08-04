@@ -38,6 +38,14 @@ export class AuthClient {
     private readonly signOutUri: string;
     private readonly subject = new BehaviorSubject<Auth | null>(null);
 
+    // tslint:disable-next-line:member-ordering
+    public auth$: Observable<Auth | null> = this.subject.asObservable();
+    // tslint:disable-next-line:member-ordering
+    public userId$: Observable<string | null> = this.subject.pipe(
+        map((auth) => auth && auth.id),
+        distinctUntilChanged(),
+    );
+
     constructor(options: AuthOptions) {
         const {clientId, signInUri, signOutUri, signInRedirectUri, signOutRedirectUri} = options;
         this.signInUri = signInUri
@@ -193,14 +201,11 @@ export class AuthClient {
      * - Render the user's name or email in the UI
      */
     public observe(): Observable<Auth | null> {
-        return this.subject;
+        return this.auth$;
     }
 
     public observeUserId(): Observable<string | null> {
-        return this.subject.pipe(
-            map((auth) => auth && auth.id),
-            distinctUntilChanged(),
-        );
+        return this.userId$;
     }
 
     private launchUri(uri: string): Window {

@@ -10,6 +10,7 @@ const hasProp = Object.prototype.hasOwnProperty;
  * @param a First value to compare
  * @param b Second value to compare
  */
+export function isEqual<T, S>(a: T, b: S): boolean;
 export function isEqual(a: any, b: any): boolean {
     if (a === b) {
         return true;
