@@ -1,5 +1,5 @@
 import { BehaviorSubject, Observable } from 'rxjs';
-import { distinctUntilChanged, map } from 'rxjs/operators';
+import { distinctUntilChanged, filter, map } from 'rxjs/operators';
 import { parseJwt } from './jwt';
 import { sessionStorage } from './storage';
 import { parseQuery } from './url';
@@ -43,6 +43,12 @@ export class AuthClient {
     // tslint:disable-next-line:member-ordering
     public userId$: Observable<string | null> = this.subject.pipe(
         map((auth) => auth && auth.id),
+        distinctUntilChanged(),
+    );
+    // tslint:disable-next-line:member-ordering
+    public authUserId$: Observable<string> = this.subject.pipe(
+        map((auth) => auth && auth.id),
+        filter<string>((userId) => userId != null),
         distinctUntilChanged(),
     );
 
