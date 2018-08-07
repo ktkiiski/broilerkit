@@ -50,27 +50,40 @@ export interface MethodHandlerRequest {
 }
 
 export type ApiInput<I> = {[P in keyof I]: Subscribable<I[P]>};
+export type UserInput<I, B> = Pick<I, Exclude<keyof I, B>>;
 
 export type ListParams<R, K extends keyof R> = {[P in K]: {ordering: P, direction: 'asc' | 'desc', since?: R[P]}}[K];
 
-export interface RetrieveEndpoint<I, O, B extends undefined | keyof I> {
+export interface IntermediateCollection<O> {
+    isComplete: boolean;
+    items: O[];
+}
+
+export interface ObservableEndpoint<I, O> {
+    observe(query: I): Observable<O>;
+}
+
+export interface ObservableUserEndpoint<I, O> {
+    observeWithUser(query: I): Observable<O | null>;
+}
+
+export interface RetrieveEndpoint<I, O, B extends undefined | keyof I> extends ObservableEndpoint<I, O>, ObservableUserEndpoint<UserInput<I, B>, O> {
     get(query: I): Promise<O>;
     validateGet(query: I): I;
     observe(query: I): Observable<O>;
-    observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null>;
     stream(query: ApiInput<I>): Observable<O>;
 }
 
-export interface ListEndpoint<I, O, B extends undefined | keyof I> {
+export interface ListEndpoint<I, O, B extends undefined | keyof I> extends ObservableEndpoint<I, IntermediateCollection<O>>, ObservableUserEndpoint<UserInput<I, B>, IntermediateCollection<O>> {
     getPage(query: I): Promise<IApiListPage<O>>;
     getAll(query: I): Promise<O[]>;
     validateGet(query: I): I;
-    observe(query: I): Observable<Observable<O>>;
+    observeObservable(query: I): Observable<Observable<O>>;
     observeIterable(query: I): Observable<AsyncIterable<O>>;
     observeAll(query: I): Observable<O[]>;
-    observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<Observable<O> | null>;
-    observeAllWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O[] | null>;
-    observeIterableWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<AsyncIterable<O> | null>;
+    observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null>;
+    observeAllWithUser(query: UserInput<I, B>): Observable<O[] | null>;
+    observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null>;
 }
 
 export interface CreateEndpoint<I1, I2, O> {
@@ -206,7 +219,7 @@ class RetrieveEndpointModel<I, O, B extends undefined | keyof I> extends ApiMode
             return resource$;
         });
     }
-    public observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O | null> {
+    public observeWithUser(query: UserInput<I, B>): Observable<O | null> {
         return this.withUserId(query, (input: I) => this.observe(input));
     }
     public stream(input$: ApiInput<I>): Observable<O> {
@@ -238,11 +251,14 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B extends undefined |
         return shareIterator(this.iterate(input));
     }
     public async *iterate(input: I) {
+        for await (const items of this.iteratePages(input)) {
+            yield *items;
+        }
+    }
+    public async *iteratePages(input: I) {
         let page = await this.getPage(input);
         while (true) {
-            for (const item of page.results) {
-                yield item;
-            }
+            yield page.results;
             if (page.next) {
                 page = await this.ajax('GET', page.next);
             } else {
@@ -253,7 +269,12 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B extends undefined |
     public validateGet(input: I): I {
         return this.validate('GET', input);
     }
-    public observe(input: I): Observable<Observable<O>> {
+    public observe(input: I): Observable<IntermediateCollection<O>> {
+        return this.observeAll(input).pipe(
+            map((items) => ({isComplete: true, items})),
+        );
+    }
+    public observeObservable(input: I): Observable<Observable<O>> {
         return this.observeIterable(input).pipe(map(observeIterable));
     }
     public observeIterable(input: I): Observable<AsyncIterable<O>> {
@@ -305,13 +326,18 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B extends undefined |
         );
         return concat(this.getAll(input), never());
     }
-    public observeWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<Observable<O> | null> {
-        return this.withUserId(query, (input: I) => this.observe(input));
+    public observeWithUser(input: UserInput<I, B>): Observable<IntermediateCollection<O> | null> {
+        return this.observeAllWithUser(input).pipe(
+            map((items) => items && {isComplete: true, items}),
+        );
     }
-    public observeAllWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<O[] | null> {
+    public observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null> {
+        return this.withUserId(query, (input: I) => this.observeObservable(input));
+    }
+    public observeAllWithUser(query: UserInput<I, B>): Observable<O[] | null> {
         return this.withUserId(query, (input: I) => this.observeAll(input));
     }
-    public observeIterableWithUser(query: Pick<I, Exclude<keyof I, B>>): Observable<AsyncIterable<O> | null> {
+    public observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null> {
         return this.withUserId(query, (input: I) => this.observeIterable(input));
     }
 }
