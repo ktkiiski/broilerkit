@@ -27,16 +27,16 @@ export interface RetrievableEndpoint<I, O, A extends AuthenticationType> {
     endpoint: EndpointDefinition<RetrieveEndpoint<I, O, any>, RetrieveEndpointMethodMapping<A>>;
 }
 export interface CreatableEndpoint<I1, I2, O, A extends AuthenticationType> {
-    endpoint: EndpointDefinition<CreateEndpoint<I1, I2, O>, CreateEndpointMethodMapping<A>>;
+    endpoint: EndpointDefinition<CreateEndpoint<I1, I2, O, any>, CreateEndpointMethodMapping<A>>;
 }
 export interface ListableEndpoint<I, O, K extends keyof O, A extends AuthenticationType> {
     endpoint: EndpointDefinition<ListEndpoint<I & ListParams<O, K>, O, any>, ListEndpointMethodMapping<A>>;
 }
 export interface UpdateableEndpoint<I1, I2, P, S, A extends AuthenticationType> {
-    endpoint: EndpointDefinition<UpdateEndpoint<I1, I2, P, S>, UpdateEndpointMethodMapping<A>>;
+    endpoint: EndpointDefinition<UpdateEndpoint<I1, I2, P, S, any>, UpdateEndpointMethodMapping<A>>;
 }
 export interface DestroyableEndpoint<I, A extends AuthenticationType> {
-    endpoint: EndpointDefinition<DestroyEndpoint<I>, DestroyEndpointMethodMapping<A>>;
+    endpoint: EndpointDefinition<DestroyEndpoint<I, any>, DestroyEndpointMethodMapping<A>>;
 }
 
 export class EndpointImplementation<D, T, H extends EndpointMethodMapping> implements HttpRequestHandler {

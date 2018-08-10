@@ -3,7 +3,6 @@ import { BehaviorSubject, combineLatest, from, ObservableInput, Subscribable, Su
 import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { AuthClient, AuthUser } from '../auth';
 import { isEqual } from '../utils/compare';
-import { pick } from '../utils/objects';
 
 /**
  * React component whose state is bound to the emitted values of an RxJS Observable.
@@ -46,16 +45,12 @@ export abstract class ObserverComponent<P, T extends object> extends Component<P
 
 export interface SimpleRenderObservableOptions<P, T> {
     observable: ObservableInput<T> | ((props: P) => ObservableInput<T>);
-    render: (value: T | undefined, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
+    render?: (value: T | undefined, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 export interface UserRenderObservableOptions<P, T> {
     auth: AuthClient;
     observable: (props: P, user: AuthUser | null) => ObservableInput<T>;
     render: (value: T | undefined, user: AuthUser | null, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
-}
-export interface RenderUserOptions<P> {
-    auth: AuthClient;
-    render: (user: AuthUser | null, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 
 export function renderObservable<P, T>({render, observable}: SimpleRenderObservableOptions<P, T>): ComponentClass<P> {
@@ -69,17 +64,16 @@ export function renderObservable<P, T>({render, observable}: SimpleRenderObserva
             : from(observable).pipe(map((value) => ({value})))
         ;
         public render() {
-            return render(this.state.value, this.props);
+            if (render) {
+                return render(this.state.value, this.props);
+            }
         }
     }
     return SimpleObserverComponent;
 }
 
 export function renderObservableWithUser<P, T>({auth, observable, render}: UserRenderObservableOptions<P, T>): ComponentClass<P> {
-    const user$ = auth.observe().pipe(
-        map((user) => user && pick(user, ['id', 'name', 'email']) as AuthUser),
-        distinctUntilChanged<AuthUser | null>(isEqual),
-    );
+    const user$ = auth.user$;
     class AuthObserverComponent extends ObserverComponent<P, {value: T, user: AuthUser | null}> {
         protected state$ = combineLatest(this.props$, user$).pipe(
             distinctUntilChanged<[P, AuthUser | null]>(isEqual),
@@ -94,16 +88,9 @@ export function renderObservableWithUser<P, T>({auth, observable, render}: UserR
     return AuthObserverComponent;
 }
 
-export function renderUser<P>({auth, render}: RenderUserOptions<P>): ComponentClass<P> {
-    const user$ = auth.observe().pipe(
-        map((user) => user && pick(user, ['id', 'name', 'email']) as AuthUser),
-        distinctUntilChanged<AuthUser | null>(isEqual),
-    );
-    class AuthComponent extends ObserverComponent<P, {user: AuthUser | null}> {
-        protected state$ = user$.pipe(map((user) => ({user})));
-        public render() {
-            return render(this.state.user || null, this.props);
-        }
+export function renderUser<P = {}>(authClient: AuthClient) {
+    class UserComponent extends ObserverComponent<P, {user: AuthUser | null}> {
+        protected state$ = authClient.user$.pipe(map((user) => ({user})));
     }
-    return AuthComponent;
+    return UserComponent;
 }

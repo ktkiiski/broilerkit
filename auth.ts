@@ -3,6 +3,8 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 import { parseJwt } from './jwt';
 import { sessionStorage } from './storage';
 import { parseQuery } from './url';
+import { isEqual } from './utils/compare';
+import { pick } from './utils/objects';
 import { randomize, stripPrefix } from './utils/strings';
 import { waitForClose } from './window';
 
@@ -40,6 +42,11 @@ export class AuthClient {
 
     // tslint:disable-next-line:member-ordering
     public auth$: Observable<Auth | null> = this.subject.asObservable();
+    // tslint:disable-next-line:member-ordering
+    public user$: Observable<AuthUser | null> = this.subject.pipe(
+        map((user) => user && pick(user, ['id', 'name', 'email'])),
+        distinctUntilChanged<AuthUser | null>(isEqual),
+    );
     // tslint:disable-next-line:member-ordering
     public userId$: Observable<string | null> = this.subject.pipe(
         map((auth) => auth && auth.id),

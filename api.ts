@@ -1,14 +1,14 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
 import { concat, defer, merge, never, Observable, Subscribable } from 'rxjs';
-import { distinctUntilChanged, filter, finalize, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
+import { distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { toArray } from './async';
 import { AuthClient } from './auth';
 import { Client } from './client';
 import { applyCollectionChange, isCollectionChange, ResourceChange } from './collections';
 import { choice, Field, nullable, url } from './fields';
-import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus } from './http';
+import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
 import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
@@ -67,14 +67,14 @@ export interface ObservableUserEndpoint<I, O> {
     observeWithUser(query: I): Observable<O | null>;
 }
 
-export interface RetrieveEndpoint<I, O, B extends undefined | keyof I> extends ObservableEndpoint<I, O>, ObservableUserEndpoint<UserInput<I, B>, O> {
+export interface RetrieveEndpoint<I, O, B> extends ObservableEndpoint<I, O>, ObservableUserEndpoint<UserInput<I, B>, O> {
     get(query: I): Promise<O>;
     validateGet(query: I): I;
     observe(query: I): Observable<O>;
     stream(query: ApiInput<I>): Observable<O>;
 }
 
-export interface ListEndpoint<I, O, B extends undefined | keyof I> extends ObservableEndpoint<I, IntermediateCollection<O>>, ObservableUserEndpoint<UserInput<I, B>, IntermediateCollection<O>> {
+export interface ListEndpoint<I, O, B> extends ObservableEndpoint<I, IntermediateCollection<O>>, ObservableUserEndpoint<UserInput<I, B>, IntermediateCollection<O>> {
     getPage(query: I): Promise<IApiListPage<O>>;
     getAll(query: I): Promise<O[]>;
     validateGet(query: I): I;
@@ -86,20 +86,24 @@ export interface ListEndpoint<I, O, B extends undefined | keyof I> extends Obser
     observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null>;
 }
 
-export interface CreateEndpoint<I1, I2, O> {
+export interface CreateEndpoint<I1, I2, O, B> {
     post(input: I1): Promise<O>;
+    postWithUser(input: UserInput<I1, B>): Promise<O>;
     validatePost(input: I1): I2;
 }
 
-export interface UpdateEndpoint<I1, I2, P, S> {
+export interface UpdateEndpoint<I1, I2, P, S, B> {
     put(input: I1): Promise<S>;
     patch(input: P): Promise<S>;
+    putWithUser(input: UserInput<I1, B>): Promise<S>;
+    patchWithUser(input: UserInput<P, B>): Promise<S>;
     validatePut(input: I1): I2;
     validatePatch(input: P): P;
 }
 
-export interface DestroyEndpoint<I> {
+export interface DestroyEndpoint<I, B> {
     delete(query: I): Promise<void>;
+    deleteWithUser(query: UserInput<I, B>): Promise<void>;
 }
 
 export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
@@ -153,6 +157,25 @@ class ApiModel {
         );
     }
 
+    protected extendUserId<I>(input: any): Promise<I> {
+        const {authClient, userIdAttribute} = this;
+        if (!authClient) {
+            throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
+        }
+        if (!userIdAttribute) {
+            throw new Error(`User ID attribute is undefined.`);
+        }
+        return authClient.userId$.pipe(
+            first(),
+            map((value) => {
+                if (!value) {
+                    throw new Unauthorized(`Not authenticated`);
+                }
+                return {...input, [userIdAttribute]: value} as I;
+            }),
+        ).toPromise();
+    }
+
     private async getToken(method: HttpMethod): Promise<string | null> {
         const {authClient} = this;
         const authType = this.endpoint.getAuthenticationType(method);
@@ -168,7 +191,7 @@ class ApiModel {
     }
 }
 
-class RetrieveEndpointModel<I, O, B extends undefined | keyof I> extends ApiModel implements RetrieveEndpoint<I, O, B> {
+class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoint<I, O, B> {
     private resourceCache?: Map<string, Observable<O>>;
     public get(input: I): Promise<O> {
         const method = 'GET';
@@ -230,7 +253,7 @@ class RetrieveEndpointModel<I, O, B extends undefined | keyof I> extends ApiMode
     }
 }
 
-class ListEndpointModel<I extends ListParams<any, any>, O, B extends undefined | keyof I> extends ApiModel implements ListEndpoint<I, O, B> {
+class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel implements ListEndpoint<I, O, B> {
     private collectionCache?: Map<string, Observable<AsyncIterable<O>>>;
     public getPage(input: I): Promise<IApiListPage<O>> {
         const method = 'GET';
@@ -342,7 +365,7 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B extends undefined |
     }
 }
 
-class CreateEndpointModel<I1, I2, O> extends ApiModel implements CreateEndpoint<I1, I2, O> {
+class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoint<I1, I2, O, B> {
     public async post(input: I1): Promise<O> {
         const method = 'POST';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
@@ -356,20 +379,32 @@ class CreateEndpointModel<I1, I2, O> extends ApiModel implements CreateEndpoint<
         });
         return resource;
     }
+    public async postWithUser(query: UserInput<I1, B>): Promise<O> {
+        const input = await this.extendUserId<I1>(query);
+        return await this.post(input);
+    }
     public validatePost(input: I1): I2 {
         return this.validate('POST', input);
     }
 }
 
-class UpdateEndpointModel<I1, I2, P, S> extends ApiModel implements UpdateEndpoint<I1, I2, P, S> {
+class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEndpoint<I1, I2, P, S, B> {
     public put(input: I1): Promise<S> {
         return this.update('PUT', input);
+    }
+    public async putWithUser(query: UserInput<I1, B>): Promise<S> {
+        const input = await this.extendUserId<I1>(query);
+        return await this.update('PUT', input);
     }
     public validatePut(input: I1): I2 {
         return this.validate('PUT', input);
     }
     public patch(input: P): Promise<S> {
         return this.update('PATCH', input);
+    }
+    public async patchWithUser(query: P): Promise<S> {
+        const input = await this.extendUserId<P>(query);
+        return await this.update('PATCH', input);
     }
     public validatePatch(input: P): P {
         return this.validate('PATCH', input);
@@ -388,7 +423,7 @@ class UpdateEndpointModel<I1, I2, P, S> extends ApiModel implements UpdateEndpoi
     }
 }
 
-class DestroyEndpointModel<I> extends ApiModel implements DestroyEndpoint<I> {
+class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, B> {
     public async delete(query: I): Promise<void> {
         const method = 'DELETE';
         const {url, payload} = this.endpoint.serializeRequest(method, query);
@@ -399,6 +434,10 @@ class DestroyEndpointModel<I> extends ApiModel implements DestroyEndpoint<I> {
             resourceUrl: url.path,
             resourceId,
         });
+    }
+    public async deleteWithUser(query: UserInput<I, B>): Promise<void> {
+        const input = await this.extendUserId<I>(query);
+        return await this.delete(input);
     }
 }
 
@@ -450,9 +489,9 @@ export type EndpointMethodMapping = OptionsEndpointMethodMapping | RetrieveEndpo
 
 export type ListEndpointDefinition<S, U extends Key<S>, K extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, ListEndpoint<ListParams<S, K> & Pick<S, U>, S, B> & T, ListEndpointMethodMapping<A> & R, B>;
 export type RetrieveEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, RetrieveEndpoint<Pick<S, U>, S, B> & T, RetrieveEndpointMethodMapping<A> & R, B>;
-export type CreateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, CreateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, S> & T, CreateEndpointMethodMapping<A> & X, B>;
-export type UpdateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S> & T, UpdateEndpointMethodMapping<A> & X, B>;
-export type DestroyEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, DestroyEndpoint<Pick<S, U>> & T, DestroyEndpointMethodMapping<A> & R, B>;
+export type CreateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, CreateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, S, B> & T, CreateEndpointMethodMapping<A> & X, B>;
+export type UpdateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S, B> & T, UpdateEndpointMethodMapping<A> & X, B>;
+export type DestroyEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, DestroyEndpoint<Pick<S, U>, B> & T, DestroyEndpointMethodMapping<A> & R, B>;
 
 class ListParamSerializer<T, U extends Key<T>, K extends Key<T>> implements Serializer<Pick<T, U> & ListParams<T, K>> {
     private serializer = this.resource.pick(this.urlKeywords).extend({
