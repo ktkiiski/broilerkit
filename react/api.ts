@@ -15,8 +15,12 @@ export type UserResourceOutputs<O> = {
 export type UserResourceEndpoints<I, O> = UserResourceInputs<I> & UserResourceOutputs<O>;
 export type Nullable<T> = {[P in keyof T]: T[P] | null};
 
-export function renderUserResources<I, O extends object>(endpoints: UserResourceEndpoints<I, O>) {
-    class UserResourceComponent extends ObserverComponent<I, Nullable<O>> {
+export function renderUserResources<I, O extends object, S extends object>(endpoints: UserResourceEndpoints<I, O>, defaultState?: S) {
+    class UserResourceComponent extends ObserverComponent<I, Nullable<O> & S> {
+        public state = spread(
+            transformValues(endpoints, () => null) as Nullable<O>,
+            defaultState,
+        );
         public state$ = this.props$.pipe(
             distinctUntilChanged(isEqual),
             map((props) => transformValues(
