@@ -1,9 +1,9 @@
 import { Observable } from 'rxjs';
 import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
-import { ObservableUserEndpoint } from '../api';
+import { IntermediateCollection, ObservableUserEndpoint } from '../api';
 import { observeValues } from '../observables';
 import { isEqual } from '../utils/compare';
-import { transformValues } from '../utils/objects';
+import { omit, Optional, spread, transformValues } from '../utils/objects';
 import { ObserverComponent } from './observer';
 
 export type UserResourceInputs<I> = {
@@ -27,4 +27,21 @@ export function renderUserResources<I, O extends object>(endpoints: UserResource
         );
     }
     return UserResourceComponent;
+}
+
+export interface UserCollectionState<O> {
+    items: O[] | null;
+    isComplete: boolean;
+}
+export type UserCollectionProps<I extends D, D> = Optional<I, keyof D>;
+export function renderUserCollection<I extends D, O, D extends object = {}>(endpoint: ObservableUserEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
+    class UserCollectionComponent extends ObserverComponent<UserCollectionProps<I, D>, UserCollectionState<O>> {
+        public state$ = this.props$.pipe(
+            map((props) => spread(omit(props, ['children']), defaultInput) as I),
+            distinctUntilChanged(isEqual),
+            switchMap((props) => endpoint.observeWithUser(props)),
+            map((collection) => (collection || {items: null, isComplete: false}) as UserCollectionState<O>),
+        );
+    }
+    return UserCollectionComponent;
 }
