@@ -1,7 +1,7 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
-import { concat, defer, merge, never, Observable, Subscribable } from 'rxjs';
-import { distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
+import { concat, defer, merge, never, Observable, of, Subscribable } from 'rxjs';
+import { concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { toArray } from './async';
 import { AuthClient } from './auth';
@@ -293,6 +293,19 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
         return this.validate('GET', input);
     }
     public observe(input: I): Observable<IntermediateCollection<O>> {
+        return this.observeObservable(input).pipe(
+            switchMap((item$) => (
+                item$.pipe(
+                    scan((items: O[], item: O) => [...items, item], []),
+                    startWith([] as O[]),
+                    map((items) => ({items})),
+                    extend(of({isComplete: true})),
+                    scan<Partial<IntermediateCollection<O>>, IntermediateCollection<O>>((collection, change) => (
+                        {...collection, ...change}), {isComplete: false, items: []},
+                    ),
+                )
+            )),
+        );
         return this.observeAll(input).pipe(
             map((items) => ({isComplete: true, items})),
         );
