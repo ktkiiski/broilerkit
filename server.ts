@@ -6,7 +6,7 @@ import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
 import { Url } from './url';
 import { spread, transformValues } from './utils/objects';
-import { upperFirst } from './utils/strings';
+import { countBytes, upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
 export type Tables<T> = {
@@ -180,7 +180,7 @@ export function finalizeApiResponse(response: ApiResponse<any>, siteOrigin: stri
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
             'Access-Control-Allow-Credentials': 'true',
             'Content-Type': 'application/json',
-            'Content-Length': String(encodedBody.length),
+            'Content-Length': String(countBytes(encodedBody)),
             ...headers,
         },
     };

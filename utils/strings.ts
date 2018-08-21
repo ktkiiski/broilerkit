@@ -46,3 +46,18 @@ const indentRegexp = /^/gm;
 export function indent(str: string, indentation: number): string {
     return str.replace(indentRegexp, repeat(' ', indentation));
 }
+
+/**
+ * Returns the number of bytes taken by the given Unicode string.
+ * @param str Unicode string
+ */
+export function countBytes(str: string): number {
+    // returns the byte length of an utf8 string
+    let len = str.length;
+    for (let i = str.length - 1; i >= 0; i--) {
+      const code = str.charCodeAt(i);
+      if (code > 0x7f && code <= 0x7ff) { len++; } else if (code > 0x7ff && code <= 0xffff) { len += 2; }
+      if (code >= 0xDC00 && code <= 0xDFFF) { i--; } // trail surrogate
+    }
+    return len;
+}
