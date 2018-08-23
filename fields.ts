@@ -1,6 +1,8 @@
 import { ValidationError } from './http';
 import { padStart } from './utils/strings';
 
+export type NonEmptyString = Exclude<string, ''>;
+
 export interface Field<I, E = I> {
     validate(value: I): I;
     serialize(value: I): E;
@@ -10,7 +12,7 @@ export interface Field<I, E = I> {
     decode(value: string): I;
 }
 
-class StringField implements Field<string> {
+class TextField implements Field<string> {
     public validate(value: string): string {
         return value;
     }
@@ -19,7 +21,7 @@ class StringField implements Field<string> {
             throw new ValidationError(`Missing string value`);
         }
         if (typeof value === 'string' || (typeof value === 'number' && isFinite(value))) {
-            return String(value);
+            return this.validate(String(value));
         }
         throw new ValidationError(`Invalid string value`);
     }
@@ -34,6 +36,22 @@ class StringField implements Field<string> {
     }
     public decode(value: string): string {
         return this.validate(value);
+    }
+}
+
+class TrimmedTextField extends TextField implements Field<NonEmptyString> {
+    public validate(value: string): string {
+        return super.validate(value).trim();
+    }
+}
+
+class StringField extends TrimmedTextField {
+    public validate(value: string): string {
+        value = super.validate(value);
+        if (!value) {
+            throw new ValidationError(`Value may not be blank`);
+        }
+        return value;
     }
 }
 
@@ -65,9 +83,54 @@ class ChoiceField<K extends string> extends StringField implements Field<K> {
     }
 }
 
+class NumberField implements Field<number> {
+    public validate(value: number): number {
+        if (isFinite(value)) {
+            return value;
+        }
+        throw new ValidationError(`Invalid number value`);
+    }
+    public serialize(value: number): number {
+        return this.validate(value);
+    }
+    public deserialize(value: any): number {
+        if (value == null) {
+            throw new ValidationError(`Missing number value`);
+        }
+        // Try to parse from a string to a number
+        if (typeof value === 'string') {
+            return this.decode(value);
+        }
+        if (typeof value === 'number') {
+            return this.validate(value);
+        }
+        throw new ValidationError(`Invalid number value`);
+    }
+    public encode(value: number): string {
+        return this.serialize(value).toString();
+    }
+    public encodeSortable(_: number): string {
+        // TODO: Implement me!
+        throw new Error(`Not implemented`);
+    }
+    public decode(value: string): number {
+        return this.validate(parseFloat(value));
+    }
+}
+
+const MAX_INTEGER = Number.MAX_SAFE_INTEGER;
+const MIN_INTEGER = Number.MIN_SAFE_INTEGER;
+const MAX_INTEGER_DIGITS = `${MAX_INTEGER}`.length;
+
 class IntegerField implements Field<number> {
     public validate(value: number): number {
         if (isFinite(value)) {
+            if (value > MAX_INTEGER) {
+                throw new ValidationError(`Integer value cannot be greater than ${MAX_INTEGER}`);
+            }
+            if (value < MIN_INTEGER) {
+                throw new ValidationError(`Integer value cannot be less than ${MIN_INTEGER}`);
+            }
             return Math.floor(value);
         }
         throw new ValidationError(`Invalid integer value`);
@@ -81,7 +144,12 @@ class IntegerField implements Field<number> {
         }
         // Try to parse from a string to an integer
         if (typeof value === 'string') {
-            value = parseInt(value, 10);
+            // If starting with special character '!', then it is a sortable encoding
+            if (value[0] === '!') {
+                value = parseInt(value.slice(1), 10) + MIN_INTEGER;
+            } else {
+                value = parseInt(value, 10);
+            }
         }
         if (typeof value === 'number') {
             return this.validate(value);
@@ -92,8 +160,15 @@ class IntegerField implements Field<number> {
         return this.serialize(value).toFixed(0);
     }
     public encodeSortable(value: number): string {
-        const paddedValue = padStart(this.serialize(value).toFixed(0), 23, '0');
-        return value < 0 ? `-${paddedValue}` : `0${paddedValue}`;
+        value = this.validate(value);
+        let prefix = '+';
+        if (value < 0) {
+            value = value - MIN_INTEGER;
+            prefix = '!';
+        }
+        const str = value.toFixed(0);
+        const paddedStr = padStart(str, MAX_INTEGER_DIGITS, '0');
+        return `${prefix}${paddedStr}`;
     }
     public decode(value: string): number {
         return this.deserialize(value);
@@ -248,9 +323,9 @@ class IdField extends RegexpField {
  * It also means that any blank value, e.g. an empty string, will
  * always be converted to null.
  *
- * Useful to be used with string() and datetime() fields.
+ * Useful to be used with string(), datetime() and integer() fields.
  */
-class NullableField<I, O extends string> implements Field<I | null, O | null> {
+class NullableField<I, O extends string | number> implements Field<I | null, O | null> {
     constructor(public readonly field: Field<I, O>) {}
     public validate(value: I | null): I | null {
         return value && this.field.validate(value) || null;
@@ -300,8 +375,16 @@ class ListField<I, O> implements Field<I[], O[]> {
     }
 }
 
-export function string(): Field<string> {
+export function string(): Field<NonEmptyString> {
     return new StringField();
+}
+
+export function trimmed(): Field<NonEmptyString> {
+    return new TrimmedTextField();
+}
+
+export function text(): Field<string> {
+    return new TextField();
 }
 
 export function choice<K extends string>(options: K[]): Field<K> {
@@ -314,6 +397,10 @@ export function constant<K extends number>(options: K[]): Field<K> {
 
 export function integer(): Field<number> {
     return new IntegerField();
+}
+
+export function number(): Field<number> {
+    return new NumberField();
 }
 
 export function boolean(): Field<boolean> {
@@ -344,7 +431,7 @@ export function url(): Field<string> {
     return new URLField();
 }
 
-export function nullable<I, O extends string>(field: Field<I, O>): Field<I | null, O | null> {
+export function nullable<I, O extends string | number>(field: Field<I, O>): Field<I | null, O | null> {
     return new NullableField(field);
 }
 

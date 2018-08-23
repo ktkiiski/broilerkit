@@ -37,8 +37,8 @@ export interface UserCollectionState<O> {
     items: O[] | null;
     isComplete: boolean;
 }
-export type UserCollectionProps<I extends D, D> = Optional<I, keyof D>;
-export function renderUserCollection<I extends D, O, D extends object = {}>(endpoint: ObservableUserEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
+export type UserCollectionProps<I extends D, D extends Partial<I>> = Optional<I, keyof D>;
+export function renderUserCollection<I extends D, O, D extends Partial<I> = {}>(endpoint: ObservableUserEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
     class UserCollectionComponent extends ObserverComponent<UserCollectionProps<I, D>, UserCollectionState<O>> {
         public state$ = this.props$.pipe(
             map((props) => spread(omit(props, ['children']), defaultInput) as I),
