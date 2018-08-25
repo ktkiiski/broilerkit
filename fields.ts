@@ -119,21 +119,29 @@ class NumberField implements Field<number> {
     public decode(value: string): number {
         return this.validate(parseFloat(value));
     }
-    public encodeSortable(_: number): string {
-        // TODO: Implement me!
-        throw new Error(`Not implemented`);
+    public encodeSortable(value: number): string {
+        value = this.validate(value);
+        const bytes = Array.from(new Uint16Array(Float64Array.from([Math.abs(value)]).buffer));
+        const chunks = bytes.map((byte) => padStart((value < 0 ? 0xFFFF ^ byte : byte).toString(16), 4, '0')).reverse();
+        return `${value < 0 ? '-' : '0'}${chunks.join('')}`;
     }
-    public decodeSortable(_: string): number {
-        // TODO: Implement me!
-        throw new Error(`Not implemented`);
+    public decodeSortable(value: string): number {
+        const sign = value[0];
+        const byteStr = value.slice(1);
+        const byteArr: number[] = [];
+        for (let i = 0; i < byteStr.length; i += 4) {
+            const bytes = parseInt(byteStr.slice(i, i + 4), 16);
+            byteArr.unshift(sign === '-' ? 0xFFFF ^ bytes : bytes);
+        }
+        const float = new Float64Array(Uint16Array.from(byteArr).buffer)[0];
+        return sign === '-' ? -float : float;
     }
 }
 
 const MAX_INTEGER = Number.MAX_SAFE_INTEGER;
 const MIN_INTEGER = Number.MIN_SAFE_INTEGER;
-const MAX_INTEGER_DIGITS = `${MAX_INTEGER}`.length;
 
-class IntegerField implements Field<number> {
+class IntegerField extends NumberField implements Field<number> {
     public validate(value: number): number {
         if (isFinite(value)) {
             if (value > MAX_INTEGER) {
@@ -145,9 +153,6 @@ class IntegerField implements Field<number> {
             return Math.floor(value);
         }
         throw new ValidationError(`Invalid integer value`);
-    }
-    public serialize(value: number): number {
-        return this.validate(value);
     }
     public deserialize(value: any): number {
         if (value == null) {
@@ -172,21 +177,6 @@ class IntegerField implements Field<number> {
     }
     public decode(value: string): number {
         return this.deserialize(value);
-    }
-    public encodeSortable(value: number): string {
-        value = this.validate(value);
-        let prefix = '+';
-        if (value < 0) {
-            value = value - MIN_INTEGER;
-            prefix = '!';
-        }
-        const str = value.toFixed(0);
-        const paddedStr = padStart(str, MAX_INTEGER_DIGITS, '0');
-        return `${prefix}${paddedStr}`;
-    }
-    public decodeSortable(_: string): number {
-        // TODO: Implement me!
-        throw new Error(`Not implemented`);
     }
 }
 
