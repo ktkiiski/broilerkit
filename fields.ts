@@ -1,5 +1,5 @@
 import { ValidationError } from './http';
-import { padStart } from './utils/strings';
+import { padEnd, padStart } from './utils/strings';
 
 export type NonEmptyString = Exclude<string, ''>;
 
@@ -55,7 +55,7 @@ class StringField extends TrimmedTextField {
     }
 }
 
-class ChoiceField<K extends string> extends StringField implements Field<K> {
+class ChoiceField<K extends string> extends TextField implements Field<K> {
     constructor(private options: K[]) {
         super();
     }
@@ -264,7 +264,7 @@ class DateTimeField implements Field<Date, string> {
     }
 }
 
-class RegexpField extends StringField {
+class RegexpField extends TextField {
     constructor(
         private readonly regexp: RegExp,
         private readonly errorMessage = `String not matching regular expression ${regexp}`) {
@@ -276,6 +276,38 @@ class RegexpField extends StringField {
             return strValue;
         }
         throw new ValidationError(this.errorMessage);
+    }
+}
+
+class DecimalField extends RegexpField {
+    private numberField = new NumberField();
+    constructor(private decimals: number) {
+        super(
+            /^[+-]?\d+(\.\d+)$/,
+            `Value is not a valid decimal string`,
+        );
+    }
+    public validate(value: string | number): string {
+        const {decimals} = this;
+        if (typeof value === 'number') {
+            // Just convert the numeric value to a string
+            return this.numberField.validate(value).toFixed(decimals);
+        }
+        value = super.validate(value);
+        if (value[0] === '+') {
+            value = value.slice(1);
+        }
+        const [numStr, decStr] = value.split('.');
+        if (!decimals) {
+            return numStr;
+        }
+        return numStr + '.' + padEnd((decStr || '').slice(0, decimals), decimals, '0');
+    }
+    public deserialize(value: any): string {
+        if (typeof value === 'number') {
+            return this.validate(value);
+        }
+        return super.deserialize(value);
     }
 }
 
@@ -318,6 +350,10 @@ class IdField extends RegexpField {
     }
 }
 
+function isNullable(value: any): value is null | '' {
+    return value === null || value === '';
+}
+
 /**
  * Makes the given field nullable, allowing null values for it.
  * It also means that any blank value, e.g. an empty string, will
@@ -325,25 +361,25 @@ class IdField extends RegexpField {
  *
  * Useful to be used with string(), datetime() and integer() fields.
  */
-class NullableField<I, O extends string | number> implements Field<I | null, O | null> {
+class NullableField<I, O extends string | number | boolean> implements Field<I | null, O | null> {
     constructor(public readonly field: Field<I, O>) {}
     public validate(value: I | null): I | null {
-        return value && this.field.validate(value) || null;
+        return !isNullable(value) && this.field.validate(value) || null;
     }
     public serialize(value: I | null): O | null {
-        return value && this.field.serialize(value) || null;
+        return !isNullable(value) && this.field.serialize(value) || null;
     }
     public deserialize(value: any): I | null {
         return value === null || value === '' ? null : this.field.deserialize(value);
     }
     public encode(value: I | null): string {
-        return value && this.field.encode(value) || '';
+        return !isNullable(value) && this.field.encode(value) || '';
     }
     public encodeSortable(value: I): string {
-        return value && this.field.encodeSortable(value) || '';
+        return !isNullable(value) && this.field.encodeSortable(value) || '';
     }
     public decode(value: string): I | null {
-        return value && this.field.decode(value) || null;
+        return !isNullable(value) && this.field.decode(value) || null;
     }
 }
 
@@ -364,14 +400,14 @@ class ListField<I, O> implements Field<I[], O[]> {
         }
         throw new ValidationError(`Value is not an array`);
     }
-    public encode(_: I[]): never {
-        throw new Error(`List field does not support encoding.`);
+    public encode(value: I[]): string {
+        return value.map((item) => encodeURIComponent(this.field.encode(item))).join('&');
     }
-    public encodeSortable(_: I[]): never {
-        throw new Error(`List field does not support sortable encoding.`);
+    public encodeSortable(value: I[]): string {
+        return value.map((item) => encodeURIComponent(this.field.encodeSortable(item))).join('&');
     }
-    public decode(_: string): never {
-        throw new Error(`List field does not support decoding.`);
+    public decode(value: string): I[] {
+        return value.split('&').map((item) => this.field.decode(decodeURIComponent(item)));
     }
 }
 
@@ -403,6 +439,10 @@ export function number(): Field<number> {
     return new NumberField();
 }
 
+export function decimal(decimals: number = 2): Field<string> {
+    return new DecimalField(decimals);
+}
+
 export function boolean(): Field<boolean> {
     return new BooleanField();
 }
@@ -431,7 +471,7 @@ export function url(): Field<string> {
     return new URLField();
 }
 
-export function nullable<I, O extends string | number>(field: Field<I, O>): Field<I | null, O | null> {
+export function nullable<I, O extends string | number | boolean>(field: Field<I, O>): Field<I | null, O | null> {
     return new NullableField(field);
 }
 

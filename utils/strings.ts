@@ -16,6 +16,16 @@ export function padStart(str: string, minLength: number, padChars: string) {
     return padding + str;
 }
 
+export function padEnd(str: string, minLength: number, padChars: string) {
+    const paddingLength = minLength - str.length;
+    if (paddingLength <= 0) {
+        return str;
+    }
+    const paddingCount = Math.ceil(paddingLength / padChars.length);
+    const padding = repeat(padChars, paddingCount);
+    return str + padding;
+}
+
 export function repeat(str: string, count: number): string {
     return new Array(count + 1).join(str);
 }
