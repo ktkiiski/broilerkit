@@ -537,6 +537,10 @@ class ListParamSerializer<T, U extends Key<T>, K extends Key<T>> implements Seri
         const decoded = this.serializer.decode(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decode(since));
     }
+    public decodeSortable(input: EncodedResource): Pick<T, U> & ListParams<T, K> {
+        const decoded = this.serializer.decodeSortable(input);
+        return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
+    }
     private extendSince(data: any, since: any, serialize: (field: Field<T[K], any>, since: any) => any) {
         const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[K], any>;
         if (since !== undefined) {

@@ -15,7 +15,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
         const {identitySerializer, serializer} = this;
         const primaryKey = this.key;
-        const encodedQuery = identitySerializer.encode(query);
+        const encodedQuery = identitySerializer.encodeSortable(query);
         const encodedId = encodedQuery[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItem = await sdb.getAttributes<EncodedResource>({
@@ -26,14 +26,14 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         if (!hasAttributes(encodedItem, encodedQuery)) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
-        return serializer.decode(encodedItem);
+        return serializer.decodeSortable(encodedItem);
     }
 
     // TODO: Already exists exception??
     public async create(item: S) {
         const {serializer} = this;
         const primaryKey = this.key;
-        const encodedItem = serializer.encode(item);
+        const encodedItem = serializer.encodeSortable(item);
         const encodedId = encodedItem[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
         await sdb.putAttributes({
@@ -63,10 +63,10 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const {serializer, identitySerializer, updateSerializer} = this;
         const primaryKey = this.key;
         const versionAttr = this.versionAttr;
-        const encodedIdentity = identitySerializer.encode(identity);
+        const encodedIdentity = identitySerializer.encodeSortable(identity);
         const encodedId = encodedIdentity[primaryKey];
         const sdb = new AmazonSimpleDB(this.region);
-        const encodedChanges = updateSerializer.encode(changes);
+        const encodedChanges = updateSerializer.encodeSortable(changes);
         // Get the current item's state
         const encodedItem = await sdb.getAttributes<EncodedResource>({
             DomainName: this.domainName,
@@ -76,7 +76,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             throw notFoundError || new NotFound(`Item was not found.`);
         }
         const encodedVersion: string = encodedItem[versionAttr];
-        const existingItem = serializer.decode(encodedItem);
+        const existingItem = serializer.decodeSortable(encodedItem);
         try {
             await sdb.putAttributes({
                 DomainName: this.domainName,
@@ -116,7 +116,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const {identitySerializer} = this;
         const primaryKey = this.key;
         const versionAttr = this.versionAttr;
-        const encodedIdentity = identitySerializer.encode(identity);
+        const encodedIdentity = identitySerializer.encodeSortable(identity);
         const encodedId = encodedIdentity[primaryKey];
         let encodedVersion = encodedIdentity[versionAttr];
         const otherFilters = omit(encodedIdentity, [primaryKey, versionAttr]);
@@ -177,14 +177,14 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         if (isIndexQuery<S, PK>(query)) {
             const { key, value } = query;
             const field = fields[key];
-            const encodedValue = field.encode(value);
+            const encodedValue = field.encodeSortable(value);
             filters.push(
                 `${escapeQueryIdentifier(key)} == ${escapeQueryParam(encodedValue)}`,
             );
         }
         if (since !== undefined) {
             const field = fields[ordering];
-            const encodedValue = field.encode(since);
+            const encodedValue = field.encodeSortable(since);
             filters.push([
                 escapeQueryIdentifier(ordering),
                 direction === 'asc' ? '>' : '<',
@@ -195,6 +195,6 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const sql = `select * from ${escapeQueryIdentifier(domain)} where ${filters.join(' and ')} order by ${escapeQueryIdentifier(ordering)} ${direction} limit 100`;
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItems = await sdb.selectNext(sql, true);
-        return encodedItems.map((item) => serializer.decode(item.attributes));
+        return encodedItems.map((item) => serializer.decodeSortable(item.attributes));
     }
 }

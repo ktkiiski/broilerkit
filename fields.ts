@@ -8,8 +8,9 @@ export interface Field<I, E = I> {
     serialize(value: I): E;
     deserialize(value: any): I;
     encode(value: I): string;
-    encodeSortable(value: I): string;
     decode(value: string): I;
+    encodeSortable(value: I): string;
+    decodeSortable(value: string): I;
 }
 
 class TextField implements Field<string> {
@@ -31,11 +32,14 @@ class TextField implements Field<string> {
     public encode(value: string): string {
         return this.validate(value);
     }
+    public decode(value: string): string {
+        return this.validate(value);
+    }
     public encodeSortable(value: string): string {
         return this.encode(value);
     }
-    public decode(value: string): string {
-        return this.validate(value);
+    public decodeSortable(value: string): string {
+        return this.decode(value);
     }
 }
 
@@ -75,11 +79,14 @@ class ChoiceField<K extends string> extends TextField implements Field<K> {
     public encode(value: K): K {
         return this.serialize(value);
     }
+    public decode(value: string): K {
+        return this.deserialize(value);
+    }
     public encodeSortable(value: K): K {
         return this.encode(value);
     }
-    public decode(value: string): K {
-        return this.deserialize(value);
+    public decodeSortable(value: string): K {
+        return this.decode(value);
     }
 }
 
@@ -109,12 +116,16 @@ class NumberField implements Field<number> {
     public encode(value: number): string {
         return this.serialize(value).toString();
     }
+    public decode(value: string): number {
+        return this.validate(parseFloat(value));
+    }
     public encodeSortable(_: number): string {
         // TODO: Implement me!
         throw new Error(`Not implemented`);
     }
-    public decode(value: string): number {
-        return this.validate(parseFloat(value));
+    public decodeSortable(_: string): number {
+        // TODO: Implement me!
+        throw new Error(`Not implemented`);
     }
 }
 
@@ -159,6 +170,9 @@ class IntegerField implements Field<number> {
     public encode(value: number): string {
         return this.serialize(value).toFixed(0);
     }
+    public decode(value: string): number {
+        return this.deserialize(value);
+    }
     public encodeSortable(value: number): string {
         value = this.validate(value);
         let prefix = '+';
@@ -170,8 +184,9 @@ class IntegerField implements Field<number> {
         const paddedStr = padStart(str, MAX_INTEGER_DIGITS, '0');
         return `${prefix}${paddedStr}`;
     }
-    public decode(value: string): number {
-        return this.deserialize(value);
+    public decodeSortable(_: string): number {
+        // TODO: Implement me!
+        throw new Error(`Not implemented`);
     }
 }
 
@@ -195,11 +210,14 @@ class ConstantField<K extends number> extends IntegerField {
     public encode(value: K): string {
         return super.encode(value);
     }
+    public decode(value: string): K {
+        return this.deserialize(value);
+    }
     public encodeSortable(value: K): string {
         return super.encodeSortable(value);
     }
-    public decode(value: string): K {
-        return this.deserialize(value);
+    public decodeSortable(value: string): K {
+        return this.decode(value);
     }
 }
 
@@ -219,9 +237,6 @@ class BooleanField implements Field<boolean> {
     public encode(value: boolean): 'true' | 'false' {
         return value ? 'true' : 'false';
     }
-    public encodeSortable(value: boolean): 'true' | 'false' {
-        return this.encode(value);
-    }
     public decode(value: string): boolean {
         if (value === 'true') {
             return true;
@@ -229,6 +244,12 @@ class BooleanField implements Field<boolean> {
             return false;
         }
         throw new ValidationError(`Invalid encoded boolean value`);
+    }
+    public encodeSortable(value: boolean): 'true' | 'false' {
+        return this.encode(value);
+    }
+    public decodeSortable(value: string): boolean {
+        return this.decode(value);
     }
 }
 
@@ -256,11 +277,14 @@ class DateTimeField implements Field<Date, string> {
     public encode(value: Date): string {
         return this.serialize(value);
     }
+    public decode(value: string): Date {
+        return this.deserialize(value);
+    }
     public encodeSortable(value: Date): string {
         return this.serialize(value);
     }
-    public decode(value: string): Date {
-        return this.deserialize(value);
+    public decodeSortable(value: string): Date {
+        return this.decode(value);
     }
 }
 
@@ -375,11 +399,14 @@ class NullableField<I, O extends string | number | boolean> implements Field<I |
     public encode(value: I | null): string {
         return !isNullable(value) && this.field.encode(value) || '';
     }
+    public decode(value: string): I | null {
+        return !isNullable(value) && this.field.decode(value) || null;
+    }
     public encodeSortable(value: I): string {
         return !isNullable(value) && this.field.encodeSortable(value) || '';
     }
-    public decode(value: string): I | null {
-        return !isNullable(value) && this.field.decode(value) || null;
+    public decodeSortable(value: string): I | null {
+        return !isNullable(value) && this.field.decodeSortable(value) || null;
     }
 }
 
@@ -403,11 +430,14 @@ class ListField<I, O> implements Field<I[], O[]> {
     public encode(value: I[]): string {
         return value.map((item) => encodeURIComponent(this.field.encode(item))).join('&');
     }
+    public decode(value: string): I[] {
+        return value.split('&').map((item) => this.field.decode(decodeURIComponent(item)));
+    }
     public encodeSortable(value: I[]): string {
         return value.map((item) => encodeURIComponent(this.field.encodeSortable(item))).join('&');
     }
-    public decode(value: string): I[] {
-        return value.split('&').map((item) => this.field.decode(decodeURIComponent(item)));
+    public decodeSortable(value: string): I[] {
+        return value.split('&').map((item) => this.field.decodeSortable(decodeURIComponent(item)));
     }
 }
 

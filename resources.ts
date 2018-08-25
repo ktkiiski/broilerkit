@@ -20,8 +20,9 @@ export interface Serializer<I = any, O = I> {
     serialize(input: I): SerializedResource;
     deserialize(input: any): O;
     encode(input: I): EncodedResource;
-    encodeSortable(input: I): EncodedResource;
     decode(input: EncodedResource): O;
+    encodeSortable(input: I): EncodedResource;
+    decodeSortable(input: EncodedResource): O;
 }
 
 export class Resource<T> implements Serializer<T> {
@@ -70,6 +71,9 @@ export class Resource<T> implements Serializer<T> {
     }
     public decode(input: EncodedResource): T {
         return this.deserializeWith(input, (field, value) => field.decode(value));
+    }
+    public decodeSortable(input: EncodedResource): T {
+        return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
     }
     private deserializeWith(input: any, callback: (field: Field<T[Key<T>]>, value: any, key: Key<T>) => T[Key<T>]): T {
         if (!input || typeof input !== 'object') {
@@ -130,6 +134,9 @@ export class OptionalSerializer<S, R extends Key<S>, O extends Key<S>, D extends
     public decode(input: EncodedResource): OptionalOutput<S, R, O, D> {
         return this.deserializeWith(input, (field, value) => field.decode(value));
     }
+    public decodeSortable(input: EncodedResource): OptionalOutput<S, R, O, D> {
+        return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
+    }
     private deserializeWith(input: any, callback: (field: Field<S[Key<S>]>, value: any) => S[Key<S>]): OptionalOutput<S, R, O, D> {
         if (!input || typeof input !== 'object') {
             throw new ValidationError(`Invalid object`);
@@ -165,6 +172,9 @@ class NestedResourceField<T> extends Resource<T> implements Field<T, any> {
         throw new Error('Nested resource field does not support sortable encoding.');
     }
     public decode(_: any): never {
+        throw new Error('Nested resource field does not support decoding.');
+    }
+    public decodeSortable(_: any): never {
         throw new Error('Nested resource field does not support sortable decoding.');
     }
 }
