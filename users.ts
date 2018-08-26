@@ -9,7 +9,7 @@ export interface User {
     updatedAt: Date;
 }
 
-export const userResource: Resource<User> = resource({
+export const user: Resource<User> = resource({
     id: uuid(),
     name: string(),
     email: email(),

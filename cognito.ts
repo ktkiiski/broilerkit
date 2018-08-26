@@ -4,7 +4,7 @@ import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
 import { Resource, Serializer } from './resources';
-import { User, userResource } from './users';
+import { User, user } from './users';
 import { order } from './utils/arrays';
 import { Key, Omit, spread } from './utils/objects';
 
@@ -157,11 +157,11 @@ export const users: Table<CognitoModel> = {
             if (resourceType !== 'userpool') {
                 throw new Error(`Unknown AWS resource type "${resourceType}" for user registry`);
             }
-            return new UserPoolCognitoModel(resourceId, region, userResource);
+            return new UserPoolCognitoModel(resourceId, region, user);
         }
         if (uri.startsWith('file://')) {
             const filePath = uri.slice('file://'.length);
-            return new LocalCognitoModel(filePath, userResource);
+            return new LocalCognitoModel(filePath, user);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     },
