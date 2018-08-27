@@ -5,7 +5,7 @@ import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
 import { Resource, Serializer } from './resources';
 import { User, user } from './users';
-import { order } from './utils/arrays';
+import { mapCached, order } from './utils/arrays';
 import { Key, Omit, spread } from './utils/objects';
 
 export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
@@ -92,6 +92,19 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         const cognitoUsers = await toArray(cognito.listUsers({limit: query.maxCount}));
         return order(cognitoUsers, ordering, direction) as S[];
     }
+
+    public batchRetrieve(identities: UserIdentity[]) {
+        const notFoundError = new Error(`Not found`);
+        const promises = mapCached(identities, (identity) => (
+            this.retrieve(identity, notFoundError).catch((error) => {
+                if (error === notFoundError) {
+                    return null;
+                }
+                throw error;
+            })
+        ));
+        return Promise.all(promises);
+    }
 }
 
 export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
@@ -139,6 +152,9 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     public list({direction, maxCount = 99999999, ordering}: UserQuery<S>) {
         // TODO: Max count!
         return this.nedb.list({direction, minCount: 1, maxCount, ordering});
+    }
+    public batchRetrieve(identities: UserIdentity[]) {
+        return this.nedb.batchRetrieve(identities as Array<Identity<S, 'id', 'updatedAt'>>);
     }
 }
 

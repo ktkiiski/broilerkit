@@ -119,7 +119,12 @@ export interface Model<T, I, R, P, D> {
      * actual number of returned items is less than `minCount`.
      */
     list(query: D): Promise<T[]>;
-    // TODO: query(query: D): Observable<T>;
+    /**
+     * Retrieves item for each of the identity given objects, or null values if no
+     * matching item is found, in the most efficient way possible. The results
+     * from the returned promise are in the same order than the identities.
+     */
+    batchRetrieve(identities: I[]): Promise<Array<T | null>>;
 }
 
 export type VersionedModel<T, PK extends Key<T>, V extends Key<T>, D> = Model<T, Identity<T, PK, V>, T, PartialUpdate<T, V>, D>;

@@ -2,6 +2,7 @@ import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/s
 import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource } from './resources';
+import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';
 import { Key, keys, mapObject, omit, spread } from './utils/objects';
 
@@ -196,5 +197,18 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItems = await sdb.selectNext(sql, true);
         return encodedItems.map((item) => serializer.decodeSortable(item.attributes));
+    }
+
+    public batchRetrieve(identities: Array<Identity<S, PK, V>>) {
+        const notFoundError = new NotFound(`Item was not found`);
+        const promises = mapCached(identities, (identity) => (
+            this.retrieve(identity, notFoundError).catch((error) => {
+                if (error === notFoundError) {
+                    return null;
+                }
+                throw error;
+            })
+        ));
+        return Promise.all(promises);
     }
 }

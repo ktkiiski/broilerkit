@@ -1,4 +1,4 @@
-import { compare } from './compare';
+import { compare, isEqual } from './compare';
 
 /**
  * Maps each item in the given array to zero or more items,
@@ -10,6 +10,29 @@ export function flatMap<T, R>(items: T[], callback: (item: T) => R[]): R[] {
     const results: R[] = [];
     for (const item of items) {
         results.push(...callback(item));
+    }
+    return results;
+}
+
+/**
+ * Maps each item in the given array, but does not call the
+ * iterator function for values that have already been called.
+ * The equality is compared with isEqual function.
+ * @param items Items to map
+ * @param callback Function to be called for each distinct value
+ */
+export function mapCached<T, R>(items: T[], callback: (item: T) => R): R[] {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const reuseIndex = items.slice(0, i).findIndex((x) => isEqual(x, item));
+        if (reuseIndex < 0) {
+            // Not yet cached
+            results.push(callback(item));
+        } else {
+            // Use a cached result
+            results.push(results[reuseIndex]);
+        }
     }
     return results;
 }

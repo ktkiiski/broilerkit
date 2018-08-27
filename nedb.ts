@@ -4,6 +4,7 @@ import { Resource, SerializedResource } from './resources';
 import { Key } from './utils/objects';
 
 import * as Datastore from 'nedb';
+import { mapCached } from './utils/arrays';
 
 export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
 
@@ -100,6 +101,18 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         }
         const serializedItems = await this.findItems(filter, ordering, direction, query.maxCount);
         return serializedItems.map((serializedItem) => serializer.deserialize(serializedItem));
+    }
+    public batchRetrieve(identities: Array<Identity<S, PK, V>>) {
+        const notFoundError = new Error(`Not found`);
+        const promises = mapCached(identities, (identity) => (
+            this.retrieve(identity, notFoundError).catch((error) => {
+                if (error === notFoundError) {
+                    return null;
+                }
+                throw error;
+            })
+        ));
+        return Promise.all(promises);
     }
 
     private findItem(query: {[key: string]: any}) {
