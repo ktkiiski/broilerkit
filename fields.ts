@@ -278,6 +278,47 @@ class DateTimeField implements Field<Date, string> {
     }
 }
 
+class DateField implements Field<Date, string> {
+    public validate(value: Date): Date {
+        return new Date(
+            value.getFullYear(),
+            value.getMonth(),
+            value.getDate(),
+        );
+    }
+    public serialize(value: Date): string {
+        return value.toISOString().slice(0, 'YYYY-MM-DD'.length);
+    }
+    public deserialize(value: any): Date {
+        if (typeof value !== 'string') {
+            throw new ValidationError(`Date must be a string`);
+        }
+        // Try to parse the date from the string
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) {
+            throw new ValidationError(`Invalid date format`);
+        }
+        const [, yearStr, monthStr, dateStr] = match;
+        return new Date(
+            parseInt(yearStr, 10),
+            parseInt(monthStr, 10) - 1,
+            parseInt(dateStr, 10),
+        );
+    }
+    public encode(value: Date): string {
+        return this.serialize(value);
+    }
+    public decode(value: string): Date {
+        return this.deserialize(value);
+    }
+    public encodeSortable(value: Date): string {
+        return this.serialize(value);
+    }
+    public decodeSortable(value: string): Date {
+        return this.decode(value);
+    }
+}
+
 class RegexpField extends TextField {
     constructor(
         private readonly regexp: RegExp,
@@ -469,6 +510,10 @@ export function boolean(): Field<boolean> {
 
 export function datetime(): Field<Date, string> {
     return new DateTimeField();
+}
+
+export function date(): Field<Date, string> {
+    return new DateField();
 }
 
 export function uuid(version?: 1 | 4 | 5): Field<string> {
