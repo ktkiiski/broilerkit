@@ -109,7 +109,7 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
 export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private nedb = new NeDbModel(this.filePath, this.serializer, 'id', 'updatedAt');
+    private nedb = new NeDbModel(this.filePath, this.serializer, ['id'], 'updatedAt');
 
     constructor(private filePath: string, private serializer: Resource<S>) {}
 

@@ -2,26 +2,26 @@ import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/s
 import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { EncodedResource, Resource } from './resources';
+import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';
-import { Key, keys, mapObject, omit, spread } from './utils/objects';
+import { Key, keys, mapObject, omit, pick, spread } from './utils/objects';
 
 export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
 
     private updateSerializer = this.serializer.partial([this.versionAttr]);
-    private identitySerializer = this.serializer.pick([this.key, this.versionAttr]).partial([this.key]);
+    private identitySerializer = this.serializer.pick([...this.key, this.versionAttr]).partial(this.key);
 
-    constructor(private domainName: string, private region: string, private serializer: Resource<S>, private key: PK, private versionAttr: V) {}
+    constructor(private domainName: string, private region: string, private serializer: Resource<S>, private key: PK[], private versionAttr: V) {}
 
     public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
         const {identitySerializer, serializer} = this;
-        const primaryKey = this.key;
         const encodedQuery = identitySerializer.encodeSortable(query);
-        const encodedId = encodedQuery[primaryKey];
+        const itemName = this.getItemName(encodedQuery);
         const sdb = new AmazonSimpleDB(this.region);
         const encodedItem = await sdb.getAttributes<EncodedResource>({
             DomainName: this.domainName,
-            ItemName: encodedId,
+            ItemName: itemName,
             ConsistentRead: true,
         });
         if (!hasAttributes(encodedItem, encodedQuery)) {
@@ -35,13 +35,13 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const {serializer} = this;
         const primaryKey = this.key;
         const encodedItem = serializer.encodeSortable(item);
-        const encodedId = encodedItem[primaryKey];
+        const itemName = this.getItemName(encodedItem);
         const sdb = new AmazonSimpleDB(this.region);
         await sdb.putAttributes({
             DomainName: this.domainName,
-            ItemName: encodedId,
+            ItemName: itemName,
             Expected: {
-                Name: primaryKey,
+                Name: primaryKey[0],
                 Exists: false,
             },
             Attributes: mapObject(encodedItem, (value: any, attr) => ({
@@ -55,17 +55,16 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
 
     public replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
         // TODO: Implement separately
-        const update = omit(item, [this.key]);
+        const update = omit(item, this.key);
         return this.update(identity, update as PartialUpdate<S, V>, notFoundError);
     }
 
     public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
         // TODO: Patch specific version!
         const {serializer, identitySerializer, updateSerializer} = this;
-        const primaryKey = this.key;
         const versionAttr = this.versionAttr;
         const encodedIdentity = identitySerializer.encodeSortable(identity);
-        const encodedId = encodedIdentity[primaryKey];
+        const encodedId = this.getItemName(encodedIdentity);
         const sdb = new AmazonSimpleDB(this.region);
         const encodedChanges = updateSerializer.encodeSortable(changes);
         // Get the current item's state
@@ -118,9 +117,9 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const primaryKey = this.key;
         const versionAttr = this.versionAttr;
         const encodedIdentity = identitySerializer.encodeSortable(identity);
-        const encodedId = encodedIdentity[primaryKey];
+        const itemName = this.getItemName(encodedIdentity);
         let encodedVersion = encodedIdentity[versionAttr];
-        const otherFilters = omit(encodedIdentity, [primaryKey, versionAttr]);
+        const otherFilters = omit(encodedIdentity, [...primaryKey, versionAttr]);
         const sdb = new AmazonSimpleDB(this.region);
         // If there are other filters, then we first need to check if the
         // instance matches these filtering criteria.
@@ -128,7 +127,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             // Get the current item's state
             const encodedItem = await sdb.getAttributes<EncodedResource>({
                 DomainName: this.domainName,
-                ItemName: encodedId,
+                ItemName: itemName,
             });
             if (!hasAttributes(encodedItem, encodedIdentity)) {
                 throw notFoundError || new NotFound(`Item was not found.`);
@@ -140,10 +139,10 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         try {
             await sdb.deleteAttributes({
                 DomainName: this.domainName,
-                ItemName: encodedId,
+                ItemName: itemName,
                 Expected: {
-                    Name: encodedVersion == null ? primaryKey : versionAttr,
-                    Value: encodedVersion == null ? encodedId : encodedVersion,
+                    Name: encodedVersion == null ? primaryKey[0] : versionAttr,
+                    Value: encodedVersion == null ? encodedIdentity[primaryKey[0]] : encodedVersion,
                     Exists: true,
                 },
             });
@@ -210,5 +209,13 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             })
         ));
         return Promise.all(promises);
+    }
+
+    private getItemName(encodedQuery: EncodedResource): string {
+        const key = this.key;
+        if (key.length === 1) {
+            return encodedQuery[key[0]];
+        }
+        return buildQuery(pick(encodedQuery, key));
     }
 }

@@ -156,7 +156,7 @@ export interface Table<M> {
 
 export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements Table<VersionedModel<S, PK, V, Query<S, PK>>> {
 
-    constructor(public name: string, public resource: Resource<S>, public readonly key: PK, public readonly versionAttr: V) {}
+    constructor(public name: string, public resource: Resource<S>, public readonly key: PK[], public readonly versionAttr: V) {}
 
     public getModel(uri: string): VersionedModel<S, PK, V, Query<S, PK>> {
         const {resource, key, versionAttr} = this;
@@ -181,9 +181,9 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements 
 export function table(tableName: string) {
     // tslint:disable-next-line:no-shadowed-variable
     function resource<S>(resource: Resource<S>) {
-        function identifyBy<K extends Key<S>>(key: K) {
+        function identifyBy<K extends Key<S>>(...keys: K[]) {
             function versionBy<V extends Key<S>>(versionAttr: V) {
-                return new TableDefinition(tableName, resource, key, versionAttr);
+                return new TableDefinition(tableName, resource, keys, versionAttr);
             }
             return {versionBy};
         }

@@ -27,11 +27,7 @@ export class Url {
 
     public toString(): string {
         const {queryParams} = this;
-        const sortedQueryKeys = keys(queryParams).sort();
-        const queryItems = sortedQueryKeys.map(
-            (key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`,
-        );
-        const query = queryItems.join('&');
+        const query = buildQuery(queryParams);
         return this.path + (query && '?' + query);
     }
 }
@@ -135,4 +131,12 @@ function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
         }
     }
     return components.join('');
+}
+
+export function buildQuery(queryParams: {[param: string]: string}): string {
+    const sortedQueryKeys = keys(queryParams).sort();
+    const queryItems = sortedQueryKeys.map(
+        (key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`,
+    );
+    return queryItems.join('&');
 }

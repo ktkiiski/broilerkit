@@ -104,7 +104,7 @@ export function toPairs<T>(obj: T): Array<KeyValuePair<T>> {
  * Picks only the given keys of the given object.
  * Also ignores everything else than string attributes.
  */
-export function pick<T, K extends Key<T>>(obj: T, props: K[]): Pick<T, Extract<K, string>> {
+export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, Extract<K, string>> {
     const output = {} as Pick<T, K>;
     for (const key of props) {
         if (hasOwnStringProperty(obj, key)) {

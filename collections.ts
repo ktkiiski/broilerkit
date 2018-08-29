@@ -1,37 +1,37 @@
 import { filterAsync, mapAsync, mergeSortedAsync, toAsync } from './async';
 import { shareIterator } from './iteration';
 import { isEqual } from './utils/compare';
-import { spread } from './utils/objects';
+import { pick, spread } from './utils/objects';
 
 export interface ResourceAddition<T, K extends keyof T> {
     type: 'addition';
     collectionUrl: string;
-    resourceId: T[K];
+    resourceIdentity: Pick<T, K>;
     resource: T;
 }
 
 export interface ResourceUpdate<T, K extends keyof T> {
     type: 'update';
     resourceUrl: string;
-    resourceId: T[K];
+    resourceIdentity: Pick<T, K>;
     resource: Partial<T>;
 }
 
 export interface ResourceRemoval<T, K extends keyof T> {
     type: 'removal';
     resourceUrl: string;
-    resourceId: T[K];
+    resourceIdentity: Pick<T, K>;
 }
 
 export type ResourceChange<T, K extends keyof T> = ResourceAddition<T, K> | ResourceUpdate<T, K> | ResourceRemoval<T, K>;
 
-export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(collection: AsyncIterable<T>, change: ResourceChange<T, K>, idAttribute: K, ordering: S, direction: 'asc' | 'desc'): AsyncIterable<T> {
-    const resourceId: T[K] = change.resourceId;
+export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(collection: AsyncIterable<T>, change: ResourceChange<T, K>, idAttributes: K[], ordering: S, direction: 'asc' | 'desc'): AsyncIterable<T> {
+    const resourceIdentity = change.resourceIdentity;
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
         return shareIterator(filterAsync(collection, (item) => {
-            const itemId: T[K] = item[idAttribute];
-            return !isEqual(itemId, resourceId);
+            const itemIdentity = pick(item, idAttributes);
+            return !isEqual(itemIdentity, resourceIdentity);
         }));
     } else if (change.type === 'addition') {
         // Add a new resource to the corresponding position, according to the ordering
@@ -40,7 +40,9 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
                 [
                     toAsync([change.resource]),
                     // Ensure that the item won't show up from the original collection
-                    filterAsync(collection, (item) => !isEqual(item[idAttribute], resourceId)),
+                    filterAsync(collection, (item) => (
+                        !isEqual(pick(item, idAttributes), resourceIdentity)
+                    )),
                 ],
                 ordering, direction,
             ),
@@ -48,8 +50,8 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
     } else {
         // Apply the changes to an item whose ID matches
         return shareIterator(mapAsync(collection, (item): T => {
-            const itemId: T[K] = item[idAttribute];
-            if (isEqual(itemId, resourceId)) {
+            const itemIdentity = pick(item, idAttributes);
+            if (isEqual(itemIdentity, resourceIdentity)) {
                 return spread(item, change.resource);
             }
             return item;

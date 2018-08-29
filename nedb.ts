@@ -4,25 +4,29 @@ import { Resource, SerializedResource } from './resources';
 import { Key } from './utils/objects';
 
 import * as Datastore from 'nedb';
+import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
+
+const PRIMARY_KEY_FIELD = '_pk';
 
 export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
 
     private updateSerializer = this.serializer.partial([this.versionAttr]);
-    private identitySerializer = this.serializer.partial([this.key]);
+    private identitySerializer = this.serializer.partial(this.key);
+    private primaryKeySerializer = this.serializer.pick(this.key);
     private db = getDb(this.filePath);
 
-    constructor(private filePath: string, private serializer: Resource<S>, private key: PK, private versionAttr: V) {
+    constructor(private filePath: string, private serializer: Resource<S>, private key: PK[], private versionAttr: V) {
         // Ensure uniqueness for the primary key (in addition to the built-in `_id` field)
         this.db.ensureIndex({
-            fieldName: key,
+            fieldName: PRIMARY_KEY_FIELD,
             unique: true,
         });
     }
 
-    public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
-        const serializedIdentity = this.identitySerializer.serialize(query);
-        const serializedItem = await this.findItem(serializedIdentity);
+    public async retrieve(identity: Identity<S, PK, V>, notFoundError?: Error) {
+        const query = this.getItemQuery(identity);
+        const serializedItem = await this.findItem(query);
         if (!serializedItem) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
@@ -30,7 +34,10 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     public async create(item: S, alreadyExistsError?: Error) {
-        const serializedItem = this.serializer.serialize(item);
+        const serializedItem = {
+            ...this.serializer.serialize(item),
+            [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(item),
+        };
         try {
             await this.insertItem(serializedItem);
         } catch (error) {
@@ -41,9 +48,12 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
 
     public async replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
         const {serializer} = this;
-        const serializedIdentity = this.identitySerializer.serialize(identity);
-        const serializedItem = serializer.serialize(item);
-        const updatedSerializedItem = await this.updateItem(serializedIdentity, serializedItem);
+        const query = this.getItemQuery(identity);
+        const serializedItem = {
+            ...serializer.serialize(item),
+            [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(identity),
+        };
+        const updatedSerializedItem = await this.updateItem(query, serializedItem);
         if (!updatedSerializedItem) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
@@ -51,9 +61,9 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
-        const serializedIdentity = this.identitySerializer.serialize(identity);
+        const query = this.getItemQuery(identity);
         const serializedChanges = this.updateSerializer.serialize(changes);
-        const updatedSerializedItem = await this.updateItem(serializedIdentity, {$set: serializedChanges});
+        const updatedSerializedItem = await this.updateItem(query, {$set: serializedChanges});
         if (!updatedSerializedItem) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
@@ -71,16 +81,16 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
-        const serializedIdentity = this.identitySerializer.serialize(identity);
-        const removedCount = await this.removeItem(serializedIdentity);
+        const query = this.getItemQuery(identity);
+        const removedCount = await this.removeItem(query);
         if (!removedCount) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
     }
 
     public async clear(identity: Identity<S, PK, V>) {
-        const serializedIdentity = this.identitySerializer.serialize(identity);
-        await this.removeItem(serializedIdentity);
+        const query = this.getItemQuery(identity);
+        await this.removeItem(query);
     }
 
     public async list(query: Query<S, PK>) {
@@ -150,6 +160,17 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         return new Promise<number>((resolve, reject) => {
             this.db.remove(query, promiseCallback(resolve, reject));
         });
+    }
+    private getItemQuery(identity: Identity<S, PK, V>): {[key: string]: any} {
+        const serializedIdentity = this.identitySerializer.serialize(identity);
+        return {
+            ...serializedIdentity,
+            [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(identity),
+        };
+    }
+    private getItemPrimaryKey(identity: Identity<S, PK, V>): string {
+        const encodedIdentity = this.primaryKeySerializer.encode(identity);
+        return buildQuery(encodedIdentity);
     }
 }
 
