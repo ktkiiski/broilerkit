@@ -508,6 +508,10 @@ export function boolean(): Field<boolean> {
     return new BooleanField();
 }
 
+export function matching(regexp: RegExp, errorMessage?: string): Field<string> {
+    return new RegexpField(regexp, errorMessage);
+}
+
 export function datetime(): Field<Date, string> {
     return new DateTimeField();
 }
