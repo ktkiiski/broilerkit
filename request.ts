@@ -1,15 +1,19 @@
 import * as http from 'http';
 import * as https from 'https';
+import { URL } from 'url';
 import { HttpMethod } from './http';
+import { forEachKey } from './utils/objects';
 
 interface Request extends https.RequestOptions {
     url: string;
+    query?: {[param: string]: string};
     method: HttpMethod;
     body?: string;
 }
 
 interface JsonRequest extends https.RequestOptions {
     url: string;
+    query?: {[param: string]: string};
     method: HttpMethod;
     data?: any;
 }
@@ -24,19 +28,28 @@ interface JsonResponse extends Response {
     data: any;
 }
 
-declare module 'https' {
-    export function request(url: string | URL, options: RequestOptions, callback?: (res: http.IncomingMessage) => void): http.ClientRequest;
-}
-
-export function request({url, body, ...options}: Request): Promise<Response> {
+export function request({url, query, body, ...options}: Request): Promise<Response> {
     return new Promise((resolve, reject) => {
-        const clientRequest = https.request(url, options, (resp) => {
+        const urlObj = new URL(url);
+        if (query) {
+            forEachKey(query, (key, value) => {
+                urlObj.searchParams.set(key, value);
+            });
+        }
+        const clientRequest = https.request({
+            protocol: urlObj.protocol,
+            host: urlObj.host,
+            port: urlObj.port,
+            path: urlObj.pathname + urlObj.search,
+            hash: urlObj.hash,
+            ...options,
+        }, (resp) => {
             // tslint:disable-next-line:no-shadowed-variable
             let body = '';
             resp.on('data', (chunk) => { body += chunk; });
             resp.on('end', () => {
                 const {statusCode, headers} = resp;
-                if (statusCode) {
+                if (statusCode && statusCode >= 200 && statusCode < 300) {
                     resolve({statusCode, headers, body});
                 } else {
                     reject({statusCode, headers, body});
