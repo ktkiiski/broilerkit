@@ -50,6 +50,18 @@ export function readFile(filename: string): Promise<string> {
     });
 }
 
+export function writeFile(filename: string, data: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        fs.writeFile(filename, data, (error) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve(data);
+            }
+        });
+    });
+}
+
 export function readStream(stream: NodeJS.ReadableStream): Promise<any[]> {
     return new Promise((resolve, reject) => {
         const results: any[] = [];
@@ -57,4 +69,52 @@ export function readStream(stream: NodeJS.ReadableStream): Promise<any[]> {
         stream.on('error', (error) => reject(error));
         stream.on('data', (item) => { results.push(item); });
     });
+}
+
+export async function readJSONFile(filename: string, defaultValue?: any): Promise<any> {
+    try {
+        const json = await readFile(filename);
+        return JSON.parse(json);
+    } catch (error) {
+        if (typeof defaultValue === 'undefined') {
+            throw error;
+        }
+        return defaultValue;
+    }
+}
+
+export async function writeJSONFile(filename: string, data: any): Promise<any> {
+    await ensureDirectoryExists(path.dirname(filename));
+    await writeFile(filename, JSON.stringify(data, null, 4));
+    return data;
+}
+
+export function createDirectory(dirPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        fs.mkdir(dirPath, (error) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
+export async function ensureDirectoryExists(dirPath: string) {
+    dirPath = path.normalize(dirPath);
+    // Recursively ensure that the parent directory exists
+    const parentDir = path.dirname(dirPath);
+    if (parentDir && parentDir !== '/' && parentDir !== dirPath) {
+        await ensureDirectoryExists(parentDir);
+    }
+    // Attempt to create the directory
+    try {
+        await createDirectory(dirPath);
+    } catch (error) {
+        // Ignore error if already exists, otherwise rethrow
+        if (error.code !== 'EEXIST') {
+            throw error;
+        }
+    }
 }
