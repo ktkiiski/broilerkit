@@ -102,8 +102,8 @@ export function pattern<T extends string = never>(strings: TemplateStringsArray,
 }
 
 export function parseUrl(url: string): Url {
-    const [path, query] = url.split('?', 2);
-    return new Url(path, parseQuery(query || ''));
+    const [path, ...queryCmps] = url.split('?');
+    return new Url(path, parseQuery(queryCmps.join('?') || ''));
 }
 
 export function parseQuery(query: string): {[key: string]: string} {
