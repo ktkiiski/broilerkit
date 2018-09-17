@@ -12,10 +12,22 @@ const hasProp = Object.prototype.hasOwnProperty;
  */
 export function isEqual<T, S>(a: T, b: S): boolean;
 export function isEqual(a: any, b: any): boolean {
+    return isDeepEqual(a, b);
+}
+
+function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean {
     if (a === b) {
         return true;
     }
     if (a && b && typeof a === 'object' && typeof b === 'object') {
+        // First check if we are already comparing these objects in the stack
+        if (stack) {
+            for (const [x, y] of stack) {
+                if (x === a && y === b) {
+                    return true;
+                }
+            }
+        }
         const arrA = isArray(a);
         const arrB = isArray(b);
 
@@ -65,9 +77,12 @@ export function isEqual(a: any, b: any): boolean {
         }
         for (let i = keyCount; i-- !== 0;) {
             const key = keyList[i];
-            if (!isEqual(a[key], b[key])) {
+            stack = stack || [];
+            stack.push([a, b]);
+            if (!isDeepEqual(a[key], b[key], stack)) {
                 return false;
             }
+            stack.pop();
         }
         return true;
     }
