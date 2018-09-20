@@ -95,6 +95,8 @@ export class Resource<T> implements Serializer<T> {
     }
 }
 
+export type Deserialization<T extends Resource<any>> = T extends Resource<infer R> ? R : any;
+
 export interface OptionalOptions<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> {
     required: R[];
     optional: O[];
