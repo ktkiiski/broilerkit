@@ -1,7 +1,7 @@
 import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Resource, SerializedResource } from './resources';
-import { Key } from './utils/objects';
+import { Key, pick } from './utils/objects';
 
 import * as Datastore from 'nedb';
 import { buildQuery } from './url';
@@ -76,8 +76,19 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         return changes;
     }
 
-    public async write(_: S): Promise<S> {
-        throw new Error(`Not yet implemented!`);
+    public async write(item: S): Promise<S> {
+        const alreadyExistsError = new Error(`Item already exists!`);
+        try {
+            return await this.create(item, alreadyExistsError);
+        } catch (error) {
+            if (error !== alreadyExistsError) {
+                throw error;
+            }
+            return await this.replace(
+                pick(item, this.key) as Identity<S, PK, V>,
+                item,
+            );
+        }
     }
 
     public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
