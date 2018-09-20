@@ -89,7 +89,7 @@ function requestText(request: AjaxRequest): Promise<AjaxTextResponse> {
 }
 
 export class AjaxError extends Error {
-    constructor(public readonly request: AjaxRequest, public readonly statusCode: HttpStatus | 0, public readonly data?: any, public readonly error?: Error | ErrorEvent) {
+    constructor(public readonly request: AjaxRequest, public readonly statusCode: HttpStatus | 0, public readonly data?: any, public readonly error?: Error | Event) {
         super();
     }
 }
