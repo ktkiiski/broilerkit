@@ -1,6 +1,6 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
-import { concat, defer, merge, never, Observable, of, Subscribable } from 'rxjs';
+import { concat, defer, from, merge, never, Observable, of, Subscribable } from 'rxjs';
 import { concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { toArray } from './async';
@@ -13,6 +13,7 @@ import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
 import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
 import { Route, route } from './routes';
+import { Observablish } from './rxjs';
 import { pattern, Url } from './url';
 import { isEqual } from './utils/compare';
 import { Key, keys, pick, spread, transformValues } from './utils/objects';
@@ -61,10 +62,12 @@ export interface IntermediateCollection<O> {
 
 export interface ObservableEndpoint<I, O> {
     observe(query: I): Observable<O>;
+    observeSwitch(query$: Observablish<I>): Observable<O>;
 }
 
 export interface ObservableUserEndpoint<I, O> {
     observeWithUser(query: I): Observable<O | null>;
+    observeWithUserSwitch(query$: Observablish<I>): Observable<O | null>;
 }
 
 export interface RetrieveEndpoint<I, O, B> extends ObservableEndpoint<I, O>, ObservableUserEndpoint<UserInput<I, B>, O> {
@@ -242,8 +245,25 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             return resource$;
         });
     }
+    public observeSwitch(query$: Observablish<I>): Observable<O> {
+        return from(query$).pipe(
+            // Omit all the extra properties from the comparison
+            map((query) => this.validateGet(query)),
+            distinctUntilChanged(isEqual),
+            switchMap((query) => this.observe(query)),
+        );
+    }
     public observeWithUser(query: UserInput<I, B>): Observable<O | null> {
         return this.withUserId(query, (input: I) => this.observe(input));
+    }
+    public observeWithUserSwitch(query$: Observablish<UserInput<I, B>>): Observable<O | null> {
+        return from(query$).pipe(
+            // TODO: This can be simplified (and optimized)
+            switchMap((query) => this.withUserId(query, (r) => of(r as I))),
+            map((query) => query && this.validateGet(query)),
+            distinctUntilChanged(isEqual),
+            switchMap((query) => query ? this.observe(query) : of(null)),
+        );
     }
     public stream(input$: ApiInput<I>): Observable<O> {
         return observeValues(input$).pipe(
@@ -310,6 +330,14 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
             map((items) => ({isComplete: true, items})),
         );
     }
+    public observeSwitch(query$: Observablish<I>): Observable<IntermediateCollection<O>> {
+        return from(query$).pipe(
+            // Omit all the extra properties from the comparison
+            map((query) => this.validateGet(query)),
+            distinctUntilChanged(isEqual),
+            switchMap((query) => this.observe(query)),
+        );
+    }
     public observeObservable(input: I): Observable<Observable<O>> {
         return this.observeIterable(input).pipe(map(observeIterable));
     }
@@ -365,6 +393,15 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
     public observeWithUser(input: UserInput<I, B>): Observable<IntermediateCollection<O> | null> {
         return this.observeAllWithUser(input).pipe(
             map((items) => items && {isComplete: true, items}),
+        );
+    }
+    public observeWithUserSwitch(query$: Observablish<UserInput<I, B>>): Observable<IntermediateCollection<O> | null> {
+        return from(query$).pipe(
+            // TODO: This can be simplified (and optimized)
+            switchMap((query) => this.withUserId(query, (r) => of(r as I))),
+            map((query) => query && this.validateGet(query)),
+            distinctUntilChanged(isEqual),
+            switchMap((query) => query ? this.observe(query) : of(null)),
         );
     }
     public observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null> {
