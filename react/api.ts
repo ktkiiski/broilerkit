@@ -3,7 +3,7 @@ import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { IntermediateCollection, ObservableEndpoint, ObservableUserEndpoint } from '../api';
 import { observeValues } from '../observables';
 import { isEqual } from '../utils/compare';
-import { omit, Optional, spread, transformValues } from '../utils/objects';
+import { Optional, spread, transformValues } from '../utils/objects';
 import { ObserverComponent } from './observer';
 
 export type UserResourceInputs<I> = {
@@ -42,16 +42,16 @@ export function renderUserResources<I, O extends object, S extends object>(endpo
 }
 
 export function renderResources<I, O extends object, S extends object>(endpoints: ResourceEndpoints<I, O>, defaultState?: S) {
-    class ResourceComponent extends ObserverComponent<I, Nullable<O> & S> {
+    class ResourceComponent<X = {}> extends ObserverComponent<I & X, Nullable<O> & S> {
         public state = spread(
             transformValues(endpoints, () => null) as Nullable<O>,
             defaultState,
         );
         public state$ = this.props$.pipe(
             distinctUntilChanged(isEqual),
-            map((props) => transformValues(
+            map((props: any) => transformValues(
                 endpoints as any,
-                (endpoint: ObservableEndpoint<I[keyof I], O[keyof O]>, key) => endpoint.observe(props[key as keyof I]),
+                (endpoint: ObservableEndpoint<I[keyof I], O[keyof O]>, key) => endpoint.observe(props[key]),
             ) as {[P in keyof O]: Observable<Nullable<O>[P]>}),
             switchMap((observables) => observeValues(observables)),
         );
@@ -63,27 +63,27 @@ export interface CollectionState<O> {
     items: O[] | null;
     isComplete: boolean;
 }
-export type CollectionProps<I extends D, D extends Partial<I>> = Optional<I, keyof D>;
-export function renderUserCollection<I extends D, O, D extends Partial<I> = {}>(endpoint: ObservableUserEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
-    class UserCollectionComponent extends ObserverComponent<CollectionProps<I, D>, CollectionState<O>> {
-        public state$ = this.props$.pipe(
-            map((props) => spread(defaultInput, omit(props, ['children'])) as I),
-            distinctUntilChanged(isEqual),
-            switchMap((props) => endpoint.observeWithUser(props)),
-            map((collection) => (collection || {items: null, isComplete: false}) as CollectionState<O>),
-        );
+export type CollectionProps<I extends D, D> = Optional<I, keyof D>;
+export function renderUserCollection<I extends D, O, D = {}>(endpoint: ObservableUserEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
+    class UserCollectionComponent<X = {}> extends ObserverComponent<CollectionProps<I, D> & X, CollectionState<O>> {
+        public state$ = endpoint.observeWithUserSwitch(this.props$.pipe(
+                map((props: any) => spread(defaultInput, props) as I),
+            )).pipe(
+                map((collection) => (collection || {items: null, isComplete: false}) as CollectionState<O>),
+            )
+        ;
     }
     return UserCollectionComponent;
 }
 
 export function renderCollection<I extends D, O, D extends Partial<I> = {}>(endpoint: ObservableEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
-    class CollectionComponent extends ObserverComponent<CollectionProps<I, D>, CollectionState<O>> {
-        public state$ = this.props$.pipe(
-            map((props) => spread(defaultInput, omit(props, ['children'])) as I),
-            distinctUntilChanged(isEqual),
-            switchMap((props) => endpoint.observe(props)),
-            map((collection) => (collection || {items: null, isComplete: false}) as CollectionState<O>),
-        );
+    class CollectionComponent<X = {}> extends ObserverComponent<CollectionProps<I, D> & X, CollectionState<O>> {
+        public state$ = endpoint.observeSwitch(this.props$.pipe(
+                map((props: any) => spread(defaultInput, props) as I),
+            )).pipe(
+                map((collection) => (collection || {items: null, isComplete: false}) as CollectionState<O>),
+            )
+        ;
     }
     return CollectionComponent;
 }

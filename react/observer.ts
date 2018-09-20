@@ -1,7 +1,8 @@
 import { Component, ComponentClass, ReactNode } from 'react';
-import { BehaviorSubject, combineLatest, from, ObservableInput, Subscribable, Subscription } from 'rxjs';
+import { BehaviorSubject, combineLatest, from, ObservableInput, Subscription } from 'rxjs';
 import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { AuthClient, AuthUser } from '../auth';
+import { Observablish } from '../rxjs';
 import { isEqual } from '../utils/compare';
 
 /**
@@ -24,7 +25,7 @@ export abstract class ObserverComponent<P, T extends object> extends Component<P
      * You should use the `props$` property if the state
      * depends on the component `props`.
      */
-    protected abstract state$: Subscribable<T>;
+    protected abstract state$: Observablish<T>;
     /**
      * The subscription for the state$ observable.
      */
@@ -32,7 +33,9 @@ export abstract class ObserverComponent<P, T extends object> extends Component<P
 
     public componentDidMount() {
         this.subscription.add(
-            this.state$.subscribe((state) => this.setState(state)),
+            this.state$.subscribe({
+                next: (state) => this.setState(state),
+            }),
         );
     }
     public componentDidUpdate() {
