@@ -76,7 +76,7 @@ export function renderUserCollection<I extends D, O, D = {}>(endpoint: Observabl
     return UserCollectionComponent;
 }
 
-export function renderCollection<I extends D, O, D extends Partial<I> = {}>(endpoint: ObservableEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
+export function renderCollection<I extends D, O, D = {}>(endpoint: ObservableEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
     class CollectionComponent<X = {}> extends ObserverComponent<CollectionProps<I, D> & X, CollectionState<O>> {
         public state$ = endpoint.observeSwitch(this.props$.pipe(
                 map((props: any) => spread(defaultInput, props) as I),
