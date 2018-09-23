@@ -60,6 +60,13 @@ export interface AuthConfig {
     googleClientId?: string;
 }
 
+export interface ParameterConfig {
+    /**
+     * Human-readable description of the configuration.
+     */
+    description: string;
+}
+
 export interface AppConfig {
     /**
      * The name of the web app. Should include only letters, numbers, and dashes.
@@ -110,6 +117,16 @@ export interface AppConfig {
      * Configuration for the user registry.
      */
     auth?: AuthConfig;
+    /**
+     * Additional parameters the backend requires to work.
+     * These will be asked when deploying each environment.
+     */
+    parameters?: {
+        /**
+         * Parameter name as a key and it's configuration as a value.
+         */
+        [param: string]: ParameterConfig;
+    };
 }
 
 export interface ConfigOptions {

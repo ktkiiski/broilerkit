@@ -71,7 +71,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
 /**
  * Runs the REST API development server.
  */
-export async function serveBackEnd(options: BroilerConfig) {
+export async function serveBackEnd(options: BroilerConfig, params: {[param: string]: string}) {
     const {siteRoot, stageDir, buildDir, projectRootPath} = options;
     const apiRoot = options.apiRoot as string;
     if (!apiRoot) {
@@ -127,7 +127,10 @@ export async function serveBackEnd(options: BroilerConfig) {
             if (options.auth) {
                 handler = handler.extend(authLocalServer);
             }
-            const environment = getRequestEnvironment(handler, stageDirPath);
+            const environment = {
+                ...params,
+                ...getRequestEnvironment(handler, stageDirPath),
+            };
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {

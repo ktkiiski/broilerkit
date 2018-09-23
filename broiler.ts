@@ -21,8 +21,8 @@ import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
-import { readFile, searchFiles } from './utils/fs';
-import { mapObject, spread, toPairs, values } from './utils/objects';
+import { readFile, readJSONFile, searchFiles, writeJSONFile } from './utils/fs';
+import { forEachKey, mapObject, spread, toPairs, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
@@ -32,6 +32,7 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
+import { askParameters } from './parameters';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -205,9 +206,17 @@ export class Broiler {
     public async serve() {
         this.log(`Starting the local development server...`);
         const opts = this.config;
+        const paramFile = path.resolve(opts.stageDir, './params.json');
+        const prevParams = await readJSONFile(paramFile, {});
+        const params = await askParameters(opts.parameters, prevParams);
+        try {
+            await writeJSONFile(paramFile, params);
+        } catch (error) {
+            this.log(red(`Failed to write parameters to the JSON file:\n${error}`));
+        }
         await Promise.all([
             serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.siteRoot}/`)}`)),
-            serveBackEnd(opts),
+            serveBackEnd(opts, params),
         ]);
     }
 
@@ -358,7 +367,7 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteRoot, apiRoot, assetsRoot, auth, defaultPage} = this.config;
+        const {siteRoot, apiRoot, assetsRoot, auth, defaultPage, parameters} = this.config;
         const siteRootUrl = new URL(siteRoot);
         const siteDomain = siteRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
@@ -392,6 +401,8 @@ export class Broiler {
                 throw new Error(`Google client app secret is required!`);
             }
         }
+        // Ask all the custom parameters
+        const customParameters = await askParameters(parameters, prevParams, 'X');
         return {
             SiteRoot: siteRoot,
             SiteOrigin: siteRootUrl.origin,
@@ -411,6 +422,8 @@ export class Broiler {
             FacebookClientSecret: facebookClientSecret,
             GoogleClientId: googleClientId,
             GoogleClientSecret: googleClientSecret,
+            // Additional custom parameters (start with 'X')
+            ...customParameters,
         };
     }
 
@@ -568,7 +581,7 @@ export class Broiler {
         const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const templateFiles = ['cloudformation-init.yml', 'cloudformation-app.yml'];
-        const {auth, defaultPage} = this.config;
+        const {auth, defaultPage, parameters} = this.config;
         if (defaultPage) {
             // Enable fallback page for single-page apps using HTML5 History API
             templateFiles.push('cloudformation-spa.yml');
@@ -589,12 +602,35 @@ export class Broiler {
         if (!server) {
             return await template$;
         }
-        const [template, apiTemplate, dbTemplate] = await Promise.all([
+        const templates = await Promise.all([
             template$,
             this.generateApiTemplate(server),
             this.generateDbTemplates(server),
         ]);
-        return mergeTemplates(mergeTemplates(template, apiTemplate), dbTemplate);
+        if (parameters) {
+            forEachKey(parameters, (paramName, paramConfig) => {
+                templates.unshift({
+                    Parameters: {
+                        [`X${paramName}`]: {
+                            Type: 'String',
+                            Description: paramConfig.description,
+                        },
+                    },
+                    Resources: {
+                        ApiGatewayStage: {
+                            Properties: {
+                                Variables: {
+                                    [paramName]: {
+                                        Ref: `X${paramName}`,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+            });
+        }
+        return templates.reduce(mergeTemplates);
     }
 
     private async generateApiTemplate(server: ApiService): Promise<any> {
