@@ -12,6 +12,7 @@ export interface ResourceAddition<T, K extends keyof T> {
 
 export interface ResourceUpdate<T, K extends keyof T> {
     type: 'update';
+    collectionUrl?: string;
     resourceUrl: string;
     resourceIdentity: Pick<T, K>;
     resource: Partial<T>;
@@ -19,6 +20,7 @@ export interface ResourceUpdate<T, K extends keyof T> {
 
 export interface ResourceRemoval<T, K extends keyof T> {
     type: 'removal';
+    collectionUrl?: string;
     resourceUrl: string;
     resourceIdentity: Pick<T, K>;
 }
@@ -57,12 +59,4 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
             return item;
         }));
     }
-}
-
-export function isCollectionChange(collectionUrl: string, change: ResourceChange<any, any>): boolean {
-    if (change.type === 'addition') {
-        return change.collectionUrl === collectionUrl;
-    }
-    const resourceUrl = change.resourceUrl;
-    return resourceUrl.replace(/\/[^/]+\/?$/, '') === collectionUrl;
 }
