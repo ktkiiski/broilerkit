@@ -10,6 +10,7 @@ export interface CognitoUser {
     email: string;
     updatedAt: Date;
     createdAt: Date;
+    pictureUrl: string | null;
 }
 
 export class AmazonCognitoIdentity<S = {}> {
@@ -72,7 +73,11 @@ export class AmazonCognitoIdentity<S = {}> {
                         };
                         for (const {Name, Value} of Attributes) {
                             if (Value != null) {
-                                result[Name === 'sub' ? 'id' : Name] = Value;
+                                if (Name === 'picture') {
+                                    result.pictureUrl = parsePictureUrl(Value);
+                                } else {
+                                    result[Name === 'sub' ? 'id' : Name] = Value;
+                                }
                             }
                         }
                         yield result as CognitoUser & S;
@@ -81,4 +86,34 @@ export class AmazonCognitoIdentity<S = {}> {
             }
         }
     }
+}
+
+function parsePictureUrl(picture: string): string | null {
+    /**
+     * The picture attribute is either:
+     * - picture URL already (Google)
+     * - the following object (Facebook)
+     * {
+     *   "id": "123124312412412",
+     *   "name": "John Smith",
+     *   "picture": {
+     *     "data": {
+     *       "height": 50,
+     *       "is_silhouette": false,
+     *       "url": "https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=123124312412412&height=50&width=50&ext=23423423&hash=asfasf",
+     *       "width": 50
+     *     }
+     *   }
+     * }
+     */
+    // Try to parse and get the nested value
+    try {
+        picture = JSON.parse(picture).data.url;
+    } catch {
+        return null;
+    }
+    if (typeof picture === 'string' && /^https?:\/\//.test(picture)) {
+        return picture;
+    }
+    return null;
 }

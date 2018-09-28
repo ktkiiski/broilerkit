@@ -1,4 +1,4 @@
-import { datetime, email, string, uuid } from './fields';
+import { datetime, email, nullable, string, url, uuid } from './fields';
 import { Resource, resource } from './resources';
 
 export interface User {
@@ -7,6 +7,7 @@ export interface User {
     email: string;
     createdAt: Date;
     updatedAt: Date;
+    pictureUrl: string | null;
 }
 
 export const user: Resource<User> = resource({
@@ -15,4 +16,5 @@ export const user: Resource<User> = resource({
     email: email(),
     createdAt: datetime(),
     updatedAt: datetime(),
+    pictureUrl: nullable(url()),
 });

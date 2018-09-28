@@ -3,6 +3,7 @@ import { initApi } from '../api';
 import * as api from '../auth-local-api';
 import { parseQuery } from '../url';
 import { User } from '../users';
+import { randomize } from '../utils/strings';
 
 declare const __API_ROOT__: string;
 
@@ -31,7 +32,11 @@ async function signUp() {
         event.preventDefault();
         const email = emailInputElement.value;
         const name = nameInputElement.value;
-        const user = await _usersCollection.post({email, name});
+        const avatarHash = randomize(32, '01234567890abcdef');
+        const user = await _usersCollection.post({
+            email, name,
+            pictureUrl: `https://www.gravatar.com/avatar/${avatarHash}?d=wavatar`,
+        });
         signInAs(user);
     });
 }

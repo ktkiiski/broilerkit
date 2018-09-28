@@ -39,6 +39,7 @@ Resources:
           AttributeMapping:
             email: email
             name: name
+            picture: picture
       Update:
         Action: updateIdentityProvider
         Parameters:

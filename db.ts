@@ -20,7 +20,7 @@ export interface HashIndexQuery<T, P extends Key<T>, S extends Key<T>> extends S
     value: T[P];
 }
 
-export type Query<T, P extends Key<T>> = SlicedQuery<T, Key<T>> | HashIndexQuery<T, Key<T>, P>;
+export type Query<T, P extends Key<T>> = SlicedQuery<T, Key<T>> | HashIndexQuery<T, P, Key<T>>;
 
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
