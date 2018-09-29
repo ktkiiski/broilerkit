@@ -35,7 +35,7 @@ async function signUp() {
         const avatarHash = randomize(32, '01234567890abcdef');
         const user = await _usersCollection.post({
             email, name,
-            pictureUrl: `https://www.gravatar.com/avatar/${avatarHash}?d=wavatar`,
+            picture: `https://www.gravatar.com/avatar/${avatarHash}?d=wavatar`,
         });
         signInAs(user);
     });

@@ -10,7 +10,7 @@ export interface CognitoUser {
     email: string;
     updatedAt: Date;
     createdAt: Date;
-    pictureUrl: string | null;
+    picture: string | null;
 }
 
 export class AmazonCognitoIdentity<S = {}> {
@@ -74,7 +74,7 @@ export class AmazonCognitoIdentity<S = {}> {
                         for (const {Name, Value} of Attributes) {
                             if (Value != null) {
                                 if (Name === 'picture') {
-                                    result.pictureUrl = parsePictureUrl(Value);
+                                    result.picture = parsePictureUrl(Value);
                                 } else {
                                     result[Name === 'sub' ? 'id' : Name] = Value;
                                 }

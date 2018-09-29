@@ -7,7 +7,7 @@ export interface User {
     email: string;
     createdAt: Date;
     updatedAt: Date;
-    pictureUrl: string | null;
+    picture: string | null;
 }
 
 export const user: Resource<User> = resource({
@@ -16,5 +16,5 @@ export const user: Resource<User> = resource({
     email: email(),
     createdAt: datetime(),
     updatedAt: datetime(),
-    pictureUrl: nullable(url()),
+    picture: nullable(url()),
 });
