@@ -24,16 +24,16 @@ export type ResourceEndpoints<I, O> = ResourceInputs<I> & ResourceOutputs<O>;
 export type Nullable<T> = {[P in keyof T]: T[P] | null};
 
 export function renderUserResources<I, O extends object, S extends object>(endpoints: UserResourceEndpoints<I, O>, defaultState?: S) {
-    class UserResourceComponent extends ObserverComponent<I, Nullable<O> & S> {
+    class UserResourceComponent<X = {}> extends ObserverComponent<I & X, Nullable<O> & S> {
         public state = spread(
             transformValues(endpoints, () => null) as Nullable<O>,
             defaultState,
         );
         public state$ = this.props$.pipe(
             distinctUntilChanged(isEqual),
-            map((props) => transformValues(
+            map((props: any) => transformValues(
                 endpoints as any,
-                (endpoint: ObservableUserEndpoint<I[keyof I], O[keyof O]>, key) => endpoint.observeWithUser(props[key as keyof I]),
+                (endpoint: ObservableUserEndpoint<I[keyof I], O[keyof O]>, key) => endpoint.observeWithUser(props[key]),
             ) as {[P in keyof O]: Observable<Nullable<O>[P]>}),
             switchMap((observables) => observeValues(observables)),
         );
@@ -79,11 +79,8 @@ export function renderUserCollection<I extends D, O, D = {}>(endpoint: Observabl
 export function renderCollection<I extends D, O, D = {}>(endpoint: ObservableEndpoint<I, IntermediateCollection<O>>, defaultInput?: D) {
     class CollectionComponent<X = {}> extends ObserverComponent<CollectionProps<I, D> & X, CollectionState<O>> {
         public state$ = endpoint.observeSwitch(this.props$.pipe(
-                map((props: any) => spread(defaultInput, props) as I),
-            )).pipe(
-                map((collection) => (collection || {items: null, isComplete: false}) as CollectionState<O>),
-            )
-        ;
+            map((props: any) => spread(defaultInput, props) as I),
+        ));
     }
     return CollectionComponent;
 }
