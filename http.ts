@@ -40,6 +40,7 @@ export interface HttpAuth {
     id: string;
     email: string;
     name: string;
+    picture: string | null;
     groups: string[];
 }
 

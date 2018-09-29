@@ -41,6 +41,9 @@ Resources:
         Ref: AWS::StackName
       UsernameAttributes:
       - email
+      LambdaConfig:
+        PreTokenGeneration:
+          Ref: UserPoolPreTokenGenerationLambdaFunction
 
   # Group for administrator users
   AdminUserPoolGroup:
@@ -151,6 +154,27 @@ Resources:
       Variables:
         DatabaseTableUsersURI:
           Fn::GetAtt: UserPool.Arn
+
+  # A lambda function that adds the 'profile' claim to the ID tokens on authentication
+  UserPoolPreTokenGenerationLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt UserPoolPreTokenGenerationLambdaFunctionRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = (event, context, callback) => {
+            event.response = {
+              "claimsOverrideDetails": {
+                "claimsToAddOrOverride": {
+                  "picture": event.request.userAttributes.profile || null,
+                }
+              }
+            };
+            callback(null, event);
+          };
+      Runtime: nodejs6.10
+      Timeout: 3
 
 Outputs:
   UserPoolRoot:

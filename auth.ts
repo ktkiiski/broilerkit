@@ -11,6 +11,7 @@ import { waitForClose } from './window';
 export interface AuthUser {
     id: string;
     email: string;
+    picture: string;
     name?: string;
 }
 
@@ -44,7 +45,7 @@ export class AuthClient {
     public auth$: Observable<Auth | null> = this.subject.asObservable();
     // tslint:disable-next-line:member-ordering
     public user$: Observable<AuthUser | null> = this.subject.pipe(
-        map((user) => user && pick(user, ['id', 'name', 'email'])),
+        map((user) => user && pick(user, ['id', 'name', 'email', 'picture'])),
         distinctUntilChanged<AuthUser | null>(isEqual),
     );
     // tslint:disable-next-line:member-ordering
@@ -325,6 +326,7 @@ function parseAuth(tokens: AuthTokens) {
         id: userId,
         name: idTokenPayload.name,
         email: idTokenPayload.email,
+        picture: idTokenPayload.picture,
         expiresAt: new Date(exp * 1000),
         ...tokens,
     };

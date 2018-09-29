@@ -40,6 +40,7 @@ export interface LambdaHttpRequestContext {
             'iss': string;
             'name': string;
             'sub': string;
+            'picture': string | null;
             'token_use': string;
         };
     };
@@ -73,6 +74,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
         id: claims.sub,
         name: claims.name,
         email: claims.email,
+        picture: claims.picture,
         groups: groupsStr ? groupsStr.split(',') : [],
     };
     if (method) {

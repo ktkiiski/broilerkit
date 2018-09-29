@@ -52,6 +52,7 @@ function signInAs(user: User) {
         ...accessTokenPayload,
         'email': user.email,
         'name': user.name,
+        'picture': user.picture,
         'cognito:groups': asAdmin ? ['Administrators'] : [],
     };
     // Create the JWT token
