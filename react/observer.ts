@@ -1,5 +1,5 @@
 import { Component, ComponentClass, ReactNode } from 'react';
-import { BehaviorSubject, combineLatest, from, ObservableInput, Subscription } from 'rxjs';
+import { BehaviorSubject, combineLatest, from, Observable, ObservableInput, Subscription } from 'rxjs';
 import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { AuthClient, AuthUser } from '../auth';
 import { Observablish } from '../rxjs';
@@ -43,6 +43,12 @@ export abstract class ObserverComponent<P, T extends object> extends Component<P
     }
     public componentWillUnmount() {
         this.subscription.unsubscribe();
+    }
+    public pluckProp<K extends keyof P>(prop: K): Observable<P[K]> {
+        return this.props$.pipe(
+            map((props) => props[prop]),
+            distinctUntilChanged(isEqual),
+        );
     }
 }
 
