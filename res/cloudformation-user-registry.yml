@@ -160,7 +160,8 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.handler
-      Role: !GetAtt UserPoolPreTokenGenerationLambdaFunctionRole.Arn
+      Role:
+        Fn::GetAtt: LambdaExecutionIamRole.Arn
       Code:
         ZipFile: |
           exports.handler = (event, context, callback) => {
