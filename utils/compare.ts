@@ -115,3 +115,11 @@ export function hasAttributes(obj: {[key: string]: any}, values: {[key: string]:
     }
     return true;
 }
+
+export function isNully(value: any): value is null | undefined {
+    return value == null;
+}
+
+export function isNotNully<T>(value: T): value is Exclude<T, null | undefined> {
+    return value != null;
+}
