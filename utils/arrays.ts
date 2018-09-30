@@ -108,3 +108,32 @@ export function union<T>(...arrays: T[][]): T[] {
     }
     return result;
 }
+
+/**
+ * Creates an array with the given length and
+ * each of the items matching the given value.
+ * @param count The length of the array
+ * @param item Item for each index in the array
+ */
+export function repeat<T>(count: number, item: T): T[] {
+    const arr = new Array<T>(count);
+    for (let i = count; i >= 0; i--) {
+        arr[i] = item;
+    }
+    return arr;
+}
+
+/**
+ * Creates an array with the given length and
+ * each of the items matching the return value of the callback,
+ * called once for each index
+ * @param count The length of the array
+ * @param callback The function that returns the value for each index
+ */
+export function repeatWith<T>(count: number, callback: (index: number) => T): T[] {
+    const arr = new Array<T>(count);
+    for (let i = count; i >= 0; i--) {
+        arr[i] = callback(i);
+    }
+    return arr;
+}
