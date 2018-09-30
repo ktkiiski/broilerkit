@@ -894,7 +894,11 @@ function getApiMethodLogicalId(urlPath: string[], method: HttpMethod) {
 function formatPathForLogicalId(urlPath: string[]) {
     return urlPath.map((path) => {
         const match = /^{(.*)}$/.exec(path);
-        return match ? upperFirst(match[1]) : upperFirst(path);
+        // We replace each '{xxxx}' with just 'ID', otherwise
+        // different "placeholders" would cause errors.
+        const component = match ? 'ID' : path;
+        // Convert from snake_case to CamelCase
+        return component.replace(/(?:^|[\W_]+)(\w)/g, (_, letter) => letter.toUpperCase());
     }).join('');
 }
 
