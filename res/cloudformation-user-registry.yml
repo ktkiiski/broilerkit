@@ -24,6 +24,10 @@ Resources:
               # Add all the actions required for any used custom resources
               # The full reference is available here:
               # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
+              - cognito-idp:CreateUserPool
+              - cognito-idp:DeleteUserPool
+              - cognito-idp:UpdateUserPool
+              - cognito-idp:DescribeUserPool
               - cognito-idp:CreateUserPoolDomain
               - cognito-idp:DeleteUserPoolDomain
               - cognito-idp:DescribeUserPoolDomain
@@ -41,9 +45,28 @@ Resources:
         Ref: AWS::StackName
       UsernameAttributes:
       - email
-      LambdaConfig:
-        PreTokenGeneration:
-          Ref: UserPoolPreTokenGenerationLambdaFunction
+
+  # We need to perform a separate update to the UserPool, so that we can
+  # add the 'PreTokenGeneration' property to 'LambdaConfig', which
+  # the normal UserPool does not support
+  UserPoolLambdaConfig:
+    Type: Custom::CognitoUserPool
+    DependsOn:
+    - CustomResourcePolicy
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+      Service: CognitoIdentityServiceProvider
+      Parameters:
+        UserPoolId:
+          Ref: UserPool
+        LambdaConfig:
+          PreTokenGeneration:
+            Fn::GetAtt: UserPoolPreTokenGenerationLambdaFunction.Arn
+      Create:
+        Action: updateUserPool
+      Update:
+        Action: updateUserPool
 
   # Group for administrator users
   AdminUserPoolGroup:
