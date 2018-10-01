@@ -133,7 +133,7 @@ export class AmazonCloudFormation {
      * @param template CloudFormation stack template string as JSON/YAML
      * @param parameters Template parameters as a key-value object mapping
      */
-    public async createChangeSet(template: string, parameters: {[name: string]: StackParameterValue}, pollInterval = 2000): Promise<CloudFormation.DescribeChangeSetOutput> {
+    public async createChangeSet(templateUrl: string, parameters: {[name: string]: StackParameterValue}, pollInterval = 2000): Promise<CloudFormation.DescribeChangeSetOutput> {
         const date = new Date();
         const StackName = this.stackName;
         const ChangeSetName = `${StackName}${date.valueOf()}`;
@@ -141,7 +141,7 @@ export class AmazonCloudFormation {
             ChangeSetName,
             ChangeSetType: 'UPDATE',
             StackName,
-            TemplateBody: template,
+            TemplateURL: templateUrl,
             Capabilities: [
                 'CAPABILITY_IAM',
                 'CAPABILITY_NAMED_IAM',

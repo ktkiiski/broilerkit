@@ -191,11 +191,9 @@ export class Broiler {
     public async preview() {
         await this.clean();
         await this.compileBackend(false);
-        const [template, parameters] = await Promise.all([
-            this.generateTemplate(),
-            this.getStackParameters(),
-        ]);
-        const changeSet = await this.cloudFormation.createChangeSet(dumpTemplate(template), parameters);
+        const templateUrl = await this.prepareStackTemplate();
+        const parameters = await this.getStackParameters();
+        const changeSet = await this.cloudFormation.createChangeSet(templateUrl, parameters);
         this.logChangeSet(changeSet);
         await this.cloudFormation.deleteChangeSet(changeSet.ChangeSetName as string);
     }
@@ -328,12 +326,11 @@ export class Broiler {
      */
     public async deployStack(): Promise<IStackWithResources> {
         this.log(`Starting deployment of stack ${bold(this.stackName)} to region ${bold(this.config.region)}...`);
-        const template$ = this.generateTemplate();
-        const parameters$ = this.getStackParameters();
+        const templateUrl$ = this.prepareStackTemplate();
         const currentStack$ = await this.cloudFormation.describeStackWithResources();
-        const [template, parameters, currentStack] = await Promise.all([template$, parameters$, currentStack$]);
-        const templateDump = dumpTemplate(template);
-        const changeSet = await this.cloudFormation.createChangeSet(templateDump, parameters);
+        const [templateUrl, currentStack] = await Promise.all([templateUrl$, currentStack$]);
+        const parameters = await this.getStackParameters();
+        const changeSet = await this.cloudFormation.createChangeSet(templateUrl, parameters);
         this.logChangeSet(changeSet);
         let oldStack = currentStack;
         if (changeSet.Changes && changeSet.Changes.length) {
@@ -764,6 +761,27 @@ export class Broiler {
             this.log('Uploaded', bold(params.Key), 'to bucket', params.Bucket, green('✔︎'));
             return result;
         }
+    }
+
+    /**
+     * Uploads a CloudFormation template for the stack as an YAML file stored
+     * to the S3 deployment bucket.
+     */
+    private async prepareStackTemplate(): Promise<string> {
+        const templateFileName = `cloudformation-template-${this.stackName}.yml`;
+        const template$ = this.generateTemplate();
+        const stackOutput$ = this.cloudFormation.getStackOutput();
+        const [stackOutput, template] = await Promise.all([stackOutput$, template$]);
+        const bucketName = stackOutput.DeploymentManagementS3BucketName;
+        const bucketDomain = stackOutput.DeploymentManagementS3BucketDomain;
+        const templateUpload$ = this.createS3File$({
+            Bucket: bucketName,
+            Key: templateFileName,
+            Body: dumpTemplate(template),
+            ContentType: 'application/x-yaml',
+        }, true);
+        await templateUpload$;
+        return `http://${bucketDomain}/${templateFileName}`;
     }
 
     private async getCompiledApiFile(): Promise<File | undefined> {

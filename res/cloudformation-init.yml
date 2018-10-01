@@ -15,3 +15,6 @@ Outputs:
   DeploymentManagementS3BucketName:
     Value:
       Ref: DeploymentManagementS3Bucket
+  DeploymentManagementS3BucketDomain:
+    Value:
+      Fn::GetAtt: DeploymentManagementS3Bucket.DomainName
