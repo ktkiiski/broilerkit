@@ -300,10 +300,25 @@ Resources:
     Properties:
       DomainName:
         Ref: SiteDomainName
-      SubjectAlternativeNames:
-        Fn::If:
+      DomainValidationOptions:
+        # Send validation emails using the top-level domains
+        - DomainName:
+            Ref: SiteDomainName
+          ValidationDomain:
+            Ref: SiteHostedZoneName
+        - Fn::If:
+          # If using separate assets and site domains...
           - SeparateAssetsAndSiteS3Buckets
-          - [{Ref: AssetsDomainName}]
+          # ...then list them both
+          - DomainName:
+              Ref: AssetsDomainName
+            ValidationDomain:
+              Ref: AssetsHostedZoneName
+          - Ref: AWS::NoValue
+      SubjectAlternativeNames:
+        - Fn::If:
+          - SeparateAssetsAndSiteS3Buckets
+          - Ref: AssetsDomainName
           - Ref: AWS::NoValue
 
 Outputs:

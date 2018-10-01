@@ -200,6 +200,12 @@ Resources:
   # Append the API domain to the certificate
   DomainCertificate:
     Properties:
+      DomainValidationOptions:
+        # Send validation emails using the top-level domains
+        - DomainName:
+            Ref: ApiDomainName
+          ValidationDomain:
+            Ref: ApiHostedZoneName
       SubjectAlternativeNames:
         - Ref: ApiDomainName
 
