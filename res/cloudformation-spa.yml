@@ -9,8 +9,8 @@ Resources:
     Properties:
       DistributionConfig:
         CustomErrorResponses:
-          # Use default page when the requested file was not found
-          ErrorCode: 404
+        # Use default page when the requested file was not found
+        - ErrorCode: 404
           # Return this as a successful response instead
           ResponseCode: 200
           # Serve this file instead
