@@ -128,6 +128,19 @@ export class AuthClient {
     }
 
     /**
+     * Ensures that the user is signed in. If not, then they will be asked
+     * to sign in. If already signed in, then the current authentication status
+     * is resolved.
+     */
+    public async demandAuthentication(): Promise<Auth> {
+        const auth = this.getAuthentication();
+        if (auth) {
+            return auth;
+        }
+        return this.authenticate();
+    }
+
+    /**
      * Use this method to get the access token right before making an
      * API request to the server, to be included to the Authorization header.
      *
