@@ -405,7 +405,7 @@ export class Broiler {
             SiteOrigin: siteRootUrl.origin,
             SiteDomainName: siteDomain,
             SiteHostedZoneName: getHostedZone(siteDomain),
-            SiteDefaultPage: defaultPage != null ? defaultPage : undefined,
+            SiteDefaultPage: defaultPage != null ? path.resolve('/', defaultPage) : undefined,
             AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
