@@ -24,7 +24,7 @@ export type ResourceEndpoints<I, O> = ResourceInputs<I> & ResourceOutputs<O>;
 export type Nullable<T> = {[P in keyof T]: T[P] | null};
 
 export function renderUserResources<I, O extends object, S extends object>(endpoints: UserResourceEndpoints<I, O>, defaultState?: S) {
-    class UserResourceComponent<X = {}> extends ObserverComponent<I & X, Nullable<O> & S> {
+    class UserResourceComponent<X = {}> extends ObserverComponent<I & X, Nullable<O>, S> {
         public state = spread(
             transformValues(endpoints, () => null) as Nullable<O>,
             defaultState,
@@ -42,7 +42,7 @@ export function renderUserResources<I, O extends object, S extends object>(endpo
 }
 
 export function renderResources<I, O extends object, S extends object>(endpoints: ResourceEndpoints<I, O>, defaultState?: S) {
-    class ResourceComponent<X = {}> extends ObserverComponent<I & X, Nullable<O> & S> {
+    class ResourceComponent<X = {}> extends ObserverComponent<I & X, Nullable<O>, S> {
         public state = spread(
             transformValues(endpoints, () => null) as Nullable<O>,
             defaultState,

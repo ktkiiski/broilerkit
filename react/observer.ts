@@ -11,9 +11,9 @@ type ObservedProps<P> = Pick<P, Exclude<Key<P>, 'children'>>;
 /**
  * React component whose state is bound to the emitted values of an RxJS Observable.
  */
-export abstract class ObserverComponent<P, T extends object> extends Component<P, Partial<T>> {
+export abstract class ObserverComponent<P, T extends object, S extends object = {}> extends Component<P, Partial<T> & S> {
 
-    public state: T = {} as T;
+    public state = {} as Readonly<Partial<T> & S>;
     /**
      * Observable for the `props` of this component.
      * This can be used for the `state$` Observable.
