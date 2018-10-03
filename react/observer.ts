@@ -4,6 +4,9 @@ import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { AuthClient, AuthUser } from '../auth';
 import { Observablish } from '../rxjs';
 import { isEqual } from '../utils/compare';
+import { Key, omit } from '../utils/objects';
+
+type ObservedProps<P> = Pick<P, Exclude<Key<P>, 'children'>>;
 
 /**
  * React component whose state is bound to the emitted values of an RxJS Observable.
@@ -15,7 +18,7 @@ export abstract class ObserverComponent<P, T extends object> extends Component<P
      * Observable for the `props` of this component.
      * This can be used for the `state$` Observable.
      */
-    protected props$ = new BehaviorSubject(this.props);
+    protected props$ = new BehaviorSubject(getProps(this.props));
     /**
      * The observable for the component's state.
      * This will be subscribed when mounting the component
@@ -38,27 +41,33 @@ export abstract class ObserverComponent<P, T extends object> extends Component<P
             }),
         );
     }
-    public componentDidUpdate() {
-        this.props$.next(this.props);
+    public componentDidUpdate(prevProps: P) {
+        const props = getProps(this.props);
+        if (!isEqual(props, getProps(prevProps))) {
+            this.props$.next(props);
+        }
     }
     public componentWillUnmount() {
         this.subscription.unsubscribe();
     }
-    public pluckProp<K extends keyof P>(prop: K): Observable<P[K]> {
+    public pluckProp<K extends Exclude<Key<P>, 'children'>>(prop: K): Observable<P[K]> {
         return this.props$.pipe(
             map((props) => props[prop]),
             distinctUntilChanged(isEqual),
         );
     }
 }
+function getProps<P>(props: Readonly<{ children?: React.ReactNode }> & Readonly<P>): ObservedProps<P> {
+    return omit(props, ['children']);
+}
 
 export interface SimpleRenderObservableOptions<P, T> {
-    observable: ObservableInput<T> | ((props: P) => ObservableInput<T>);
+    observable: ObservableInput<T> | ((props: ObservedProps<P>) => ObservableInput<T>);
     render?: (value: T | undefined, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 export interface UserRenderObservableOptions<P, T> {
     auth: AuthClient;
-    observable: (props: P, user: AuthUser | null) => ObservableInput<T>;
+    observable: (props: ObservedProps<P>, user: AuthUser | null) => ObservableInput<T>;
     render: (value: T | undefined, user: AuthUser | null, props: Readonly<{ children?: ReactNode }> & Readonly<P>) => ReactNode;
 }
 
@@ -85,7 +94,7 @@ export function renderObservableWithUser<P, T>({auth, observable, render}: UserR
     const user$ = auth.user$;
     class AuthObserverComponent extends ObserverComponent<P, {value: T, user: AuthUser | null}> {
         protected state$ = combineLatest(this.props$, user$).pipe(
-            distinctUntilChanged<[P, AuthUser | null]>(isEqual),
+            distinctUntilChanged<[ObservedProps<P>, AuthUser | null]>(isEqual),
             switchMap(([props, user]) => from(observable(props, user)).pipe(
                 map((value) => ({value, user})),
             )),
