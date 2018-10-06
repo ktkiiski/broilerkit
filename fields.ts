@@ -90,9 +90,25 @@ class ChoiceField<K extends string> extends TextField implements Field<K> {
     }
 }
 
+interface NumberFieldOptions {
+    min?: number;
+    max?: number;
+}
+
+const POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
+const NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY;
+
 class NumberField implements Field<number> {
+    constructor(private options: NumberFieldOptions) {}
     public validate(value: number): number {
         if (isFinite(value)) {
+            const {min = NEGATIVE_INFINITY, max = POSITIVE_INFINITY} = this.options;
+            if (value < min) {
+                throw new ValidationError(`Value cannot be less than ${min}`);
+            }
+            if (value > max) {
+                throw new ValidationError(`Value cannot be greater than ${max}`);
+            }
             return value;
         }
         throw new ValidationError(`Invalid number value`);
@@ -150,7 +166,7 @@ class IntegerField extends NumberField implements Field<number> {
             if (value < MIN_INTEGER) {
                 throw new ValidationError(`Integer value cannot be less than ${MIN_INTEGER}`);
             }
-            return Math.floor(value);
+            return Math.floor(super.validate(value));
         }
         throw new ValidationError(`Invalid integer value`);
     }
@@ -181,12 +197,12 @@ class IntegerField extends NumberField implements Field<number> {
 }
 
 class ConstantField<K extends number> extends IntegerField {
-    constructor(private options: K[]) {
-        super();
+    constructor(private choices: K[]) {
+        super({});
     }
     public validate(value: number): K {
         const v = super.validate(value) as K;
-        if (this.options.indexOf(v) >= 0) {
+        if (this.choices.indexOf(v) >= 0) {
             return v;
         }
         throw new ValidationError(`Value is not one of the valid options`);
@@ -335,7 +351,7 @@ class RegexpField extends TextField {
 }
 
 class DecimalField extends RegexpField {
-    private numberField = new NumberField();
+    private numberField = new NumberField({});
     constructor(private decimals: number) {
         super(
             /^[+-]?\d+(\.\d+)$/,
@@ -492,12 +508,12 @@ export function constant<K extends number>(options: K[]): Field<K> {
     return new ConstantField<K>(options);
 }
 
-export function integer(): Field<number> {
-    return new IntegerField();
+export function integer(options: NumberFieldOptions = {}): Field<number> {
+    return new IntegerField(options);
 }
 
-export function number(): Field<number> {
-    return new NumberField();
+export function number(options: NumberFieldOptions = {}): Field<number> {
+    return new NumberField(options);
 }
 
 export function decimal(decimals: number = 2): Field<string> {
