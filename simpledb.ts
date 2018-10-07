@@ -44,7 +44,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
                 Name: primaryKey[0],
                 Exists: false,
             },
-            Attributes: mapObject(encodedItem, (value: any, attr) => ({
+            Attributes: mapObject(encodedItem, (value, attr) => ({
                 Name: attr,
                 Value: value,
                 Replace: true,
@@ -108,8 +108,21 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         return changes;
     }
 
-    public async write(_: S): Promise<S> {
-        throw new Error(`Not yet implemented!`);
+    public async write(item: S): Promise<S> {
+        const {serializer} = this;
+        const encodedItem = serializer.encodeSortable(item);
+        const itemName = this.getItemName(encodedItem);
+        const sdb = new AmazonSimpleDB(this.region);
+        await sdb.putAttributes({
+            DomainName: this.domainName,
+            ItemName: itemName,
+            Attributes: mapObject(encodedItem, (value, attr) => ({
+                Name: attr,
+                Value: value,
+                Replace: true,
+            })),
+        });
+        return item;
     }
 
     public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
