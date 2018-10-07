@@ -199,7 +199,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             const field = fields[key];
             const encodedValue = field.encodeSortable(value);
             filters.push(
-                `${escapeQueryIdentifier(key)} == ${escapeQueryParam(encodedValue)}`,
+                `${escapeQueryIdentifier(key)} = ${escapeQueryParam(encodedValue)}`,
             );
         }
         if (since !== undefined) {
