@@ -200,6 +200,17 @@ Resources:
       Runtime: nodejs6.10
       Timeout: 3
 
+  # Grant the permission for the AWS Cognito to execute the Lambda trigger function
+  UserPoolPreTokenGenerationLambdaFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt: UserPoolPreTokenGenerationLambdaFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn:
+        Fn::GetAtt: UserPool.Arn
+
 Outputs:
   UserPoolRoot:
     Description: "Root URL for the AWS Cognito user pool"
