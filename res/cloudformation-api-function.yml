@@ -15,7 +15,7 @@ Resources:
       MemorySize: 1024
       Role:
         Fn::GetAtt: ["LambdaExecutionIamRole", "Arn"]
-      Runtime: nodejs6.10
+      Runtime: nodejs8.10
       Timeout: 6
     DependsOn:
     - <ApiFunctionName>LogGroup

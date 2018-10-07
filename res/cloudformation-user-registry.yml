@@ -197,7 +197,7 @@ Resources:
             };
             callback(null, event);
           };
-      Runtime: nodejs6.10
+      Runtime: nodejs8.10
       Timeout: 3
 
   # Grant the permission for the AWS Cognito to execute the Lambda trigger function
