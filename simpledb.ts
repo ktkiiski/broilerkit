@@ -31,25 +31,32 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     }
 
     // TODO: Already exists exception??
-    public async create(item: S) {
+    public async create(item: S, alreadyExistsError?: Error) {
         const {serializer} = this;
         const primaryKey = this.key;
         const encodedItem = serializer.encodeSortable(item);
         const itemName = this.getItemName(encodedItem);
         const sdb = new AmazonSimpleDB(this.region);
-        await sdb.putAttributes({
-            DomainName: this.domainName,
-            ItemName: itemName,
-            Expected: {
-                Name: primaryKey[0],
-                Exists: false,
-            },
-            Attributes: mapObject(encodedItem, (value, attr) => ({
-                Name: attr,
-                Value: value,
-                Replace: true,
-            })),
-        });
+        try {
+            await sdb.putAttributes({
+                DomainName: this.domainName,
+                ItemName: itemName,
+                Expected: {
+                    Name: primaryKey[0],
+                    Exists: false,
+                },
+                Attributes: mapObject(encodedItem, (value, attr) => ({
+                    Name: attr,
+                    Value: value,
+                    Replace: true,
+                })),
+            });
+        } catch (error) {
+            if (error.code === 'ConditionalCheckFailed') {
+                throw alreadyExistsError || new NotFound(`Item was not found.`);
+            }
+            throw error;
+        }
         return item;
     }
 
