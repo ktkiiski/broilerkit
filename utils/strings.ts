@@ -71,3 +71,15 @@ export function countBytes(str: string): number {
     }
     return len;
 }
+
+export function shortenSentences(str: string, maxLength: number, replacement?: string) {
+    if (str.length <= maxLength) {
+        return str;
+    }
+    str = str.slice(0, maxLength);
+    const result = str.replace(
+        /([.?!…]+).*?$/,
+        (_, term) => !term ? '' : replacement || term,
+    );
+    return result === str ? '' : result;
+}
