@@ -178,7 +178,7 @@ Resources:
         DatabaseTableUsersURI:
           Fn::GetAtt: UserPool.Arn
 
-  # A lambda function that adds the 'profile' claim to the ID tokens on authentication
+  # A lambda function that adds the 'picture' claim to the ID tokens on authentication
   UserPoolPreTokenGenerationLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -188,10 +188,19 @@ Resources:
       Code:
         ZipFile: |
           exports.handler = (event, context, callback) => {
+            let picture = event.request.userAttributes.picture;
+            try {
+                picture = JSON.parse(picture).data.url;
+            } catch (err) {
+                picture = null;
+            }
+            if (typeof picture !== 'string' || !/^https?:\/\//.test(picture)) {
+                picture = null;
+            }
             event.response = {
               "claimsOverrideDetails": {
                 "claimsToAddOrOverride": {
-                  "picture": event.request.userAttributes.profile || null,
+                  "picture": picture,
                 }
               }
             };
