@@ -97,7 +97,7 @@ export class Broiler {
         ]);
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
         this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
-        this.printAuthClientInfo();
+        await this.printAuthClientInfo();
     }
 
     /**
@@ -243,7 +243,7 @@ export class Broiler {
                 this.log(`- ${OutputKey} = ${bold(String(OutputValue))}`);
             });
         }
-        this.printAuthClientInfo();
+        await this.printAuthClientInfo();
         return stack;
     }
 
@@ -803,13 +803,18 @@ export class Broiler {
         }
     }
 
-    private printAuthClientInfo() {
-        const {auth, siteRoot} = this.config;
+    private async printAuthClientInfo() {
+        const {auth} = this.config;
         if (!auth) {
             // Nothing to print
             return;
         }
-        const oauthRedirectUri = `${siteRoot}/_oauth2_signin_complete.html`;
+        const output = await this.cloudFormation.getStackOutput();
+        const authRoot = output.UserPoolRoot;
+        if (!authRoot) {
+            return;
+        }
+        const oauthRedirectUri = `${authRoot}/oauth2/idpresponse`;
         // Facebook client settings
         const facebookClientId = auth.facebookClientId;
         if (facebookClientId) {
