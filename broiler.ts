@@ -97,6 +97,7 @@ export class Broiler {
         ]);
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
         this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
+        this.printAuthClientInfo();
     }
 
     /**
@@ -221,29 +222,29 @@ export class Broiler {
     /**
      * Outputs information about the stack.
      */
-    public printStack(): Promise<IStackWithResources> {
-        return this.cloudFormation.describeStackWithResources().then((stack) => {
-            this.log(`Stack ${bold(stack.StackName)}`);
-            this.log(`- Status: ${formatStatus(stack.StackStatus)}`);
-            this.log('Resources:');
-            for (const resource of stack.StackResources) {
-                const status = resource.ResourceStatus;
-                const colorizedStatus = formatStatus(status);
-                const statusReason = resource.ResourceStatusReason;
-                let msg = `- ${bold(resource.LogicalResourceId)}: ${colorizedStatus}`;
-                if (statusReason) {
-                    msg += ` (${statusReason})`;
-                }
-                this.log(msg);
+    public async printStack(): Promise<IStackWithResources> {
+        const stack = await this.cloudFormation.describeStackWithResources();
+        this.log(`Stack ${bold(stack.StackName)}`);
+        this.log(`- Status: ${formatStatus(stack.StackStatus)}`);
+        this.log('Resources:');
+        for (const resource of stack.StackResources) {
+            const status = resource.ResourceStatus;
+            const colorizedStatus = formatStatus(status);
+            const statusReason = resource.ResourceStatusReason;
+            let msg = `- ${bold(resource.LogicalResourceId)}: ${colorizedStatus}`;
+            if (statusReason) {
+                msg += ` (${statusReason})`;
             }
-            if (stack.Outputs) {
-                this.log('Outputs:');
-                order(stack.Outputs, 'OutputKey', 'asc').forEach(({OutputKey, OutputValue}) => {
-                    this.log(`- ${OutputKey} = ${bold(String(OutputValue))}`);
-                });
-            }
-            return stack;
-        });
+            this.log(msg);
+        }
+        if (stack.Outputs) {
+            this.log('Outputs:');
+            order(stack.Outputs, 'OutputKey', 'asc').forEach(({OutputKey, OutputValue}) => {
+                this.log(`- ${OutputKey} = ${bold(String(OutputValue))}`);
+            });
+        }
+        this.printAuthClientInfo();
+        return stack;
     }
 
     /**
@@ -799,6 +800,41 @@ export class Broiler {
         if (file) {
             const match = /\.(\w+)\./.exec(file.basename) as RegExpExecArray;
             return match[1];
+        }
+    }
+
+    private printAuthClientInfo() {
+        const {auth, siteRoot} = this.config;
+        if (!auth) {
+            // Nothing to print
+            return;
+        }
+        const oauthRedirectUri = `${siteRoot}/_oauth2_signin_complete.html`;
+        // Facebook client settings
+        const facebookClientId = auth.facebookClientId;
+        if (facebookClientId) {
+            const conifigureUrl = `https://developers.facebook.com/apps/${facebookClientId}/fb-login/settings/`;
+            this.log(
+                `\n` +
+                yellow(`${bold(`Remember to configure your Facebook client`)} with ID ${facebookClientId}`) +
+                `\n1. Navigate to the app's ${bold(`Facebook Login`)} settings at:` +
+                `\n   ${underline(conifigureUrl)}` +
+                `\n2. Add the following URL to the ${bold(`"Valid OAuth Redirect URIs"`)}:` +
+                `\n   ${underline(oauthRedirectUri)}`,
+            );
+        }
+        // Google client settings
+        const googleClientId = auth.googleClientId;
+        if (googleClientId) {
+            const conifigureUrl = `https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`;
+            this.log(
+                `\n` +
+                yellow(`${bold(`Remember to configure your Google client`)} with ID ${googleClientId}`) +
+                `\n1. Navigate to the app's ${bold(`Client ID settings`)} at` +
+                `\n   ${underline(conifigureUrl)}` +
+                `\n2. Add the following URL to the ${bold(`"Authorized redirect URIs"`)}:` +
+                `\n   ${underline(oauthRedirectUri)}`,
+            );
         }
     }
 
