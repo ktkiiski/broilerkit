@@ -78,7 +78,7 @@ export function shortenSentences(str: string, maxLength: number, replacement?: s
     }
     str = str.slice(0, maxLength);
     const result = str.replace(
-        /([.?!…]+).*?$/,
+        /([.?!…]+)[^.?!…]*?$/,
         (_, term) => !term ? '' : replacement || term,
     );
     return result === str ? '' : result;

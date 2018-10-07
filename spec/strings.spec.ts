@@ -20,4 +20,7 @@ describe('shorten()', () => {
         assert.equal(shortenSentences('Ekke! Ptang zoo boing?', 10, '…'), 'Ekke…');
         assert.equal(shortenSentences('Ekke? Ptang zoo boing.', 12, '…'), 'Ekke…');
     });
+    it('only removes the last cut sentence', () => {
+        assert.equal(shortenSentences('Ekke. Ekke! Ekke? Ptang zoo boing.', 28), 'Ekke. Ekke! Ekke?');
+    });
 });
