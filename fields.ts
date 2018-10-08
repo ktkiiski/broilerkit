@@ -147,10 +147,13 @@ class NumberField implements Field<number> {
         const byteArr: number[] = [];
         for (let i = 0; i < byteStr.length; i += 4) {
             const bytes = parseInt(byteStr.slice(i, i + 4), 16);
+            if (isNaN(bytes)) {
+                throw new ValidationError(`Invalid decoded number`);
+            }
             byteArr.unshift(sign === '-' ? 0xFFFF ^ bytes : bytes);
         }
         const float = new Float64Array(Uint16Array.from(byteArr).buffer)[0];
-        return sign === '-' ? -float : float;
+        return this.validate(sign === '-' ? -float : float);
     }
 }
 
@@ -223,7 +226,7 @@ class ConstantField<K extends number> extends IntegerField {
         return super.encodeSortable(value);
     }
     public decodeSortable(value: string): K {
-        return this.decode(value);
+        return super.decodeSortable(value) as K;
     }
 }
 
