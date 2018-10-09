@@ -191,9 +191,7 @@ Resources:
             let picture = event.request.userAttributes.picture;
             try {
                 picture = JSON.parse(picture).data.url;
-            } catch (err) {
-                picture = null;
-            }
+            } catch (err) {}
             if (typeof picture !== 'string' || !/^https?:\/\//.test(picture)) {
                 picture = null;
             }

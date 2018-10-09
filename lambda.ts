@@ -74,7 +74,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
         id: claims.sub,
         name: claims.name,
         email: claims.email,
-        picture: claims.picture,
+        picture: claims.picture || null,
         groups: groupsStr ? groupsStr.split(',') : [],
     };
     if (method) {

@@ -188,7 +188,7 @@ async function handleNodeRequest(nodeRequest: http.IncomingMessage, handler: Api
                 id: payload.sub,
                 name: payload.name,
                 email: payload.email,
-                picture: payload.picture,
+                picture: payload.picture || null,
                 groups: payload['cognito:groups'] || [],
             };
         } catch {
