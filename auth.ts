@@ -12,7 +12,7 @@ export interface AuthUser {
     id: string;
     email: string;
     picture: string;
-    name?: string;
+    name: string;
 }
 
 export interface AuthTokens {
