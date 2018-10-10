@@ -1,12 +1,12 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
 import { concat, defer, from, merge, never, Observable, of, Subscribable } from 'rxjs';
-import { concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
+import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { toArray } from './async';
 import { AuthClient } from './auth';
 import { Client } from './client';
-import { applyCollectionChange, ResourceChange } from './collections';
+import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval } from './collections';
 import { choice, Field, nullable, url } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
 import { shareIterator } from './iteration';
@@ -92,6 +92,8 @@ export interface ListEndpoint<I, O, B> extends ObservableEndpoint<I, Intermediat
 export interface CreateEndpoint<I1, I2, O, B> {
     post(input: I1): Promise<O>;
     postWithUser(input: UserInput<I1, B>): Promise<O>;
+    postOptimistically(input: I1 & O): Promise<O>;
+    postWithUserOptimistically(input: UserInput<I1 & O, B>): Promise<O>;
     validatePost(input: I1): I2;
 }
 
@@ -347,6 +349,11 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
         const cacheKey = url.toString();
         const {direction, ordering} = input;
         const idAttributes = this.idAttributes as Array<Key<O>>;
+
+        function isCollectionChange(change: ResourceChange<any, any>): boolean {
+            return change.collectionUrl === url.path;
+        }
+
         return defer(() => {
             // Use a cached observable, if available
             const collectionCache = this.collectionCache || new Map<string, Observable<AsyncIterable<O>>>();
@@ -361,8 +368,18 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
             const update$ = client.resourceUpdate$;
             const removal$ = client.resourceRemoval$;
             const change$ = merge(addition$, update$, removal$).pipe(
-                filter((change) => change.collectionUrl === url.path),
+                filter(isCollectionChange),
             );
+            const optimisticAdditions$ = client.optimisticAdditions$.pipe(
+                map((changes) => changes.filter(isCollectionChange)),
+            );
+            const optimisticRemovals$ = client.optimisticRemovals$.pipe(
+                map((changes) => changes.filter(isCollectionChange)),
+            );
+            const optimisticChanges$ = optimisticAdditions$.pipe(combineLatest(
+                optimisticRemovals$,
+                (additions, removals) => [...additions, ...removals],
+            ));
             collection$ = change$.pipe(
                 // Combine all the changes with the latest state to the resource.
                 scan<ResourceChange<O, keyof O>, AsyncIterable<O>>(
@@ -371,6 +388,12 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
                 ),
                 // Always start with the initial state
                 startWith(iterable),
+                // Apply optimistic changes
+                combineLatest(optimisticChanges$, (collection, changes) => (
+                    changes.reduce((result, change) => (
+                        applyCollectionChange(result, change, idAttributes, ordering, direction)
+                    ), collection)
+                )),
                 // When this Observable is unsubscribed, then remove from the cache.
                 finalize(() => {
                     if (collectionCache.get(cacheKey) === collection$) {
@@ -433,6 +456,42 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
         const input = await this.extendUserId<I1>(query);
         return await this.post(input);
     }
+    public async postOptimistically(input: I1 & O): Promise<O> {
+        const method = 'POST';
+        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        const resource$ = this.ajax(method, url, payload);
+        const resourceIdentity = pick(input as any, this.idAttributes);
+        const addition: ResourceAddition<any, any> = {
+            type: 'addition',
+            collectionUrl: url.path,
+            resource: input,
+            resourceIdentity,
+        };
+        try {
+            this.client.optimisticAdditions$.next([
+                ...this.client.optimisticAdditions$.getValue(),
+                addition,
+            ]);
+            const resource = await resource$;
+            this.client.resourceAddition$.next({
+                type: 'addition',
+                collectionUrl: url.path,
+                resource,
+                resourceIdentity,
+            });
+            return resource;
+        } finally {
+            this.client.optimisticAdditions$.next(
+                this.client.optimisticAdditions$.getValue().filter(
+                    (x) => x !== addition,
+                ),
+            );
+        }
+    }
+    public async postWithUserOptimistically(query: UserInput<I1 & O, B>): Promise<O> {
+        const input = await this.extendUserId<I1 & O>(query);
+        return await this.postOptimistically(input);
+    }
     public validatePost(input: I1): I2 {
         return this.validate('POST', input);
     }
@@ -481,18 +540,32 @@ class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, 
     public async delete(query: I): Promise<void> {
         const method = 'DELETE';
         const {url, payload} = this.endpoint.serializeRequest(method, query);
-        await this.ajax(method, url, payload);
-        const idAttributes = this.idAttributes as Array<keyof I>;
-        const resourceIdentity = pick(query, idAttributes);
         const parent = this.endpoint.parent;
         const parentUrl = parent && parent.route.compile(query);
         const collectionUrl = parentUrl ? parentUrl.path : undefined;
-        this.client.resourceRemoval$.next({
+        const idAttributes = this.idAttributes as Array<keyof I>;
+        const resourceIdentity = pick(query, idAttributes);
+        const removal: ResourceRemoval<any, any> = {
             type: 'removal',
             collectionUrl,
             resourceUrl: url.path,
             resourceIdentity,
-        });
+        };
+        const request = this.ajax(method, url, payload);
+        try {
+            this.client.optimisticRemovals$.next([
+                ...this.client.optimisticRemovals$.getValue(),
+                removal,
+            ]);
+            await request;
+            this.client.resourceRemoval$.next(removal);
+        } finally {
+            this.client.optimisticRemovals$.next(
+                this.client.optimisticRemovals$.getValue().filter(
+                    (x) => x !== removal,
+                ),
+            );
+        }
     }
     public async deleteWithUser(query: UserInput<I, B>): Promise<void> {
         const input = await this.extendUserId<I>(query);
