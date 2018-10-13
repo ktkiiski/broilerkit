@@ -1,9 +1,10 @@
-import { AuthenticationType, AuthRequestMapping, CreateEndpoint, CreateEndpointMethodMapping, DestroyEndpoint, DestroyEndpointMethodMapping, EndpointDefinition, EndpointMethodMapping, IApiListPage, ListEndpoint, ListEndpointMethodMapping, ListParams, RetrieveEndpoint, RetrieveEndpointMethodMapping, UpdateEndpoint, UpdateEndpointMethodMapping } from './api';
+import { AuthenticationType, AuthRequestMapping, CreateEndpoint, CreateEndpointMethodMapping, DestroyEndpoint, DestroyEndpointMethodMapping, EndpointDefinition, EndpointMethodMapping, ListEndpoint, ListEndpointMethodMapping, RetrieveEndpoint, RetrieveEndpointMethodMapping, UpdateEndpoint, UpdateEndpointMethodMapping } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
+import { OrderedQuery, Page } from './pagination';
 import { Url } from './url';
 import { spread, transformValues } from './utils/objects';
 import { countBytes, upperFirst } from './utils/strings';
@@ -30,7 +31,7 @@ export interface CreatableEndpoint<I1, I2, O, A extends AuthenticationType> {
     endpoint: EndpointDefinition<CreateEndpoint<I1, I2, O, any>, CreateEndpointMethodMapping<A>>;
 }
 export interface ListableEndpoint<I, O, K extends keyof O, A extends AuthenticationType> {
-    endpoint: EndpointDefinition<ListEndpoint<I & ListParams<O, K>, O, any>, ListEndpointMethodMapping<A>>;
+    endpoint: EndpointDefinition<ListEndpoint<I & OrderedQuery<O, K>, O, any>, ListEndpointMethodMapping<A>>;
 }
 export interface UpdateableEndpoint<I1, I2, P, S, A extends AuthenticationType> {
     endpoint: EndpointDefinition<UpdateEndpoint<I1, I2, P, S, any>, UpdateEndpointMethodMapping<A>>;
@@ -54,7 +55,7 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
         return this.extend({POST: handler});
     }
     public list<X, Y, K extends keyof Y, A extends AuthenticationType>(this: ListableEndpoint<X, Y, K, A> & this, handler: (input: X, models: Models<D>, request: AuthRequestMapping[A]) => Promise<Y[]>) {
-        const list = async (input: X & ListParams<Y, K>, models: Models<D>, request: AuthRequestMapping[A]): Promise<OK<IApiListPage<Y>>> => {
+        const list = async (input: X & OrderedQuery<Y, K>, models: Models<D>, request: AuthRequestMapping[A]): Promise<OK<Page<Y>>> => {
             const {endpoint} = this;
             const {ordering} = input;
             const results = await handler(input, models, request);

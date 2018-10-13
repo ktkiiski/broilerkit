@@ -7,11 +7,12 @@ import { toArray } from './async';
 import { AuthClient } from './auth';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
-import { choice, Field, nullable, url } from './fields';
+import { Field, nullable, url } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
 import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
-import { EncodedResource, nestedList, Resource, resource, SerializedResource, Serializer } from './resources';
+import { Cursor, CursorSerializer, OrderedQuery, Page } from './pagination';
+import { nestedList, Resource, resource, Serializer } from './resources';
 import { Route, route } from './routes';
 import { Observablish } from './rxjs';
 import { pattern, Url } from './url';
@@ -40,11 +41,6 @@ export interface ApiResponse {
     data?: any;
 }
 
-export interface IApiListPage<T> {
-    next: string | null;
-    results: T[];
-}
-
 export interface MethodHandlerRequest {
     urlParameters: {[key: string]: string};
     payload?: any;
@@ -52,8 +48,6 @@ export interface MethodHandlerRequest {
 
 export type ApiInput<I> = {[P in keyof I]: Subscribable<I[P]>};
 export type UserInput<I, B> = Pick<I, Exclude<keyof I, B>>;
-
-export type ListParams<R, K extends keyof R> = {[P in K]: {ordering: P, direction: 'asc' | 'desc', since?: R[P]}}[K];
 
 export interface IntermediateCollection<O> {
     isComplete: boolean;
@@ -78,7 +72,7 @@ export interface RetrieveEndpoint<I, O, B> extends ObservableEndpoint<I, O>, Obs
 }
 
 export interface ListEndpoint<I, O, B> extends ObservableEndpoint<I, IntermediateCollection<O>>, ObservableUserEndpoint<UserInput<I, B>, IntermediateCollection<O>> {
-    getPage(query: I): Promise<IApiListPage<O>>;
+    getPage(query: I): Promise<Page<O>>;
     getAll(query: I): Promise<O[]>;
     validateGet(query: I): I;
     observeObservable(query: I): Observable<Observable<O>>;
@@ -276,15 +270,15 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
     }
 }
 
-class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel implements ListEndpoint<I, O, B> {
+class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel implements ListEndpoint<I, O, B> {
     private collectionCache?: Map<string, Observable<AsyncIterable<O>>>;
-    public getPage(input: I): Promise<IApiListPage<O>> {
+    public getPage(input: I): Promise<Page<O>> {
         const method = 'GET';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
         return this.ajax(method, url, payload);
     }
     public getAll(input: I): Promise<O[]> {
-        const handlePage = async ({next, results}: IApiListPage<O>): Promise<O[]> => {
+        const handlePage = async ({next, results}: Page<O>): Promise<O[]> => {
             if (!next) {
                 return results;
             }
@@ -641,55 +635,11 @@ export interface DestroyEndpointMethodMapping<A extends AuthenticationType = Aut
 }
 export type EndpointMethodMapping = OptionsEndpointMethodMapping | RetrieveEndpointMethodMapping | ListEndpointMethodMapping | CreateEndpointMethodMapping | UpdateEndpointMethodMapping | DestroyEndpointMethodMapping;
 
-export type ListEndpointDefinition<S, U extends Key<S>, K extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, ListEndpoint<ListParams<S, K> & Pick<S, U>, S, B> & T, ListEndpointMethodMapping<A> & R, B>;
+export type ListEndpointDefinition<S, U extends Key<S>, K extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, ListEndpoint<Cursor<S, U, K>, S, B> & T, ListEndpointMethodMapping<A> & R, B>;
 export type RetrieveEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, RetrieveEndpoint<Pick<S, U>, S, B> & T, RetrieveEndpointMethodMapping<A> & R, B>;
 export type CreateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, CreateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, S, B> & T, CreateEndpointMethodMapping<A> & X, B>;
 export type UpdateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S, B> & T, UpdateEndpointMethodMapping<A> & X, B>;
 export type DestroyEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, DestroyEndpoint<Pick<S, U>, B> & T, DestroyEndpointMethodMapping<A> & R, B>;
-
-class ListParamSerializer<T, U extends Key<T>, K extends Key<T>> implements Serializer<Pick<T, U> & ListParams<T, K>> {
-    private serializer = this.resource.pick(this.urlKeywords).extend({
-        ordering: choice(this.orderingKeys),
-        direction: choice(['asc', 'desc']),
-    });
-    constructor(private resource: Resource<T>, private urlKeywords: U[], private orderingKeys: K[]) {}
-
-    public validate(input: Pick<T, U> & ListParams<T, K>): Pick<T, U> & ListParams<T, K> {
-        const validated = this.serializer.validate(input);
-        return this.extendSince(validated, input.since, (field, since) => field.validate(since));
-    }
-    public serialize(input: Pick<T, U> & ListParams<T, K>): SerializedResource {
-        const serialized = this.serializer.serialize(input);
-        return this.extendSince(serialized, input.since, (field, since) => field.serialize(since));
-    }
-    public deserialize(input: any): Pick<T, U> & ListParams<T, K> {
-        const deserialized = this.serializer.deserialize(input);
-        return this.extendSince(deserialized, input.since, (field, since) => field.deserialize(since));
-    }
-    public encode(input: Pick<T, U> & ListParams<T, K>): EncodedResource {
-        const encoded = this.serializer.encode(input);
-        return this.extendSince(encoded, input.since, (field, since) => field.encode(since));
-    }
-    public encodeSortable(input: Pick<T, U> & ListParams<T, K>): EncodedResource {
-        const encoded = this.serializer.encode(input);
-        return this.extendSince(encoded, input.since, (field, since) => field.encodeSortable(since));
-    }
-    public decode(input: EncodedResource): Pick<T, U> & ListParams<T, K> {
-        const decoded = this.serializer.decode(input);
-        return this.extendSince(decoded, input.since, (field, since) => field.decode(since));
-    }
-    public decodeSortable(input: EncodedResource): Pick<T, U> & ListParams<T, K> {
-        const decoded = this.serializer.decodeSortable(input);
-        return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
-    }
-    private extendSince(data: any, since: any, serialize: (field: Field<T[K], any>, since: any) => any) {
-        const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[K], any>;
-        if (since !== undefined) {
-            return {...data, since: serialize(orderingField, since)};
-        }
-        return data;
-    }
-}
 
 export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping, B extends U | undefined> implements EndpointDefinition<T, X> {
 
@@ -728,7 +678,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
 
     public listable<K extends Key<S>, A extends AuthenticationType = 'none'>(options: {auth?: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X, B> {
         const {orderingKeys, auth = 'none' as A} = options;
-        const urlSerializer = new ListParamSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
+        const urlSerializer = new CursorSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
         const pageResource = resource({
             next: nullable(url()),
             results: nestedList(this.resource),

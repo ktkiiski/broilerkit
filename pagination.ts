@@ -1,0 +1,72 @@
+import { choice, Field } from './fields';
+import { EncodedResource, Resource, SerializedResource, Serializer } from './resources';
+import { Key } from './utils/objects';
+
+/**
+ * Represents a paginated response to a query.
+ */
+export interface Page<T> {
+    next: string | null;
+    results: T[];
+}
+
+/**
+ * Query parameters for getting an ordered slice of a collection.
+ */
+export type OrderedQuery<T, K extends keyof T> = {
+    [P in K]: {
+        ordering: P,
+        direction: 'asc' | 'desc',
+        since?: T[P],
+    }
+}[K];
+
+/**
+ * A "cursor" is a full query, including the ordering and slicing attributes,
+ * and the filtering parameters, to get a page from a collection.
+ */
+export type Cursor<T, U extends keyof T, K extends keyof T> = OrderedQuery<T, K> & Pick<T, U>;
+
+export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements Serializer<Cursor<T, U, K>> {
+    private serializer = this.resource.pick(this.urlKeywords).extend({
+        ordering: choice(this.orderingKeys),
+        direction: choice(['asc', 'desc']),
+    });
+    constructor(private resource: Resource<T>, private urlKeywords: U[], private orderingKeys: K[]) {}
+
+    public validate(input: Cursor<T, U, K>): Cursor<T, U, K> {
+        const validated = this.serializer.validate(input);
+        return this.extendSince(validated, input.since, (field, since) => field.validate(since));
+    }
+    public serialize(input: Cursor<T, U, K>): SerializedResource {
+        const serialized = this.serializer.serialize(input);
+        return this.extendSince(serialized, input.since, (field, since) => field.serialize(since));
+    }
+    public deserialize(input: any): Cursor<T, U, K> {
+        const deserialized = this.serializer.deserialize(input);
+        return this.extendSince(deserialized, input.since, (field, since) => field.deserialize(since));
+    }
+    public encode(input: Cursor<T, U, K>): EncodedResource {
+        const encoded = this.serializer.encode(input);
+        return this.extendSince(encoded, input.since, (field, since) => field.encode(since));
+    }
+    public encodeSortable(input: Cursor<T, U, K>): EncodedResource {
+        const encoded = this.serializer.encode(input);
+        return this.extendSince(encoded, input.since, (field, since) => field.encodeSortable(since));
+    }
+    public decode(input: EncodedResource): Cursor<T, U, K> {
+        const decoded = this.serializer.decode(input);
+        return this.extendSince(decoded, input.since, (field, since) => field.decode(since));
+    }
+    public decodeSortable(input: EncodedResource): Cursor<T, U, K> {
+        const decoded = this.serializer.decodeSortable(input);
+        return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
+    }
+    private extendSince(data: any, since: any, serialize: (field: Field<T[K], any>, since: any) => any) {
+        const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[K], any>;
+        if (since !== undefined) {
+            return {...data, since: serialize(orderingField, since)};
+        }
+        return data;
+    }
+}
