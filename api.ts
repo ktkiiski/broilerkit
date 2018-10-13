@@ -6,7 +6,7 @@ import { ajax } from './ajax';
 import { toArray } from './async';
 import { AuthClient } from './auth';
 import { Client } from './client';
-import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval } from './collections';
+import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
 import { choice, Field, nullable, url } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
 import { shareIterator } from './iteration';
@@ -370,15 +370,13 @@ class ListEndpointModel<I extends ListParams<any, any>, O, B> extends ApiModel i
             const change$ = merge(addition$, update$, removal$).pipe(
                 filter(isCollectionChange),
             );
-            const optimisticAdditions$ = client.optimisticAdditions$.pipe(
-                map((changes) => changes.filter(isCollectionChange)),
-            );
-            const optimisticRemovals$ = client.optimisticRemovals$.pipe(
-                map((changes) => changes.filter(isCollectionChange)),
-            );
+            const filterOptimisticChanges = map((changes: Array<ResourceChange<any, any>>) => changes.filter(isCollectionChange));
+            const optimisticAdditions$ = client.optimisticAdditions$.pipe(filterOptimisticChanges);
+            const optimisticRemovals$ = client.optimisticRemovals$.pipe(filterOptimisticChanges);
+            const optimisticUpdates$ = client.optimisticUpdates$.pipe(filterOptimisticChanges);
             const optimisticChanges$ = optimisticAdditions$.pipe(combineLatest(
-                optimisticRemovals$,
-                (additions, removals) => [...additions, ...removals],
+                optimisticRemovals$, optimisticUpdates$,
+                (additions, removals, updates) => [...additions, ...removals, ...updates],
             ));
             collection$ = change$.pipe(
                 // Combine all the changes with the latest state to the resource.
@@ -457,6 +455,7 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
         return await this.post(input);
     }
     public async postOptimistically(input: I1 & O): Promise<O> {
+        const {client} = this;
         const method = 'POST';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
         const resource$ = this.ajax(method, url, payload);
@@ -468,12 +467,12 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
             resourceIdentity,
         };
         try {
-            this.client.optimisticAdditions$.next([
-                ...this.client.optimisticAdditions$.getValue(),
+            client.optimisticAdditions$.next([
+                ...client.optimisticAdditions$.getValue(),
                 addition,
             ]);
             const resource = await resource$;
-            this.client.resourceAddition$.next({
+            client.resourceAddition$.next({
                 type: 'addition',
                 collectionUrl: url.path,
                 resource,
@@ -481,8 +480,8 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
             });
             return resource;
         } finally {
-            this.client.optimisticAdditions$.next(
-                this.client.optimisticAdditions$.getValue().filter(
+            client.optimisticAdditions$.next(
+                client.optimisticAdditions$.getValue().filter(
                     (x) => x !== addition,
                 ),
             );
@@ -519,25 +518,48 @@ class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEnd
         return this.validate('PATCH', input);
     }
     private async update(method: 'PUT' | 'PATCH', input: I1 | P): Promise<S> {
+        const {client} = this;
         const {url, payload} = this.endpoint.serializeRequest(method, input);
-        const resource = await this.ajax(method, url, payload);
-        const resourceIdentity = pick(resource, this.idAttributes);
+        const idAttributes = this.idAttributes as Array<keyof (I1 | P)>;
+        const resourceIdentity = pick(input, idAttributes);
         const parent = this.endpoint.parent;
         const parentUrl = parent && parent.route.compile(input);
         const collectionUrl = parentUrl ? parentUrl.path : undefined;
-        this.client.resourceUpdate$.next({
+        const update: ResourceUpdate<any, any> = {
             type: 'update',
             collectionUrl,
             resourceUrl: url.path,
-            resource,
+            resource: input,
             resourceIdentity,
-        });
-        return resource;
+        };
+        const request = this.ajax(method, url, payload);
+        try {
+            client.optimisticUpdates$.next([
+                ...client.optimisticUpdates$.getValue(),
+                update,
+            ]);
+            const resource = await request;
+            client.resourceUpdate$.next({
+                type: 'update',
+                collectionUrl,
+                resourceUrl: url.path,
+                resource,
+                resourceIdentity,
+            });
+            return resource;
+        } finally {
+            client.optimisticUpdates$.next(
+                client.optimisticUpdates$.getValue().filter(
+                    (x) => x !== update,
+                ),
+            );
+        }
     }
 }
 
 class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, B> {
     public async delete(query: I): Promise<void> {
+        const {client} = this;
         const method = 'DELETE';
         const {url, payload} = this.endpoint.serializeRequest(method, query);
         const parent = this.endpoint.parent;
@@ -553,15 +575,15 @@ class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, 
         };
         const request = this.ajax(method, url, payload);
         try {
-            this.client.optimisticRemovals$.next([
-                ...this.client.optimisticRemovals$.getValue(),
+            client.optimisticRemovals$.next([
+                ...client.optimisticRemovals$.getValue(),
                 removal,
             ]);
             await request;
-            this.client.resourceRemoval$.next(removal);
+            client.resourceRemoval$.next(removal);
         } finally {
-            this.client.optimisticRemovals$.next(
-                this.client.optimisticRemovals$.getValue().filter(
+            client.optimisticRemovals$.next(
+                client.optimisticRemovals$.getValue().filter(
                     (x) => x !== removal,
                 ),
             );
