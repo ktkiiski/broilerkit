@@ -1,26 +1,11 @@
 import { parseARN } from './aws/arn';
 import { NeDbModel } from './nedb';
+import { OrderedQuery, Page } from './pagination';
 import { Resource } from './resources';
 import { SimpleDbModel } from './simpledb';
 import { Key, Require } from './utils/objects';
 
-export interface OrderedQuery<T, K extends Key<T>> {
-    ordering: K;
-    direction: 'asc' | 'desc';
-    since?: T[K] | undefined;
-}
-
-export interface SlicedQuery<T, K extends Key<T>> extends OrderedQuery<T, K> {
-    minCount: number;
-    maxCount: number;
-}
-
-export interface HashIndexQuery<T, P extends Key<T>, S extends Key<T>> extends SlicedQuery<T, S> {
-    key: P;
-    value: T[P];
-}
-
-export type Query<T, P extends Key<T>> = SlicedQuery<T, Key<T>> | HashIndexQuery<T, P, Key<T>>;
+export type Query<T> = Partial<Pick<T, Key<T>>> & OrderedQuery<T, Key<T>>;
 
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
@@ -118,7 +103,7 @@ export interface Model<T, I, R, P, D> {
      * You can determine whether the end-of-query is reached by checking if the
      * actual number of returned items is less than `minCount`.
      */
-    list(query: D): Promise<T[]>;
+    list<Q extends D>(query: Q): Promise<Page<T, Q>>;
     /**
      * Retrieves item for each of the identity given objects, or null values if no
      * matching item is found, in the most efficient way possible. The results
@@ -154,11 +139,11 @@ export interface Table<M> {
     getModel(uri: string): M;
 }
 
-export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements Table<VersionedModel<S, PK, V, Query<S, PK>>> {
+export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements Table<VersionedModel<S, PK, V, Query<S>>> {
 
     constructor(public name: string, public resource: Resource<S>, public readonly key: PK[], public readonly versionAttr: V) {}
 
-    public getModel(uri: string): VersionedModel<S, PK, V, Query<S, PK>> {
+    public getModel(uri: string): VersionedModel<S, PK, V, Query<S>> {
         const {resource, key, versionAttr} = this;
         if (uri.startsWith('arn:')) {
             const {service, region, resourceType, resourceId} = parseARN(uri);
@@ -190,8 +175,4 @@ export function table(tableName: string) {
         return {identifyBy};
     }
     return {resource};
-}
-
-export function isIndexQuery<I, PK extends Key<I>>(query: Query<I, PK>): query is HashIndexQuery<I, Key<I>, PK> {
-    return (query as HashIndexQuery<I, Key<I>, PK>).key != null;
 }

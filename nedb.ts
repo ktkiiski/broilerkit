@@ -1,15 +1,15 @@
-import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
-import { NotFound } from './http';
-import { Resource, SerializedResource } from './resources';
-import { Key, pick } from './utils/objects';
-
 import * as Datastore from 'nedb';
+import { Identity, PartialUpdate, Query, VersionedModel } from './db';
+import { NotFound } from './http';
+import { Page, prepareForCursor } from './pagination';
+import { Resource, SerializedResource } from './resources';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
+import { forEachKey, Key, omit, pick, spread } from './utils/objects';
 
 const PRIMARY_KEY_FIELD = '_pk';
 
-export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
+export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
 
     private updateSerializer = this.serializer.partial([this.versionAttr]);
     private identitySerializer = this.serializer.partial(this.key);
@@ -104,24 +104,36 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         await this.removeItem(query);
     }
 
-    public async list(query: Query<S, PK>) {
+    public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
         const { serializer } = this;
         const { fields } = serializer;
         const { ordering, direction, since } = query;
+        const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
         const filter: {[key: string]: any} = {};
-        if (isIndexQuery<S, PK>(query)) {
-            const { key, value } = query;
-            const field = fields[key];
+        forEachKey(filterAttrs, (key: any, value: any) => {
+            const field = (fields as any)[key];
             filter[key] = field.serialize(value);
-        }
+        });
         if (since !== undefined) {
             const field = fields[ordering];
             filter[ordering] = {
                 [direction === 'asc' ? '$gt' : '$lt']: field.serialize(since),
             };
         }
-        const serializedItems = await this.findItems(filter, ordering, direction, query.maxCount);
-        return serializedItems.map((serializedItem) => serializer.deserialize(serializedItem));
+        for (let maxCount = 10; ; maxCount += 10) {
+            const serializedItems = await this.findItems(filter, ordering, direction, maxCount);
+            const results = serializedItems.map((serializedItem) => serializer.deserialize(serializedItem));
+            if (results.length < maxCount) {
+                return {results, next: null};
+            }
+            const cursor = prepareForCursor(results, ordering, direction);
+            if (cursor) {
+                return {
+                    results: cursor.results,
+                    next: spread(query, {since: cursor.since}),
+                };
+            }
+        }
     }
     public batchRetrieve(identities: Array<Identity<S, PK, V>>) {
         const notFoundError = new Error(`Not found`);

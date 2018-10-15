@@ -137,3 +137,8 @@ export function repeatWith<T>(count: number, callback: (index: number) => T): T[
     }
     return arr;
 }
+
+export function findLastIndex<T>(arr: T[], iteratee: (item: T, index: number, arr: T[]) => boolean) {
+    const index = [...arr].reverse().findIndex(iteratee);
+    return index < 0 ? index : arr.length - index - 1;
+}

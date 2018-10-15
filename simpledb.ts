@@ -1,13 +1,14 @@
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
-import { Identity, isIndexQuery, PartialUpdate, Query, VersionedModel } from './db';
+import { Identity, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
+import { Page, prepareForCursor } from './pagination';
 import { EncodedResource, Resource } from './resources';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';
-import { Key, keys, mapObject, omit, pick, spread } from './utils/objects';
+import { forEachKey, Key, keys, mapObject, omit, pick, spread } from './utils/objects';
 
-export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S, PK>> {
+export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
 
     private updateSerializer = this.serializer.partial([this.versionAttr]);
     private identitySerializer = this.serializer.pick([...this.key, this.versionAttr]).partial(this.key);
@@ -186,22 +187,22 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         }
     }
 
-    public async list(query: Query<S, PK>) {
+    public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
         const { serializer } = this;
         const { fields } = serializer;
         const { ordering, direction, since } = query;
+        const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
         const domain = this.domainName;
         const filters = [
             `${escapeQueryIdentifier(ordering)} is not null`,
         ];
-        if (isIndexQuery<S, PK>(query)) {
-            const { key, value } = query;
-            const field = fields[key];
+        forEachKey(filterAttrs, (key: any, value: any) => {
+            const field = (fields as any)[key];
             const encodedValue = field.encodeSortable(value);
             filters.push(
                 `${escapeQueryIdentifier(key)} = ${escapeQueryParam(encodedValue)}`,
             );
-        }
+        });
         if (since !== undefined) {
             const field = fields[ordering];
             const encodedValue = field.encodeSortable(since);
@@ -214,8 +215,19 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         // TODO: Only select known fields
         const sql = `select * from ${escapeQueryIdentifier(domain)} where ${filters.join(' and ')} order by ${escapeQueryIdentifier(ordering)} ${direction} limit 100`;
         const sdb = new AmazonSimpleDB(this.region);
-        const encodedItems = await sdb.selectNext(sql, true);
-        return encodedItems.map((item) => serializer.decodeSortable(item.attributes));
+        const results: S[] = [];
+        for await (const items of sdb.select(sql, true)) {
+            results.push(...items.map((item) => serializer.decodeSortable(item.attributes)));
+            const cursor = prepareForCursor(results, ordering, direction);
+            if (cursor) {
+                return {
+                    results: cursor.results,
+                    next: spread(query, {since: cursor.since}),
+                };
+            }
+        }
+        // No more items
+        return {results, next: null};
     }
 
     public batchRetrieve(identities: Array<Identity<S, PK, V>>) {

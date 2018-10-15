@@ -7,12 +7,12 @@ import { toArray } from './async';
 import { AuthClient } from './auth';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
-import { Field, nullable, url } from './fields';
+import { Field, nullable } from './fields';
 import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
 import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
 import { Cursor, CursorSerializer, OrderedQuery, Page } from './pagination';
-import { nestedList, Resource, resource, Serializer } from './resources';
+import { nested, nestedList, Resource, resource, Serializer } from './resources';
 import { Route, route } from './routes';
 import { Observablish } from './rxjs';
 import { pattern, Url } from './url';
@@ -72,7 +72,7 @@ export interface RetrieveEndpoint<I, O, B> extends ObservableEndpoint<I, O>, Obs
 }
 
 export interface ListEndpoint<I, O, B> extends ObservableEndpoint<I, IntermediateCollection<O>>, ObservableUserEndpoint<UserInput<I, B>, IntermediateCollection<O>> {
-    getPage(query: I): Promise<Page<O>>;
+    getPage(query: I): Promise<Page<O, I>>;
     getAll(query: I): Promise<O[]>;
     validateGet(query: I): I;
     observeObservable(query: I): Observable<Observable<O>>;
@@ -272,20 +272,17 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
 
 class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel implements ListEndpoint<I, O, B> {
     private collectionCache?: Map<string, Observable<AsyncIterable<O>>>;
-    public getPage(input: I): Promise<Page<O>> {
+    public getPage(input: I): Promise<Page<O, I>> {
         const method = 'GET';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
         return this.ajax(method, url, payload);
     }
-    public getAll(input: I): Promise<O[]> {
-        const handlePage = async ({next, results}: Page<O>): Promise<O[]> => {
-            if (!next) {
-                return results;
-            }
-            const nextPage = await this.ajax('GET', next);
-            return [...results, ...await handlePage(nextPage)];
-        };
-        return this.getPage(input).then(handlePage);
+    public async getAll(input: I): Promise<O[]> {
+        const results: O[] = [];
+        for await (const pageResults of this.iteratePages(input)) {
+            results.push(...pageResults);
+        }
+        return results;
     }
     public getIterable(input: I): AsyncIterable<O> {
         return shareIterator(this.iterate(input));
@@ -300,7 +297,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
         while (true) {
             yield page.results;
             if (page.next) {
-                page = await this.ajax('GET', page.next);
+                page = await this.getPage(page.next);
             } else {
                 break;
             }
@@ -680,7 +677,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const {orderingKeys, auth = 'none' as A} = options;
         const urlSerializer = new CursorSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
         const pageResource = resource({
-            next: nullable(url()),
+            next: nullable(nested(urlSerializer)),
             results: nestedList(this.resource),
         });
         return new ApiEndpoint(

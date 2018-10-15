@@ -54,21 +54,17 @@ export class EndpointImplementation<D, T, H extends EndpointMethodMapping> imple
     public create<X1, X2, Y, A extends AuthenticationType>(this: CreatableEndpoint<X1, X2, Y, A> & this, handler: EndpointHandler<X2, Y, Models<D>, AuthRequestMapping[A]>): EndpointImplementation<D, T, H> {
         return this.extend({POST: handler});
     }
-    public list<X, Y, K extends keyof Y, A extends AuthenticationType>(this: ListableEndpoint<X, Y, K, A> & this, handler: (input: X, models: Models<D>, request: AuthRequestMapping[A]) => Promise<Y[]>) {
-        const list = async (input: X & OrderedQuery<Y, K>, models: Models<D>, request: AuthRequestMapping[A]): Promise<OK<Page<Y>>> => {
+    public list<X, Y, K extends keyof Y, A extends AuthenticationType>(this: ListableEndpoint<X, Y, K, A> & this, handler: (input: X, models: Models<D>, request: AuthRequestMapping[A]) => Promise<Page<Y, X & OrderedQuery<Y, K>>>) {
+        const list = async (input: X & OrderedQuery<Y, K>, models: Models<D>, request: AuthRequestMapping[A]): Promise<OK<Page<Y, X & OrderedQuery<Y, K>>>> => {
             const {endpoint} = this;
-            const {ordering} = input;
-            const results = await handler(input, models, request);
-            const {length} = results;
-            if (!length) {
-                return new OK({next: null, results});
+            const page = await handler(input, models, request);
+            if (!page.next) {
+                return new OK(page);
             }
-            const last = results[length - 1];
-            const nextInput = spread(input, {since: last[ordering]});
-            const {url} = endpoint.serializeRequest('GET', nextInput);
+            const {url} = endpoint.serializeRequest('GET', page.next);
             const next = `${request.apiRoot}${url}`;
             const headers = {Link: `${next}; rel="next"`};
-            return new OK({next, results}, headers);
+            return new OK(page, headers);
         };
         return this.extend({GET: list});
     }

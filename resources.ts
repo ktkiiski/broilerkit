@@ -165,12 +165,21 @@ export class OptionalSerializer<S, R extends Key<S>, O extends Key<S>, D extends
     }
 }
 
-class NestedResourceField<T> extends Resource<T> implements Field<T, any> {
-    // tslint:disable-next-line:no-shadowed-variable
-    public encode(_: T): never {
+class NestedSerializerField<I> implements Field<I, SerializedResource> {
+    constructor(private serializer: Serializer<I, any>) {}
+    public validate(value: I): I {
+        return this.serializer.validate(value);
+    }
+    public serialize(value: I): SerializedResource {
+        return this.serializer.serialize(value);
+    }
+    public deserialize(value: any): I {
+        return this.serializer.deserialize(value);
+    }
+    public encode(_: I): never {
         throw new Error('Nested resource field does not support encoding.');
     }
-    public encodeSortable(_: T): never {
+    public encodeSortable(_: I): never {
         throw new Error('Nested resource field does not support sortable encoding.');
     }
     public decode(_: any): never {
@@ -185,11 +194,11 @@ export function resource<T>(fields: Fields<T>) {
     return new Resource<T>(fields);
 }
 
-export function nested<T>(res: Resource<T>): Field<T, any> {
-    return new NestedResourceField(res.fields);
+export function nested<I>(res: Serializer<I, any>): Field<I, EncodedResource> {
+    return new NestedSerializerField(res);
 }
 
-export function nestedList<T>(res: Resource<T>): Field<T[], any[]> {
+export function nestedList<I>(res: Serializer<I, any>): Field<I[], EncodedResource[]> {
     return list(nested(res));
 }
 

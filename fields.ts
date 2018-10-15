@@ -435,7 +435,7 @@ function isNullable(value: any): value is null | '' {
  *
  * Useful to be used with string(), datetime() and integer() fields.
  */
-class NullableField<I, O extends string | number | boolean> implements Field<I | null, O | null> {
+class NullableField<I, O> implements Field<I | null, O | null> {
     constructor(public readonly field: Field<I, O>) {}
     public validate(value: I | null): I | null {
         return !isNullable(value) && this.field.validate(value) || null;
@@ -559,7 +559,7 @@ export function url(): Field<string> {
     return new URLField();
 }
 
-export function nullable<I, O extends string | number | boolean>(field: Field<I, O>): Field<I | null, O | null> {
+export function nullable<I, O>(field: Field<I, O>): Field<I | null, O | null> {
     return new NullableField(field);
 }
 

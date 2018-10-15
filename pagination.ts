@@ -1,13 +1,15 @@
 import { choice, Field } from './fields';
 import { EncodedResource, Resource, SerializedResource, Serializer } from './resources';
+import { findLastIndex } from './utils/arrays';
+import { compare } from './utils/compare';
 import { Key } from './utils/objects';
 
 /**
  * Represents a paginated response to a query.
  */
-export interface Page<T> {
-    next: string | null;
+export interface Page<T, C> {
     results: T[];
+    next: C | null;
 }
 
 /**
@@ -25,7 +27,7 @@ export type OrderedQuery<T, K extends keyof T> = {
  * A "cursor" is a full query, including the ordering and slicing attributes,
  * and the filtering parameters, to get a page from a collection.
  */
-export type Cursor<T, U extends keyof T, K extends keyof T> = OrderedQuery<T, K> & Pick<T, U>;
+export type Cursor<T, U extends keyof T, K extends keyof T> = Pick<T, U> & OrderedQuery<T, K>;
 
 export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements Serializer<Cursor<T, U, K>> {
     private serializer = this.resource.pick(this.urlKeywords).extend({
@@ -69,4 +71,21 @@ export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements 
         }
         return data;
     }
+}
+
+export function prepareForCursor<T>(results: T[], ordering: Key<T>, direction: 'asc' | 'desc') {
+    const lastItem = results[results.length - 1];
+    if (lastItem) {
+        const sliceIndex = findLastIndex(
+            results,
+            (result) => compare(result[ordering], lastItem[ordering], direction) < 0,
+        );
+        if (sliceIndex > 0) {
+            return {
+                results: results.slice(0, sliceIndex),
+                since: results[sliceIndex][ordering],
+            };
+        }
+    }
+    return null;
 }

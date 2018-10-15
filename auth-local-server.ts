@@ -6,8 +6,8 @@ import { uuid4 } from './uuid';
 // tslint:disable-next-line:variable-name
 export const _usersCollection = implement(localApi._usersCollection, {})
     .list(async ({ordering, direction, since}, {users}) => {
-        return since ? [] : await users.list({
-            ordering, direction,
+        return await users.list({
+            ordering, direction, since,
         });
     })
     .create(async ({name, email, picture}, {users}) => {

@@ -24,16 +24,22 @@ export class AmazonSimpleDB {
         return buildObject(result.Attributes || [], ({Name, Value}) => [Name, Value]) as T;
     }
 
-    public async selectNext(query: string, consistent: boolean): Promise<Item[]> {
-        const request = this.simpleDB.select({
+    public async *select(query: string, consistent: boolean): AsyncIterableIterator<Item[]> {
+        let params: SimpleDB.SelectRequest = {
             SelectExpression: query,
             ConsistentRead: consistent,
-        });
-        const response = await request.promise();
-        return (response.Items || []).map((item) => ({
-            name: item.Name,
-            attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
-        }));
+        };
+        while (true) {
+            const {Items = [], NextToken} = await this.simpleDB.select(params).promise();
+            yield Items.map((item) => ({
+                name: item.Name,
+                attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
+            }));
+            if (!NextToken) {
+                break;
+            }
+            params = {...params, NextToken};
+        }
     }
 
     public async putAttributes(params: SimpleDB.PutAttributesRequest): Promise<{}> {

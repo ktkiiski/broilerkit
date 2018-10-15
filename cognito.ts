@@ -3,6 +3,7 @@ import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
+import { OrderedQuery, Page } from './pagination';
 import { Resource, Serializer } from './resources';
 import { User, user } from './users';
 import { mapCached, order } from './utils/arrays';
@@ -14,11 +15,7 @@ export interface UserIdentity {
     id: string;
 }
 export type UserPartialUpdate<S extends User> = Partial<UserMutableAttributes<S>>;
-export interface UserQuery<S extends User> {
-    ordering: Key<UserMutableAttributes<S>>;
-    direction: 'asc' | 'desc';
-    maxCount?: number;
-}
+export type UserQuery<S extends User> = OrderedQuery<S, Key<UserMutableAttributes<S>>>;
 
 export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, UserQuery<S>>;
 
@@ -87,10 +84,13 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
     public async list(query: UserQuery<S>) {
         // TODO: Improve the query possibilities!
-        const { ordering, direction } = query;
+        const { ordering, direction, since } = query;
         const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
-        const cognitoUsers = await toArray(cognito.listUsers({limit: query.maxCount}));
-        return order(cognitoUsers, ordering, direction) as S[];
+        const cognitoUsers = await toArray(cognito.listUsers());
+        return {
+            results: order(cognitoUsers, ordering, direction, since) as S[],
+            next: null,
+        };
     }
 
     public batchRetrieve(identities: UserIdentity[]) {
@@ -149,9 +149,9 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
         return this.nedb.clear(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
-    public list({direction, maxCount = 99999999, ordering}: UserQuery<S>) {
+    public list<Q extends UserQuery<S>>(query: Q) {
         // TODO: Max count!
-        return this.nedb.list({direction, minCount: 1, maxCount, ordering});
+        return this.nedb.list(query as any) as Promise<Page<S, Q>>;
     }
     public batchRetrieve(identities: UserIdentity[]) {
         return this.nedb.batchRetrieve(identities as Array<Identity<S, 'id', 'updatedAt'>>);
