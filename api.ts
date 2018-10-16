@@ -219,6 +219,10 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             const removal$ = this.client.resourceRemoval$.pipe(
                 filter((removal) => removal.resourceUrl === url.path),
             );
+            const optimisticUpdates$ = this.client.optimisticUpdates$.pipe(
+                map((updates) => updates.filter((update) => update.resourceUrl === url.path)),
+                distinctUntilChanged(isEqual),
+            );
             resource$ = concat(
                 // Start with the retrieved state of the resource
                 this.ajax('GET', url, payload),
@@ -227,6 +231,10 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             ).pipe(
                 // Combine all the changes with the latest state to the resource.
                 scan<Partial<O>, O>((res, update) => spread(res, update), {} as O),
+                // Apply any optimistic updates
+                combineLatest(optimisticUpdates$, (res, updates) => (
+                    updates.reduce((res, update) => spread(res, update.resource), res)
+                )),
                 // Complete when the resource is removed
                 takeUntil(removal$),
                 // When this Observable is unsubscribed, then remove from the cache.
@@ -365,10 +373,13 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             const optimisticAdditions$ = client.optimisticAdditions$.pipe(filterOptimisticChanges);
             const optimisticRemovals$ = client.optimisticRemovals$.pipe(filterOptimisticChanges);
             const optimisticUpdates$ = client.optimisticUpdates$.pipe(filterOptimisticChanges);
-            const optimisticChanges$ = optimisticAdditions$.pipe(combineLatest(
-                optimisticRemovals$, optimisticUpdates$,
-                (additions, removals, updates) => [...additions, ...removals, ...updates],
-            ));
+            const optimisticChanges$ = optimisticAdditions$.pipe(
+                combineLatest(
+                    optimisticRemovals$, optimisticUpdates$,
+                    (additions, removals, updates) => [...additions, ...removals, ...updates],
+                ),
+                distinctUntilChanged(isEqual),
+            );
             collection$ = change$.pipe(
                 // Combine all the changes with the latest state to the resource.
                 scan<ResourceChange<O, keyof O>, AsyncIterable<O>>(
