@@ -1,4 +1,4 @@
-import { Component, ComponentClass, ReactNode } from 'react';
+import { ComponentClass, PureComponent, ReactNode } from 'react';
 import { BehaviorSubject, combineLatest, from, Observable, ObservableInput, Subscription } from 'rxjs';
 import { distinctUntilChanged, map, switchMap } from 'rxjs/operators';
 import { AuthClient, AuthUser } from '../auth';
@@ -11,7 +11,7 @@ type ObservedProps<P> = Pick<P, Exclude<Key<P>, 'children'>>;
 /**
  * React component whose state is bound to the emitted values of an RxJS Observable.
  */
-export abstract class ObserverComponent<P, T extends object, S extends object = {}> extends Component<P, Partial<T> & S> {
+export abstract class ObserverComponent<P, T extends object, S extends object = {}> extends PureComponent<P, Partial<T> & S> {
 
     public state = {} as Readonly<Partial<T> & S>;
     /**
