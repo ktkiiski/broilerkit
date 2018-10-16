@@ -76,14 +76,14 @@ export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements 
 export function prepareForCursor<T>(results: T[], ordering: Key<T>, direction: 'asc' | 'desc') {
     const lastItem = results[results.length - 1];
     if (lastItem) {
-        const sliceIndex = findLastIndex(
+        const lastIndex = findLastIndex(
             results,
             (result) => compare(result[ordering], lastItem[ordering], direction) < 0,
         );
-        if (sliceIndex > 0) {
+        if (lastIndex >= 0) {
             return {
-                results: results.slice(0, sliceIndex),
-                since: results[sliceIndex][ordering],
+                results: results.slice(0, lastIndex + 1),
+                since: results[lastIndex][ordering],
             };
         }
     }
