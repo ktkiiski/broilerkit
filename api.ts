@@ -14,7 +14,6 @@ import { observeIterable, observeValues } from './observables';
 import { Cursor, CursorSerializer, OrderedQuery, Page } from './pagination';
 import { nested, nestedList, Resource, resource, Serializer } from './resources';
 import { Route, route } from './routes';
-import { Observablish } from './rxjs';
 import { pattern, Url } from './url';
 import { isEqual } from './utils/compare';
 import { Key, keys, pick, spread, transformValues } from './utils/objects';
@@ -56,12 +55,12 @@ export interface IntermediateCollection<O> {
 
 export interface ObservableEndpoint<I, O> {
     observe(query: I): Observable<O>;
-    observeSwitch(query$: Observablish<I>): Observable<O>;
+    observeSwitch(query$: Subscribable<I>): Observable<O>;
 }
 
 export interface ObservableUserEndpoint<I, O> {
     observeWithUser(query: I): Observable<O | null>;
-    observeWithUserSwitch(query$: Observablish<I>): Observable<O | null>;
+    observeWithUserSwitch(query$: Subscribable<I>): Observable<O | null>;
 }
 
 export interface RetrieveEndpoint<I, O, B> extends ObservableEndpoint<I, O>, ObservableUserEndpoint<UserInput<I, B>, O> {
@@ -250,7 +249,7 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             return resource$;
         });
     }
-    public observeSwitch(query$: Observablish<I>): Observable<O> {
+    public observeSwitch(query$: Subscribable<I>): Observable<O> {
         return from(query$).pipe(
             // Omit all the extra properties from the comparison
             map((query) => this.validateGet(query)),
@@ -261,7 +260,7 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
     public observeWithUser(query: UserInput<I, B>): Observable<O | null> {
         return this.withUserId(query, (input: I) => this.observe(input));
     }
-    public observeWithUserSwitch(query$: Observablish<UserInput<I, B>>): Observable<O | null> {
+    public observeWithUserSwitch(query$: Subscribable<UserInput<I, B>>): Observable<O | null> {
         return from(query$).pipe(
             // TODO: This can be simplified (and optimized)
             switchMap((query) => this.withUserId(query, (r) => of(r as I))),
@@ -332,7 +331,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             map((items) => ({isComplete: true, items})),
         );
     }
-    public observeSwitch(query$: Observablish<I>): Observable<IntermediateCollection<O>> {
+    public observeSwitch(query$: Subscribable<I>): Observable<IntermediateCollection<O>> {
         return from(query$).pipe(
             // Omit all the extra properties from the comparison
             map((query) => this.validateGet(query)),
@@ -418,7 +417,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             map((items) => items && {isComplete: true, items}),
         );
     }
-    public observeWithUserSwitch(query$: Observablish<UserInput<I, B>>): Observable<IntermediateCollection<O> | null> {
+    public observeWithUserSwitch(query$: Subscribable<UserInput<I, B>>): Observable<IntermediateCollection<O> | null> {
         return from(query$).pipe(
             // TODO: This can be simplified (and optimized)
             switchMap((query) => this.withUserId(query, (r) => of(r as I))),
