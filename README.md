@@ -1,15 +1,21 @@
 # BroilerKit
 
-**BroilerKit** is a command line interface for quickly deploying a static web app with modern technologies to a scalable, production-ready environment! You can write your scripts in [TypeScript](http://www.typescriptlang.org/) and stylesheets in [SASS](http://sass-lang.com/), and they will be compiled into ES5 JavaScript and CSS using [Webpack](https://webpack.js.org/).
+**BroilerKit** is a framework for quickly developing web apps with modern technologies and deploying them to a scalable, production-ready environment! You can write your scripts in [TypeScript](http://www.typescriptlang.org/) and stylesheets in [SASS](http://sass-lang.com/), and they will be compiled into ES5 JavaScript and CSS using [Webpack](https://webpack.js.org/).
 
-The command line interface includes commands to deploy your production-ready web app to [Amazon Web Services cloud platform](https://aws.amazon.com/), with minimal setup and very low costs! The hosting is almost free on low-traffic sites.
+You deploy your production-ready web app to [Amazon Web Services cloud platform](https://aws.amazon.com/), with minimal setup and very low costs! The hosting is almost free (but not free) on low-traffic sites.
 
-(**Disclaimer:** By using this utility you are taking the responsibility for any incurring expenses.)
+(**Disclaimer:** By using this utility you are taking the full responsibility for any incurring expenses.)
 
-### Development features
+### Feature highlights
 
-- Write your scripts in [TypeScript](http://www.typescriptlang.org/)
+- Write all your code, both front-end and backend, in [TypeScript](http://www.typescriptlang.org/)
+- Easily create a full-featured REST API as your backend and database models
+- Easily add the user log in to your app with **Facebook and Google authentication**
 - Write your stylesheets in [SASS](http://sass-lang.com/)
+- No server maintenance: everything will run on [AWS platform](https://aws.amazon.com/) serverless solutions
+
+### Other features
+
 - Lint your JavaScript code style with [ESLint](http://eslint.org/)
 - Lint your TypeScript code style with [TSLint](https://palantir.github.io/tslint/)
 - Generate static HTML pages from [Pug](https://pugjs.org/) templates
@@ -37,14 +43,11 @@ To use this utility, you need the following:
 
 ## Installing
 
-To install the command line utility:
+The BroilerKit-based projects are used with the [BroilerPan](https://github.com/ktkiiski/broilerpan) command line utility:
 
 ```bash
-npm install -g broilerkit
+npm install -g broilerpan
 ```
-
-If installing fails on OSX [you may try to install libpng with Homebrew](https://github.com/tcoopman/image-webpack-loader#libpng-issues).
-
 
 ## Creating a web app
 
@@ -61,20 +64,18 @@ Then it is recommended that you apply the [Broilerplate template](https://github
 broil init
 ```
 
-Remember to add your project metadata to the [`package.json`](./package.json), for example, `name`, `author`, `description`.
+If installing fails on OSX [you may try to install libpng with Homebrew](https://github.com/tcoopman/image-webpack-loader#libpng-issues).
 
-To install the node packages included in the template:
-
-```bash
-npm install
-```
 
 ## Configuring the app
 
-You should change the configuration in [`app.config.ts`](./app.config.ts) according to your web app's needs.
+Remember to add your project metadata to the `package.json`, for example, `name`, `author`, `description`.
+
+You should change the configuration in `app.config.ts` according to your web app's needs.
 
 - `name`: A distinct name of your app. Recommended to be in lower case and separate words with dashes, because the name will be used in Amazon resource names and internal host names.
 - `stages`: Configuration for each different stage that your app has. By default there are `dev` stage for a development version and `prod` stage for the production version. You should change the `siteDomain` and `assetsDomain` to the domain names that you would like to use for each stage. There is also a special stage `local` that is used for the locally run development server.
+
 
 ## Running locally
 
@@ -132,11 +133,11 @@ broil deploy prod
 **IMPORTANT:** When deploying for the first time, you will receive email for confirming the certificate for the domain names!
 The deployment continues only after you approve the certificate!
 
-The deployment will build your app files, and then upload them to Amazon S3 buckets.
+The deployment will build your app files, and then upload them to Amazon S3 buckets. It will also use [CloudFormation](https://aws.amazon.com/cloudformation/) to set up all the required backend, Lambda functions, and SimpleDB database tables.
 
-The assets (JavaScript, CSS, images) are uploaded first. Their names will contain hashes, so they won't conflict with existing files.
-They will be cached infinitely with HTTP headers.
-The HTML files are uploaded last and they are cached for a short time.
+The assets (JavaScript, CSS, images) are uploaded with their names containing hashes, so they won't conflict with existing files.
+They will be cached infinitely with HTTP headers for maximum performance.
+The uploaded HTML files are cached for a shorter time.
 
 ## Tips
 
