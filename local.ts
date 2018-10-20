@@ -44,9 +44,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
                 siteRootUrl.hostname,
             ],
             https: enableHttps,
-            stats: {
-                colors: true,
-            },
+            stats: 'normal',
             watchOptions: {
                 poll: 1000,
             },
