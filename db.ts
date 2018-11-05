@@ -114,6 +114,23 @@ export interface Model<T, I, R, P, D> {
 
 export type VersionedModel<T, PK extends Key<T>, V extends Key<T>, D> = Model<T, Identity<T, PK, V>, T, PartialUpdate<T, V>, D>;
 
+export interface TableOptions<T, PK extends Key<T>, V extends Key<T>> {
+    /**
+     * An identifying name for the table that distinguishes it from the
+     * other table definitions.
+     */
+    name: string;
+    /**
+     * The composition of keys that by themselves identify the table rows
+     * from other rows.
+     */
+    identifyBy: PK[];
+    /**
+     * The name of the attribute that is used to version the rows.
+     */
+    versionBy: V;
+}
+
 export interface Table<M> {
     /**
      * An identifying name for the table that distinguishes it from the
@@ -163,16 +180,6 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements 
     }
 }
 
-export function table(tableName: string) {
-    // tslint:disable-next-line:no-shadowed-variable
-    function resource<S>(resource: Resource<S>) {
-        function identifyBy<K extends Key<S>>(...keys: K[]) {
-            function versionBy<V extends Key<S>>(versionAttr: V) {
-                return new TableDefinition(tableName, resource, keys, versionAttr);
-            }
-            return {versionBy};
-        }
-        return {identifyBy};
-    }
-    return {resource};
+export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S>, options: TableOptions<S, PK, V>) {
+    return new TableDefinition(options.name, resource, options.identifyBy, options.versionBy);
 }
