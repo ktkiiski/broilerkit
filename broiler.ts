@@ -52,8 +52,6 @@ export class Broiler {
     private readonly config: BroilerConfig;
     // The name of the stack to be deployed
     private readonly stackName: string;
-    // The full path to the directory for the current stage
-    private readonly stageDir: string;
     // The full path to the build directory inside the stage directory
     private readonly buildDir: string;
 
@@ -70,7 +68,7 @@ export class Broiler {
     constructor(config: AppStageConfig) {
         const {name, stage, projectRootPath, region} = config;
         const stackName = this.stackName = `${name}-${stage}`;
-        const stageDir = this.stageDir = path.join(projectRootPath, '.broiler', stage || 'local');
+        const stageDir = path.join(projectRootPath, '.broiler', stage || 'local');
         const buildDir = this.buildDir = path.join(stageDir, 'build');
 
         this.cloudFormation = new AmazonCloudFormation(region, stackName);

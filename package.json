@@ -74,8 +74,8 @@
     "style-loader": "^0.20.3",
     "ts-loader": "^3.5.0",
     "ts-node": "^5.0.1",
-    "tslib": "^1.9.0",
-    "tslint": "^5.9.1",
+    "tslib": "^1.9.3",
+    "tslint": "^5.11.0",
     "ulid": "^2.3.0",
     "url-loader": "^1.0.1",
     "vinyl-fs": "^3.0.2",
@@ -91,6 +91,6 @@
     "mocha": "^5.2.0",
     "react": "^16.3.2",
     "rxjs": "^6.1.0",
-    "typescript": "^2.9.2"
+    "typescript": "^3.1.6"
   }
 }

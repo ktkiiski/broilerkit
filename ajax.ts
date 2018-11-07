@@ -62,7 +62,7 @@ function requestText(request: AjaxRequest): Promise<AjaxTextResponse> {
                 resolve({request, statusCode, body});
             }
         }
-        function onError(this: XMLHttpRequestEventTarget, error: ErrorEvent) {
+        function onError(this: XMLHttpRequestEventTarget, error: ProgressEvent) {
             reject(new AjaxError(request, 0, undefined, error));
         }
         xhr.open(method, url, true);

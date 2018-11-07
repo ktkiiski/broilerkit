@@ -60,7 +60,7 @@ export function buildObject<T, V, K extends string>(source: T[], iterator: (item
     source.forEach((item, index, src) => {
         const pair = iterator(item, index, src);
         if (pair) {
-            result[pair[0]] = pair[1];
+            result[pair[0] as string] = pair[1];
         }
     });
     return result as {[P in K]: V};
