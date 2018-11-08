@@ -25,9 +25,50 @@ export interface Serializer<I = any, O = I> {
     decodeSortable(input: EncodedResource): O;
 }
 
-export class Resource<T> implements Serializer<T> {
-    constructor(public readonly fields: Fields<T>) {}
+abstract class BaseSerializer<T, S> implements Serializer<T, S> {
+    protected abstract readonly fields: Fields<T>;
 
+    public validate(input: T): S {
+        return this.serializeWith(input, (field, value) => field.validate(value)) as S;
+    }
+    public serialize(input: T): SerializedResource {
+        return this.serializeWith(input, (field, value) => field.serialize(value));
+    }
+    public encode(input: T): EncodedResource {
+        return this.serializeWith(input, (field, value) => field.encode(value));
+    }
+    public encodeSortable(input: T): EncodedResource {
+        return this.serializeWith(input, (field, value) => field.encodeSortable(value));
+    }
+    public deserialize(input: unknown): S {
+        return this.deserializeWith(input, (field, value) => field.deserialize(value));
+    }
+    public decode(input: EncodedResource): S {
+        return this.deserializeWith(input, (field, value) => field.decode(value));
+    }
+    public decodeSortable(input: EncodedResource): S {
+        return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
+    }
+    protected serializeWith<V>(input: {[key: string]: any}, serializeField: (field: Field<any>, value: any, key: string) => V): {[key: string]: V} {
+        const fields: {[key: string]: Field<any>} = this.fields;
+        const output: {[key: string]: V} = {};
+        for (const key in fields) {
+            if (fields.hasOwnProperty(key)) {
+                const value = input[key];
+                if (value !== undefined) {
+                    output[key] = serializeField(fields[key], value, key);
+                }
+            }
+        }
+        return output;
+    }
+    protected abstract deserializeWith(input: unknown, callback: (field: Field<T[keyof T]>, value: any, key: keyof T) => T[keyof T]): S;
+}
+
+export class Resource<T> extends BaseSerializer<T, T> implements Serializer<T> {
+    constructor(public readonly fields: Fields<T>) {
+        super();
+    }
     public pick<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): Resource<Pick<T, K>> {
         return new Resource(pick(this.fields, attrs) as Fields<Pick<T, K>>);
     }
@@ -54,28 +95,7 @@ export class Resource<T> implements Serializer<T> {
     public extend<E>(fields: Fields<E>): Resource<T & E> {
         return new Resource(spread(this.fields, fields) as Fields<T & E>);
     }
-    public validate(input: T): T {
-        return serializeWith(this.fields, input, (field, value) => field.validate(value)) as T;
-    }
-    public serialize(input: T): SerializedResource {
-        return serializeWith(this.fields, input, (field, value) => field.serialize(value));
-    }
-    public encode(input: T): EncodedResource {
-        return serializeWith(this.fields, input, (field, value) => field.encode(value));
-    }
-    public encodeSortable(input: T): EncodedResource {
-        return serializeWith(this.fields, input, (field, value) => field.encodeSortable(value));
-    }
-    public deserialize(input: unknown): T {
-        return this.deserializeWith(input, (field, value) => field.deserialize(value));
-    }
-    public decode(input: EncodedResource): T {
-        return this.deserializeWith(input, (field, value) => field.decode(value));
-    }
-    public decodeSortable(input: EncodedResource): T {
-        return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
-    }
-    private deserializeWith(input: unknown, callback: (field: Field<T[Key<T>]>, value: any, key: Key<T>) => T[Key<T>]): T {
+    protected deserializeWith(input: unknown, callback: (field: Field<T[keyof T]>, value: any, key: keyof T) => T[keyof T]): T {
         if (typeof input !== 'object' || !input) {
             throw new ValidationError(`Invalid object`);
         }
@@ -106,59 +126,39 @@ export interface OptionalOptions<S, R extends keyof S, O extends Key<S>, D exten
 export type OptionalInput<S, R extends keyof S, O extends Key<S>, D extends keyof S> = Pick<S, R> & Partial<Pick<S, O | D>>;
 export type OptionalOutput<S, R extends keyof S, O extends Key<S>, D extends keyof S> = Pick<S, R | D> & Partial<Pick<S, O>>;
 
-export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extends keyof S> implements Serializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extends keyof S> extends BaseSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
     private readonly requiredFields: R[];
     private readonly optionalFields: Array<O | D>;
     private readonly defaults: {[P in D]: S[P]};
 
-    constructor(options: OptionalOptions<S, R, O, D>, private fields: Fields<S>) {
+    constructor(options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
+        super();
         const {required, optional, defaults} = options;
         this.requiredFields = required;
         this.optionalFields = [...optional, ...keys(defaults)];
         this.defaults = defaults;
     }
 
-    public validate(input: OptionalInput<S, R, O, D>): OptionalOutput<S, R, O, D> {
-        return this.deserializeWith(input, (field, value) => field.validate(value));
-    }
-    public serialize(input: OptionalInput<S, R, O, D>): SerializedResource {
-        return serializeWith(this.fields, input, (field, value) => field.serialize(value));
-    }
-    public encode(input: OptionalInput<S, R, O, D>): EncodedResource {
-        return serializeWith(this.fields, input, (field, value) => field.encode(value));
-    }
-    public encodeSortable(input: OptionalInput<S, R, O, D>): EncodedResource {
-        return serializeWith(this.fields, input, (field, value) => field.encodeSortable(value));
-    }
-    public deserialize(input: unknown): OptionalOutput<S, R, O, D> {
-        return this.deserializeWith(input, (field, value) => field.deserialize(value));
-    }
-    public decode(input: EncodedResource): OptionalOutput<S, R, O, D> {
-        return this.deserializeWith(input, (field, value) => field.decode(value));
-    }
-    public decodeSortable(input: EncodedResource): OptionalOutput<S, R, O, D> {
-        return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
-    }
-    private deserializeWith(input: any, callback: (field: Field<S[keyof S]>, value: any) => S[keyof S]): OptionalOutput<S, R, O, D> {
-        if (!input || typeof input !== 'object') {
+    protected deserializeWith(input: unknown, callback: (field: Field<OptionalInput<S, R, O, D>[keyof OptionalInput<S, R, O, D>]>, value: any, key: keyof OptionalInput<S, R, O, D>) => OptionalInput<S, R, O, D>[keyof OptionalInput<S, R, O, D>]): OptionalOutput<S, R, O, D> {
+        if (typeof input !== 'object' || !input) {
             throw new ValidationError(`Invalid object`);
         }
         const {fields} = this;
         const output = spread(this.defaults) as {[key in R | O | D]: any};
         // Deserialize each required field
         for (const key of this.requiredFields) {
-            const value = input[key];
+            const value = (input as Partial<S>)[key];
             if (value === undefined) {
                 // TODO: Gather errors
                 throw new ValidationError(`Missing required value for "${key}"`);
             }
-            output[key] = callback(fields[key], value);
+            output[key] = callback(fields[key], value, key);
         }
         // Deserialize optional fields
         for (const key of this.optionalFields) {
-            const value = input[key];
+            const value = (input as Partial<S>)[key];
             if (value !== undefined) {
-                output[key] = callback(fields[key], value);
+                output[key] = callback(fields[key], value, key);
             }
         }
         return output;
@@ -200,17 +200,4 @@ export function nested<I>(res: Serializer<I, any>): Field<I, EncodedResource> {
 
 export function nestedList<I>(res: Serializer<I, any>): Field<I[], EncodedResource[]> {
     return list(nested(res));
-}
-
-function serializeWith<T>(fields: {[key: string]: Field<any>}, input: {[key: string]: any}, serializeField: (field: Field<any>, value: any, key: string) => T): {[key: string]: T} {
-    const output: {[key: string]: T} = {};
-    for (const key in fields) {
-        if (fields.hasOwnProperty(key)) {
-            const value = input[key];
-            if (value !== undefined) {
-                output[key] = serializeField(fields[key], value, key);
-            }
-        }
-    }
-    return output;
 }
