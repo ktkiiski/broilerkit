@@ -152,7 +152,7 @@ export class OptionalSerializer<S, R extends Key<S>, O extends Key<S>, D extends
                 // TODO: Gather errors
                 throw new ValidationError(`Missing required value for "${key}"`);
             }
-            output[key] = fields[key].serialize(value);
+            output[key] = callback(fields[key], value);
         }
         // Deserialize optional fields
         for (const key of this.optionalFields) {
