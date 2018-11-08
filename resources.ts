@@ -1,7 +1,7 @@
 import { Field, list } from './fields';
 import { ValidationError } from './http';
 import { difference } from './utils/arrays';
-import { forEachKey, Key, keys, omit, Omit, Optional, pick, Require, spread } from './utils/objects';
+import { forEachKey, Key, keys, omit, Omit, pick, Require, spread } from './utils/objects';
 
 export type Fields<T> = {
     [P in keyof T]: Field<T[P], any>;
@@ -48,7 +48,7 @@ export class Resource<T> implements Serializer<T> {
             defaults: {},
         });
     }
-    public optional<R extends Key<T>, O extends Key<T>, D extends Key<T>>(options: OptionalOptions<T, R, O, D>): OptionalSerializer<T, R, O, D> {
+    public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(options: OptionalOptions<T, R, O, D>): Serializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
         return new OptionalSerializer(options, this.fields);
     }
     public extend<E>(fields: Fields<E>): Resource<T & E> {
@@ -97,16 +97,16 @@ export class Resource<T> implements Serializer<T> {
 
 export type Deserialization<T extends Resource<any>> = T extends Resource<infer R> ? R : any;
 
-export interface OptionalOptions<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> {
+export interface OptionalOptions<S, R extends keyof S, O extends Key<S>, D extends keyof S> {
     required: R[];
     optional: O[];
     defaults: {[P in D]: S[P]};
 }
 
-export type OptionalInput<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> = Optional<Pick<S, R | O | D>, O | D>;
-export type OptionalOutput<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> = Optional<Pick<S, R | O | D>, O>;
+export type OptionalInput<S, R extends keyof S, O extends Key<S>, D extends keyof S> = Pick<S, R> & Partial<Pick<S, O | D>>;
+export type OptionalOutput<S, R extends keyof S, O extends Key<S>, D extends keyof S> = Pick<S, R | D> & Partial<Pick<S, O>>;
 
-export class OptionalSerializer<S, R extends Key<S>, O extends Key<S>, D extends Key<S>> implements Serializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extends keyof S> implements Serializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
     private readonly requiredFields: R[];
     private readonly optionalFields: Array<O | D>;
     private readonly defaults: {[P in D]: S[P]};
@@ -139,7 +139,7 @@ export class OptionalSerializer<S, R extends Key<S>, O extends Key<S>, D extends
     public decodeSortable(input: EncodedResource): OptionalOutput<S, R, O, D> {
         return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
     }
-    private deserializeWith(input: any, callback: (field: Field<S[Key<S>]>, value: any) => S[Key<S>]): OptionalOutput<S, R, O, D> {
+    private deserializeWith(input: any, callback: (field: Field<S[keyof S]>, value: any) => S[keyof S]): OptionalOutput<S, R, O, D> {
         if (!input || typeof input !== 'object') {
             throw new ValidationError(`Invalid object`);
         }

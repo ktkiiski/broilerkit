@@ -129,6 +129,14 @@ export interface TableOptions<T, PK extends Key<T>, V extends Key<T>> {
      * The name of the attribute that is used to version the rows.
      */
     versionBy: V;
+    /**
+     * Optional default values for the properties loaded from the database.
+     * They used to fill in any missing values for loaded items. You should
+     * provide this option when you have added any new fields to the database
+     * model. Otherwise you will get errors when attempting to decode an object
+     * from the database that lack required attributes.
+     */
+    defaults?: Pick<T, Exclude<keyof T, PK | V>>;
 }
 
 export interface Table<M> {
@@ -158,10 +166,13 @@ export interface Table<M> {
 
 export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements Table<VersionedModel<S, PK, V, Query<S>>> {
 
-    constructor(public name: string, public resource: Resource<S>, public readonly key: PK[], public readonly versionAttr: V) {}
+    public readonly name: string;
+    constructor(public readonly resource: Resource<S>, public readonly options: TableOptions<S, PK, V>) {
+        this.name = options.name;
+    }
 
     public getModel(uri: string): VersionedModel<S, PK, V, Query<S>> {
-        const {resource, key, versionAttr} = this;
+        const {resource, options} = this;
         if (uri.startsWith('arn:')) {
             const {service, region, resourceType, resourceId} = parseARN(uri);
             if (service !== 'sdb') {
@@ -170,16 +181,16 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements 
             if (resourceType !== 'domain') {
                 throw new Error(`Unknown AWS resource type "${resourceType}"`);
             }
-            return new SimpleDbModel<S, PK, V>(resourceId, region, resource, key, versionAttr);
+            return new SimpleDbModel<S, PK, V>(resourceId, region, resource, options);
         }
         if (uri.startsWith('file://')) {
             const filePath = uri.slice('file://'.length);
-            return new NeDbModel(filePath, resource, key, versionAttr);
+            return new NeDbModel(filePath, resource, options);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     }
 }
 
 export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S>, options: TableOptions<S, PK, V>) {
-    return new TableDefinition(options.name, resource, options.identifyBy, options.versionBy);
+    return new TableDefinition(resource, options);
 }

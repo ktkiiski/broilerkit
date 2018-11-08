@@ -1,8 +1,8 @@
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
-import { Identity, PartialUpdate, Query, VersionedModel } from './db';
+import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
-import { EncodedResource, Resource } from './resources';
+import { EncodedResource, Resource, Serializer } from './resources';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';
@@ -10,13 +10,25 @@ import { forEachKey, Key, keys, mapObject, omit, pick, spread } from './utils/ob
 
 export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
 
-    private updateSerializer = this.serializer.partial([this.versionAttr]);
-    private identitySerializer = this.serializer.pick([...this.key, this.versionAttr]).partial(this.key);
+    private updateSerializer = this.resource.partial([this.options.versionBy]);
+    private identitySerializer = this.resource.pick([...this.options.identifyBy, this.options.versionBy]).partial(this.options.identifyBy);
+    private readonly decoder: Serializer<any, S>;
 
-    constructor(private domainName: string, private region: string, private serializer: Resource<S>, private key: PK[], private versionAttr: V) {}
+    constructor(private domainName: string, private region: string, private resource: Resource<S>, private options: TableOptions<S, PK, V>) {
+        this.decoder = options.defaults ?
+            // Decode by migrating the defaults
+            this.resource.optional({
+                required: [...options.identifyBy, options.versionBy],
+                optional: [],
+                defaults: options.defaults,
+            }) as Serializer<any, S> :
+            // Otherwise migrate with a possibility that there are missing properties
+            this.resource
+        ;
+    }
 
     public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
-        const {identitySerializer, serializer} = this;
+        const {identitySerializer, decoder} = this;
         const encodedQuery = identitySerializer.encodeSortable(query);
         const itemName = this.getItemName(encodedQuery);
         const sdb = new AmazonSimpleDB(this.region);
@@ -28,14 +40,14 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         if (!hasAttributes(encodedItem, encodedQuery)) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
-        return serializer.decodeSortable(encodedItem);
+        return decoder.decodeSortable(encodedItem);
     }
 
     // TODO: Already exists exception??
     public async create(item: S, alreadyExistsError?: Error) {
-        const {serializer} = this;
-        const primaryKey = this.key;
-        const encodedItem = serializer.encodeSortable(item);
+        const {resource} = this;
+        const primaryKey = this.options.identifyBy;
+        const encodedItem = resource.encodeSortable(item);
         const itemName = this.getItemName(encodedItem);
         const sdb = new AmazonSimpleDB(this.region);
         try {
@@ -63,14 +75,14 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
 
     public replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
         // TODO: Implement separately
-        const update = omit(item, this.key);
+        const update = omit(item, this.options.identifyBy);
         return this.update(identity, update as PartialUpdate<S, V>, notFoundError);
     }
 
     public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
         // TODO: Patch specific version!
-        const {serializer, identitySerializer, updateSerializer} = this;
-        const versionAttr = this.versionAttr;
+        const {decoder, identitySerializer, updateSerializer} = this;
+        const versionAttr = this.options.versionBy;
         const encodedIdentity = identitySerializer.encodeSortable(identity);
         const encodedId = this.getItemName(encodedIdentity);
         const sdb = new AmazonSimpleDB(this.region);
@@ -84,7 +96,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             throw notFoundError || new NotFound(`Item was not found.`);
         }
         const encodedVersion: string = encodedItem[versionAttr];
-        const existingItem = serializer.decodeSortable(encodedItem);
+        const existingItem = decoder.decodeSortable(encodedItem);
         try {
             await sdb.putAttributes({
                 DomainName: this.domainName,
@@ -117,8 +129,8 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     }
 
     public async write(item: S): Promise<S> {
-        const {serializer} = this;
-        const encodedItem = serializer.encodeSortable(item);
+        const {resource} = this;
+        const encodedItem = resource.encodeSortable(item);
         const itemName = this.getItemName(encodedItem);
         const sdb = new AmazonSimpleDB(this.region);
         await sdb.putAttributes({
@@ -135,8 +147,8 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
 
     public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
         const {identitySerializer} = this;
-        const primaryKey = this.key;
-        const versionAttr = this.versionAttr;
+        const primaryKey = this.options.identifyBy;
+        const versionAttr = this.options.versionBy;
         const encodedIdentity = identitySerializer.encodeSortable(identity);
         const itemName = this.getItemName(encodedIdentity);
         let encodedVersion = encodedIdentity[versionAttr];
@@ -188,8 +200,8 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     }
 
     public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
-        const { serializer } = this;
-        const { fields } = serializer;
+        const { decoder } = this;
+        const { fields } = this.resource;
         const { ordering, direction, since } = query;
         const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
         const domain = this.domainName;
@@ -217,7 +229,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const sdb = new AmazonSimpleDB(this.region);
         const results: S[] = [];
         for await (const items of sdb.select(sql, true)) {
-            results.push(...items.map((item) => serializer.decodeSortable(item.attributes)));
+            results.push(...items.map((item) => decoder.decodeSortable(item.attributes)));
             const cursor = prepareForCursor(results, ordering, direction);
             if (cursor) {
                 return {
@@ -244,7 +256,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     }
 
     private getItemName(encodedQuery: EncodedResource): string {
-        const key = this.key;
+        const key = this.options.identifyBy;
         if (key.length === 1) {
             return encodedQuery[key[0]];
         }

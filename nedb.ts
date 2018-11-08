@@ -1,8 +1,8 @@
 import * as Datastore from 'nedb';
-import { Identity, PartialUpdate, Query, VersionedModel } from './db';
+import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
-import { Resource, SerializedResource } from './resources';
+import { Resource, SerializedResource, Serializer } from './resources';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { forEachKey, Key, omit, pick, spread } from './utils/objects';
@@ -11,12 +11,23 @@ const PRIMARY_KEY_FIELD = '_pk';
 
 export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
 
-    private updateSerializer = this.serializer.partial([this.versionAttr]);
-    private identitySerializer = this.serializer.partial(this.key);
-    private primaryKeySerializer = this.serializer.pick(this.key);
+    private updateSerializer = this.resource.partial([this.options.versionBy]);
+    private identitySerializer = this.resource.partial(this.options.identifyBy);
+    private primaryKeySerializer = this.resource.pick(this.options.identifyBy);
+    private readonly decoder: Serializer<any, S>;
     private db = getDb(this.filePath);
 
-    constructor(private filePath: string, private serializer: Resource<S>, private key: PK[], private versionAttr: V) {
+    constructor(private filePath: string, private resource: Resource<S>, private options: TableOptions<S, PK, V>) {
+        this.decoder = options.defaults ?
+            // Decode by migrating the defaults
+            this.resource.optional({
+                required: [...options.identifyBy, options.versionBy],
+                optional: [],
+                defaults: options.defaults,
+            }) as Serializer<any, S> :
+            // Otherwise migrate with a possibility that there are missing properties
+            this.resource
+        ;
         // Ensure uniqueness for the primary key (in addition to the built-in `_id` field)
         this.db.ensureIndex({
             fieldName: PRIMARY_KEY_FIELD,
@@ -30,12 +41,12 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         if (!serializedItem) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
-        return this.serializer.deserialize(serializedItem);
+        return this.decoder.deserialize(serializedItem);
     }
 
     public async create(item: S, alreadyExistsError?: Error) {
         const serializedItem = {
-            ...this.serializer.serialize(item),
+            ...this.resource.serialize(item),
             [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(item),
         };
         try {
@@ -47,17 +58,17 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     public async replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
-        const {serializer} = this;
+        const {resource} = this;
         const query = this.getItemQuery(identity);
         const serializedItem = {
-            ...serializer.serialize(item),
+            ...resource.serialize(item),
             [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(identity),
         };
         const updatedSerializedItem = await this.updateItem(query, serializedItem);
         if (!updatedSerializedItem) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
-        return serializer.deserialize(updatedSerializedItem);
+        return this.decoder.deserialize(updatedSerializedItem);
     }
 
     public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
@@ -67,7 +78,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         if (!updatedSerializedItem) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
-        return this.serializer.deserialize(updatedSerializedItem);
+        return this.decoder.deserialize(updatedSerializedItem);
     }
 
     public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C, notFoundError?: Error): Promise<C> {
@@ -85,7 +96,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
                 throw error;
             }
             return await this.replace(
-                pick(item, this.key) as Identity<S, PK, V>,
+                pick(item, this.options.identifyBy) as Identity<S, PK, V>,
                 item,
             );
         }
@@ -105,8 +116,8 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
-        const { serializer } = this;
-        const { fields } = serializer;
+        const { decoder } = this;
+        const { fields } = this.resource;
         const { ordering, direction, since } = query;
         const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
         const filter: {[key: string]: any} = {};
@@ -122,7 +133,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         }
         for (let maxCount = 10; ; maxCount += 10) {
             const serializedItems = await this.findItems(filter, ordering, direction, maxCount);
-            const results = serializedItems.map((serializedItem) => serializer.deserialize(serializedItem));
+            const results = serializedItems.map((serializedItem) => decoder.deserialize(serializedItem));
             if (results.length < maxCount) {
                 return {results, next: null};
             }

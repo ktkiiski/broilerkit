@@ -109,9 +109,13 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
 export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private nedb = new NeDbModel(this.filePath, this.serializer, ['id'], 'updatedAt');
+    private nedb = new NeDbModel(this.filePath, this.serializer, {
+        name: this.name,
+        identifyBy: ['id'],
+        versionBy: 'updatedAt',
+    });
 
-    constructor(private filePath: string, private serializer: Resource<S>) {}
+    constructor(private filePath: string, private serializer: Resource<S>, private name: string) {}
 
     public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>, notFoundError);
@@ -177,7 +181,7 @@ export const users: Table<CognitoModel> = {
         }
         if (uri.startsWith('file://')) {
             const filePath = uri.slice('file://'.length);
-            return new LocalCognitoModel(filePath, user);
+            return new LocalCognitoModel(filePath, user, this.name);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     },
