@@ -18,7 +18,7 @@ export interface EncodedResource {
 export interface Serializer<I = any, O = I> {
     validate(input: I): O;
     serialize(input: I): SerializedResource;
-    deserialize(input: any): O;
+    deserialize(input: unknown): O;
     encode(input: I): EncodedResource;
     decode(input: EncodedResource): O;
     encodeSortable(input: I): EncodedResource;
@@ -66,7 +66,7 @@ export class Resource<T> implements Serializer<T> {
     public encodeSortable(input: T): EncodedResource {
         return serializeWith(this.fields, input, (field, value) => field.encodeSortable(value));
     }
-    public deserialize(input: any): T {
+    public deserialize(input: unknown): T {
         return this.deserializeWith(input, (field, value) => field.deserialize(value));
     }
     public decode(input: EncodedResource): T {
@@ -75,15 +75,15 @@ export class Resource<T> implements Serializer<T> {
     public decodeSortable(input: EncodedResource): T {
         return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
     }
-    private deserializeWith(input: any, callback: (field: Field<T[Key<T>]>, value: any, key: Key<T>) => T[Key<T>]): T {
-        if (!input || typeof input !== 'object') {
+    private deserializeWith(input: unknown, callback: (field: Field<T[Key<T>]>, value: any, key: Key<T>) => T[Key<T>]): T {
+        if (typeof input !== 'object' || !input) {
             throw new ValidationError(`Invalid object`);
         }
         const {fields} = this;
         const output = {} as Partial<T>;
         // Deserialize each field
         forEachKey(fields, (key, field) => {
-            const value = input[key];
+            const value = (input as Partial<T>)[key];
             if (value === undefined) {
                 // TODO: Gather errors
                 throw new ValidationError(`Missing required value for "${key}"`);
@@ -130,7 +130,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extend
     public encodeSortable(input: OptionalInput<S, R, O, D>): EncodedResource {
         return serializeWith(this.fields, input, (field, value) => field.encodeSortable(value));
     }
-    public deserialize(input: any): OptionalOutput<S, R, O, D> {
+    public deserialize(input: unknown): OptionalOutput<S, R, O, D> {
         return this.deserializeWith(input, (field, value) => field.deserialize(value));
     }
     public decode(input: EncodedResource): OptionalOutput<S, R, O, D> {
@@ -173,7 +173,7 @@ class NestedSerializerField<I> implements Field<I, SerializedResource> {
     public serialize(value: I): SerializedResource {
         return this.serializer.serialize(value);
     }
-    public deserialize(value: any): I {
+    public deserialize(value: unknown): I {
         return this.serializer.deserialize(value);
     }
     public encode(_: I): never {

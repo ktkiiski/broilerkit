@@ -6,7 +6,7 @@ export type NonEmptyString = Exclude<string, ''>;
 export interface Field<I, E = I> {
     validate(value: I): I;
     serialize(value: I): E;
-    deserialize(value: any): I;
+    deserialize(value: unknown): I;
     encode(value: I): string;
     decode(value: string): I;
     encodeSortable(value: I): string;
@@ -17,7 +17,7 @@ class TextField implements Field<string> {
     public validate(value: string): string {
         return value;
     }
-    public deserialize(value: any): string {
+    public deserialize(value: unknown): string {
         if (value == null) {
             throw new ValidationError(`Missing string value`);
         }
@@ -116,7 +116,7 @@ class NumberField implements Field<number> {
     public serialize(value: number): number {
         return this.validate(value);
     }
-    public deserialize(value: any): number {
+    public deserialize(value: unknown): number {
         if (value == null) {
             throw new ValidationError(`Missing number value`);
         }
@@ -173,7 +173,7 @@ class IntegerField extends NumberField implements Field<number> {
         }
         throw new ValidationError(`Invalid integer value`);
     }
-    public deserialize(value: any): number {
+    public deserialize(value: unknown): number {
         if (value == null) {
             throw new ValidationError(`Missing integer value`);
         }
@@ -213,7 +213,7 @@ class ConstantField<K extends number> extends IntegerField {
     public serialize(value: K): K {
         return this.validate(value);
     }
-    public deserialize(value: any): K {
+    public deserialize(value: unknown): K {
         return super.deserialize(value) as K;
     }
     public encode(value: K): string {
@@ -234,8 +234,8 @@ class BooleanField implements Field<boolean> {
     public validate(value: boolean): boolean {
         return value;
     }
-    public deserialize(value: any): boolean {
-        if (value === true || value === false) {
+    public deserialize(value: unknown): boolean {
+        if (typeof value === 'boolean') {
             return value;
         }
         throw new ValidationError(`Invalid boolean value`);
@@ -269,7 +269,7 @@ class DateTimeField implements Field<Date, string> {
     public serialize(value: Date): string {
         return value.toISOString();
     }
-    public deserialize(value: any): Date {
+    public deserialize(value: unknown): Date {
         if (typeof value === 'string') {
             // Try to parse the date from the string
             value = Date.parse(value);
@@ -308,7 +308,7 @@ class DateField implements Field<Date, string> {
     public serialize(value: Date): string {
         return value.toISOString().slice(0, 'YYYY-MM-DD'.length);
     }
-    public deserialize(value: any): Date {
+    public deserialize(value: unknown): Date {
         if (typeof value !== 'string') {
             throw new ValidationError(`Date must be a string`);
         }
@@ -377,7 +377,7 @@ class DecimalField extends RegexpField {
         }
         return numStr + '.' + padEnd((decStr || '').slice(0, decimals), decimals, '0');
     }
-    public deserialize(value: any): string {
+    public deserialize(value: unknown): string {
         if (typeof value === 'number') {
             return this.validate(value);
         }
@@ -424,7 +424,7 @@ class IdField extends RegexpField {
     }
 }
 
-function isNullable(value: any): value is null | '' {
+function isNullable(value: unknown): value is null | '' {
     return value === null || value === '';
 }
 
@@ -443,7 +443,7 @@ class NullableField<I, O> implements Field<I | null, O | null> {
     public serialize(value: I | null): O | null {
         return !isNullable(value) && this.field.serialize(value) || null;
     }
-    public deserialize(value: any): I | null {
+    public deserialize(value: unknown): I | null {
         return value === null || value === '' ? null : this.field.deserialize(value);
     }
     public encode(value: I | null): string {
@@ -471,7 +471,7 @@ class ListField<I, O> implements Field<I[], O[]> {
     public serialize(items: I[]): O[] {
         return items.map((item) => this.field.serialize(item));
     }
-    public deserialize(items: any): I[] {
+    public deserialize(items: unknown): I[] {
         if (items && Array.isArray(items)) {
             return items.map((item) => this.field.deserialize(item));
         }
