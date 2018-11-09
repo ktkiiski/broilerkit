@@ -25,6 +25,8 @@ export interface Serializer<I = any, O = I> {
     decodeSortable(input: EncodedResource): O;
 }
 
+type FieldConverter = (field: Field<any>, value: any, key: any) => any;
+
 abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     protected abstract readonly fields: Fields<T>;
 
@@ -62,7 +64,30 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
         }
         return output;
     }
-    protected abstract deserializeWith(input: unknown, callback: (field: Field<T[keyof T]>, value: any, key: keyof T) => T[keyof T]): S;
+    protected deserializeWith(input: unknown, callback: FieldConverter): S {
+        if (typeof input !== 'object' || !input) {
+            throw new ValidationError(`Invalid object`);
+        }
+        const fields: {[key: string]: Field<any>} = this.fields;
+        const output = {} as Partial<S>;
+        // Deserialize each field
+        forEachKey(fields, (key, field) => {
+            const rawValue = (input as any)[key];
+            const value = this.deserializeFieldWith(field, rawValue, key, callback);
+            if (typeof value !== 'undefined') {
+                output[key as keyof S] = value;
+            }
+        });
+        return output as S;
+    }
+    protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+        if (value === undefined) {
+            // TODO: Gather errors
+            throw new ValidationError(`Missing required value for "${key}"`);
+        } else {
+            return callback(field, value, key);
+        }
+    }
 }
 
 export class Resource<T> extends BaseSerializer<T, T> implements Serializer<T> {
@@ -92,26 +117,11 @@ export class Resource<T> extends BaseSerializer<T, T> implements Serializer<T> {
     public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(options: OptionalOptions<T, R, O, D>): Serializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
         return new OptionalSerializer(options, this.fields);
     }
+    public defaults<D extends keyof T>(defaults: {[P in D]: T[P]}): DefaultsSerializer<T, D> {
+        return new DefaultsSerializer(defaults, this.fields);
+    }
     public extend<E>(fields: Fields<E>): Resource<T & E> {
         return new Resource(spread(this.fields, fields) as Fields<T & E>);
-    }
-    protected deserializeWith(input: unknown, callback: (field: Field<T[keyof T]>, value: any, key: keyof T) => T[keyof T]): T {
-        if (typeof input !== 'object' || !input) {
-            throw new ValidationError(`Invalid object`);
-        }
-        const {fields} = this;
-        const output = {} as Partial<T>;
-        // Deserialize each field
-        forEachKey(fields, (key, field) => {
-            const value = (input as Partial<T>)[key];
-            if (value === undefined) {
-                // TODO: Gather errors
-                throw new ValidationError(`Missing required value for "${key}"`);
-            } else {
-                output[key as keyof T] = callback(field, value, key);
-            }
-        });
-        return output as T;
     }
 }
 
@@ -139,29 +149,43 @@ export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extend
         this.defaults = defaults;
     }
 
-    protected deserializeWith(input: unknown, callback: (field: Field<OptionalInput<S, R, O, D>[keyof OptionalInput<S, R, O, D>]>, value: any, key: keyof OptionalInput<S, R, O, D>) => OptionalInput<S, R, O, D>[keyof OptionalInput<S, R, O, D>]): OptionalOutput<S, R, O, D> {
-        if (typeof input !== 'object' || !input) {
-            throw new ValidationError(`Invalid object`);
-        }
-        const {fields} = this;
-        const output = spread(this.defaults) as {[key in R | O | D]: any};
-        // Deserialize each required field
-        for (const key of this.requiredFields) {
-            const value = (input as Partial<S>)[key];
-            if (value === undefined) {
-                // TODO: Gather errors
-                throw new ValidationError(`Missing required value for "${key}"`);
+    protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+        if (typeof value === 'undefined') {
+            // Value is missing
+            const defaultValue = this.defaults[key as D];
+            if (typeof defaultValue !== 'undefined') {
+                // Return the default value
+                return defaultValue;
             }
-            output[key] = callback(fields[key], value, key);
-        }
-        // Deserialize optional fields
-        for (const key of this.optionalFields) {
-            const value = (input as Partial<S>)[key];
-            if (value !== undefined) {
-                output[key] = callback(fields[key], value, key);
+            if (this.optionalFields.indexOf(key) >= 0) {
+                // Allow this value to be undefined
+                return value;
             }
         }
-        return output;
+        // Otherwise deserialize normally if a required field
+        if (this.requiredFields.indexOf(key) >= 0) {
+            return super.deserializeFieldWith(field, value, key, callback);
+        }
+        // Otherwise this should be omitted
+    }
+}
+
+export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pick<S, Exclude<keyof S, D> & Partial<Pick<S, D>>>, S> {
+    constructor(private readonly defaults: {[P in D]: S[P]}, protected fields: Fields<S>) {
+        super();
+    }
+
+    protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+        if (typeof value === 'undefined') {
+            // Value is missing
+            const defaultValue = this.defaults[key as D];
+            if (typeof defaultValue !== 'undefined') {
+                // Return the default value
+                return defaultValue;
+            }
+        }
+        // Otherwise deserialize normally
+        return super.deserializeFieldWith(field, value, key, callback);
     }
 }
 
