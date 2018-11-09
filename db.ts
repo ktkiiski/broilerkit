@@ -114,7 +114,7 @@ export interface Model<T, I, R, P, D> {
 
 export type VersionedModel<T, PK extends Key<T>, V extends Key<T>, D> = Model<T, Identity<T, PK, V>, T, PartialUpdate<T, V>, D>;
 
-export interface TableOptions<T, PK extends Key<T>, V extends Key<T>> {
+export interface TableOptions<T, PK extends Key<T>, V extends Key<T>, D extends Exclude<keyof T, PK | V>> {
     /**
      * An identifying name for the table that distinguishes it from the
      * other table definitions.
@@ -136,7 +136,7 @@ export interface TableOptions<T, PK extends Key<T>, V extends Key<T>> {
      * model. Otherwise you will get errors when attempting to decode an object
      * from the database that lack required attributes.
      */
-    defaults?: Pick<T, Exclude<keyof T, PK | V>>;
+    defaults?: {[P in D]: T[P]};
 }
 
 export interface Table<M> {
@@ -164,10 +164,10 @@ export interface Table<M> {
     getModel(uri: string): M;
 }
 
-export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements Table<VersionedModel<S, PK, V, Query<S>>> {
+export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>> implements Table<VersionedModel<S, PK, V, Query<S>>> {
 
     public readonly name: string;
-    constructor(public readonly resource: Resource<S>, public readonly options: TableOptions<S, PK, V>) {
+    constructor(public readonly resource: Resource<S>, public readonly options: TableOptions<S, PK, V, D>) {
         this.name = options.name;
     }
 
@@ -191,6 +191,6 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>> implements 
     }
 }
 
-export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S>, options: TableOptions<S, PK, V>) {
+export function table<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>>(resource: Resource<S>, options: TableOptions<S, PK, V, D>) {
     return new TableDefinition(resource, options);
 }

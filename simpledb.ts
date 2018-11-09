@@ -14,14 +14,10 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     private identitySerializer = this.resource.pick([...this.options.identifyBy, this.options.versionBy]).partial(this.options.identifyBy);
     private readonly decoder: Serializer<any, S>;
 
-    constructor(private domainName: string, private region: string, private resource: Resource<S>, private options: TableOptions<S, PK, V>) {
+    constructor(private domainName: string, private region: string, private resource: Resource<S>, private options: TableOptions<S, PK, V, any>) {
         this.decoder = options.defaults ?
             // Decode by migrating the defaults
-            this.resource.optional({
-                required: [...options.identifyBy, options.versionBy],
-                optional: [],
-                defaults: options.defaults,
-            }) as Serializer<any, S> :
+            this.resource.defaults(options.defaults) :
             // Otherwise migrate with a possibility that there are missing properties
             this.resource
         ;
