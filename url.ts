@@ -30,6 +30,10 @@ export class Url {
         const query = buildQuery(queryParams);
         return this.path + (query && '?' + query);
     }
+
+    public withParameters(params: {[param: string]: string}): Url {
+        return new Url(this.path, {...this.queryParams, ...params});
+    }
 }
 
 export class UrlPattern<T extends string = string> {
