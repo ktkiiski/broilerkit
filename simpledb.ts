@@ -1,11 +1,10 @@
-import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
+import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam, Item } from './aws/simpledb';
 import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
-import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';
 import { forEachKey, Key, keys, mapObject, omit, pick, spread } from './utils/objects';
 
@@ -221,7 +220,6 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
                 escapeQueryParam(encodedValue),
             ].join(' '));
         }
-        // TODO: Only select known fields
         const sql = `select * from ${escapeQueryIdentifier(domain)} where ${filters.join(' and ')} order by ${escapeQueryIdentifier(ordering)} ${direction} limit 100`;
         const sdb = new AmazonSimpleDB(this.region);
         const results: S[] = [];
@@ -239,17 +237,29 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         return {results, next: null};
     }
 
-    public batchRetrieve(identities: Array<Identity<S, PK, V>>) {
-        const notFoundError = new NotFound(`Item was not found`);
-        const promises = mapCached(identities, (identity) => (
-            this.retrieve(identity, notFoundError).catch((error) => {
-                if (error === notFoundError) {
-                    return null;
-                }
-                throw error;
-            })
+    public async batchRetrieve(identities: Array<Identity<S, PK, V>>) {
+        if (!identities.length) {
+            return [];
+        }
+        const {identitySerializer} = this;
+        const itemNames = identities.map((identity) => (
+            this.getItemName(identitySerializer.encodeSortable(identity))
         ));
-        return Promise.all(promises);
+        const escapedItemNames = itemNames.map((itemName) => escapeQueryParam(itemName));
+        const { decoder } = this;
+        const domain = this.domainName;
+        const filters = [
+            `itemName() in (${escapedItemNames.join(',')})`,
+        ];
+        const sql = `select * from ${escapeQueryIdentifier(domain)} where ${filters.join(' and ')}`;
+        const sdb = new AmazonSimpleDB(this.region);
+        const itemsByName: {[name: string]: S} = {};
+        for await (const items of sdb.select(sql, true)) {
+            for (const item of items) {
+                itemsByName[item.name] = decoder.decodeSortable(item.attributes);
+            }
+        }
+        return itemNames.map((itemName) => itemName in itemsByName ? itemsByName[itemName] : null);
     }
 
     private getItemName(encodedQuery: Encoding): string {
