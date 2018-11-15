@@ -1,6 +1,6 @@
 import { choice, Field } from './fields';
 import { Resource } from './resources';
-import { EncodedResource, SerializedResource, Serializer } from './serializers';
+import { Encoding, Serialization, Serializer } from './serializers';
 import { findLastIndex } from './utils/arrays';
 import { compare } from './utils/compare';
 import { Key } from './utils/objects';
@@ -41,7 +41,7 @@ export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements 
         const validated = this.serializer.validate(input);
         return this.extendSince(validated, input.since, (field, since) => field.validate(since));
     }
-    public serialize(input: Cursor<T, U, K>): SerializedResource {
+    public serialize(input: Cursor<T, U, K>): Serialization {
         const serialized = this.serializer.serialize(input);
         return this.extendSince(serialized, input.since, (field, since) => field.serialize(since));
     }
@@ -49,19 +49,19 @@ export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements 
         const deserialized = this.serializer.deserialize(input);
         return this.extendSince(deserialized, input.since, (field, since) => field.deserialize(since));
     }
-    public encode(input: Cursor<T, U, K>): EncodedResource {
+    public encode(input: Cursor<T, U, K>): Encoding {
         const encoded = this.serializer.encode(input);
         return this.extendSince(encoded, input.since, (field, since) => field.encode(since));
     }
-    public encodeSortable(input: Cursor<T, U, K>): EncodedResource {
+    public encodeSortable(input: Cursor<T, U, K>): Encoding {
         const encoded = this.serializer.encode(input);
         return this.extendSince(encoded, input.since, (field, since) => field.encodeSortable(since));
     }
-    public decode(input: EncodedResource): Cursor<T, U, K> {
+    public decode(input: Encoding): Cursor<T, U, K> {
         const decoded = this.serializer.decode(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decode(since));
     }
-    public decodeSortable(input: EncodedResource): Cursor<T, U, K> {
+    public decodeSortable(input: Encoding): Cursor<T, U, K> {
         const decoded = this.serializer.decodeSortable(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
     }

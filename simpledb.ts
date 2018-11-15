@@ -3,7 +3,7 @@ import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
-import { EncodedResource, Serializer } from './serializers';
+import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';
@@ -29,7 +29,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const encodedQuery = identitySerializer.encodeSortable(query);
         const itemName = this.getItemName(encodedQuery);
         const sdb = new AmazonSimpleDB(this.region);
-        const encodedItem = await sdb.getAttributes<EncodedResource>({
+        const encodedItem = await sdb.getAttributes<Encoding>({
             DomainName: this.domainName,
             ItemName: itemName,
             ConsistentRead: true,
@@ -85,7 +85,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         const sdb = new AmazonSimpleDB(this.region);
         const encodedChanges = updateSerializer.encodeSortable(changes);
         // Get the current item's state
-        const encodedItem = await sdb.getAttributes<EncodedResource>({
+        const encodedItem = await sdb.getAttributes<Encoding>({
             DomainName: this.domainName,
             ItemName: encodedId,
         });
@@ -155,7 +155,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         // instance matches these filtering criteria.
         if (keys(otherFilters).length) {
             // Get the current item's state
-            const encodedItem = await sdb.getAttributes<EncodedResource>({
+            const encodedItem = await sdb.getAttributes<Encoding>({
                 DomainName: this.domainName,
                 ItemName: itemName,
             });
@@ -252,7 +252,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         return Promise.all(promises);
     }
 
-    private getItemName(encodedQuery: EncodedResource): string {
+    private getItemName(encodedQuery: Encoding): string {
         const key = this.options.identifyBy;
         if (key.length === 1) {
             return encodedQuery[key[0]];

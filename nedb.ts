@@ -3,7 +3,7 @@ import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
-import { SerializedResource, Serializer } from './serializers';
+import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { forEachKey, Key, omit, pick, spread } from './utils/objects';
@@ -157,12 +157,12 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     private findItem(query: {[key: string]: any}) {
-        return new Promise<SerializedResource | null>((resolve, reject) => {
+        return new Promise<Serialization | null>((resolve, reject) => {
             this.db.findOne(query, promiseCallback(resolve, reject));
         });
     }
     private findItems(query: {[key: string]: any}, ordering: string, direction: 'asc' | 'desc', maxCount: number) {
-        return new Promise<SerializedResource[]>((resolve, reject) => {
+        return new Promise<Serialization[]>((resolve, reject) => {
             this.db.find(query)
                 .sort({[ordering]: direction === 'asc' ? 1 : -1})
                 .limit(maxCount)
@@ -177,7 +177,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
     private updateItem(query: {[key: string]: any}, update: {[key: string]: any}) {
         const options = {multi: false, returnUpdatedDocs: true};
-        return new Promise<SerializedResource | null>((resolve, reject) => {
+        return new Promise<Serialization | null>((resolve, reject) => {
             this.db.update(query, update, options, (error, numAffected: number, updatedItem: any) => {
                 if (error) {
                     reject(error);

@@ -7,22 +7,22 @@ export type Fields<T> = {
     [P in keyof T]: Field<T[P], any>;
 };
 
-export interface SerializedResource {
+export interface Serialization {
     [key: string]: any;
 }
 
-export interface EncodedResource {
+export interface Encoding {
     [key: string]: string;
 }
 
 export interface Serializer<I = any, O = I> {
     validate(input: I): O;
-    serialize(input: I): SerializedResource;
+    serialize(input: I): Serialization;
     deserialize(input: unknown): O;
-    encode(input: I): EncodedResource;
-    decode(input: EncodedResource): O;
-    encodeSortable(input: I): EncodedResource;
-    decodeSortable(input: EncodedResource): O;
+    encode(input: I): Encoding;
+    decode(input: Encoding): O;
+    encodeSortable(input: I): Encoding;
+    decodeSortable(input: Encoding): O;
 }
 
 type FieldConverter = (field: Field<any>, value: any, key: any) => any;
@@ -33,22 +33,22 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     public validate(input: T): S {
         return this.serializeWith(input, (field, value) => field.validate(value)) as S;
     }
-    public serialize(input: T): SerializedResource {
+    public serialize(input: T): Serialization {
         return this.serializeWith(input, (field, value) => field.serialize(value));
     }
-    public encode(input: T): EncodedResource {
+    public encode(input: T): Encoding {
         return this.serializeWith(input, (field, value) => field.encode(value));
     }
-    public encodeSortable(input: T): EncodedResource {
+    public encodeSortable(input: T): Encoding {
         return this.serializeWith(input, (field, value) => field.encodeSortable(value));
     }
     public deserialize(input: unknown): S {
         return this.deserializeWith(input, (field, value) => field.deserialize(value));
     }
-    public decode(input: EncodedResource): S {
+    public decode(input: Encoding): S {
         return this.deserializeWith(input, (field, value) => field.decode(value));
     }
-    public decodeSortable(input: EncodedResource): S {
+    public decodeSortable(input: Encoding): S {
         return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
     }
     protected serializeWith<V>(input: {[key: string]: any}, serializeField: (field: Field<any>, value: any, key: string) => V): {[key: string]: V} {
@@ -187,12 +187,12 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
     }
 }
 
-class NestedSerializerField<I> implements Field<I, SerializedResource> {
+class NestedSerializerField<I> implements Field<I, Serialization> {
     constructor(private serializer: Serializer<I, any>) {}
     public validate(value: I): I {
         return this.serializer.validate(value);
     }
-    public serialize(value: I): SerializedResource {
+    public serialize(value: I): Serialization {
         return this.serializer.serialize(value);
     }
     public deserialize(value: unknown): I {
@@ -212,10 +212,10 @@ class NestedSerializerField<I> implements Field<I, SerializedResource> {
     }
 }
 
-export function nested<I>(res: Serializer<I, any>): Field<I, EncodedResource> {
+export function nested<I>(res: Serializer<I, any>): Field<I, Encoding> {
     return new NestedSerializerField(res);
 }
 
-export function nestedList<I>(res: Serializer<I, any>): Field<I[], EncodedResource[]> {
+export function nestedList<I>(res: Serializer<I, any>): Field<I[], Encoding[]> {
     return list(nested(res));
 }
