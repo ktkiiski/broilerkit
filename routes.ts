@@ -1,4 +1,4 @@
-import { resource, Serializer } from './resources';
+import { Fields, FieldSerializer, Serializer } from './serializers';
 import { Url, UrlPattern } from './url';
 import { Key } from './utils/objects';
 
@@ -16,6 +16,6 @@ export class Route<S, K extends Key<S> | never> {
 }
 
 export function route<S = {}, K extends Key<S> = Key<S>>(pattern: UrlPattern<K>, serializer?: Serializer<S>): Route<S, K>;
-export function route<S = {}, K extends Key<S> | never = Key<S>>(pattern: UrlPattern<K>, serializer: Serializer<S> = resource({} as any)) {
+export function route<S = {}, K extends Key<S> | never = Key<S>>(pattern: UrlPattern<K>, serializer: Serializer<S> = new FieldSerializer({} as Fields<S>)) {
     return new Route<S, K>(serializer, pattern);
 }

@@ -2,7 +2,8 @@ import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/s
 import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
-import { EncodedResource, Resource, Serializer } from './resources';
+import { Resource } from './resources';
+import { EncodedResource, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
 import { hasAttributes } from './utils/compare';

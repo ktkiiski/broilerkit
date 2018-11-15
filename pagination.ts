@@ -1,5 +1,6 @@
 import { choice, Field } from './fields';
-import { EncodedResource, Resource, SerializedResource, Serializer } from './resources';
+import { Resource } from './resources';
+import { EncodedResource, SerializedResource, Serializer } from './serializers';
 import { findLastIndex } from './utils/arrays';
 import { compare } from './utils/compare';
 import { Key } from './utils/objects';
