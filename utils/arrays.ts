@@ -15,6 +15,19 @@ export function flatMap<T, R>(items: T[], callback: (item: T) => R[]): R[] {
 }
 
 /**
+ * Flattens an array of arrays to a flat array with the items from
+ * the nested arrays. This only performs a shallow flatten.
+ * @param arrays An array of arrays
+ */
+export function flatten<T>(arrays: T[][]): T[] {
+    const results: T[] = [];
+    for (const array of arrays) {
+        results.push(...array);
+    }
+    return results;
+}
+
+/**
  * Maps each item in the given array, but does not call the
  * iterator function for values that have already been called.
  * The equality is compared with isEqual function.
