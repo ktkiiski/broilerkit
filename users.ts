@@ -1,5 +1,5 @@
 import { datetime, email, nullable, string, url, uuid } from './fields';
-import { Resource, resource } from './resources';
+import { resource, VersionedResource } from './resources';
 
 export interface User {
     id: string;
@@ -10,11 +10,15 @@ export interface User {
     picture: string | null;
 }
 
-export const user: Resource<User> = resource({
-    id: uuid(),
-    name: string(),
-    email: email(),
-    createdAt: datetime(),
-    updatedAt: datetime(),
-    picture: nullable(url()),
+export const user: VersionedResource<User, 'id', 'updatedAt'> = resource({
+    fields: {
+        id: uuid(),
+        name: string(),
+        email: email(),
+        createdAt: datetime(),
+        updatedAt: datetime(),
+        picture: nullable(url()),
+    },
+    identifyBy: ['id'],
+    versionBy: 'updatedAt',
 });

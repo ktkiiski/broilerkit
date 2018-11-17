@@ -12,12 +12,12 @@ import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpSta
 import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
 import { Cursor, CursorSerializer, OrderedQuery, Page } from './pagination';
-import { Resource, resource } from './resources';
+import { Resource } from './resources';
 import { Route, route } from './routes';
-import { nested, nestedList, Serializer } from './serializers';
+import { Fields, FieldSerializer, nested, nestedList, Serializer } from './serializers';
 import { pattern, Url } from './url';
 import { isEqual } from './utils/compare';
-import { Key, keys, pick, spread, transformValues } from './utils/objects';
+import { Key, keys, Nullable, pick, spread, transformValues } from './utils/objects';
 
 export { Field };
 
@@ -106,6 +106,7 @@ export interface DestroyEndpoint<I, B> {
 }
 
 export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
+    resource: Resource<any, any>;
     methodHandlers: X;
     methods: HttpMethod[];
     route: Route<any, any> | Route<any, never>;
@@ -123,7 +124,6 @@ export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
 class ApiModel {
     constructor(
         public rootUrl: string,
-        protected idAttributes: string[],
         protected userIdAttribute: string | undefined,
         protected client: Client,
         protected endpoint: EndpointDefinition<any, EndpointMethodMapping>,
@@ -347,7 +347,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
         const {url} = this.endpoint.serializeRequest('GET', input);
         const cacheKey = url.toString();
         const {direction, ordering} = input;
-        const idAttributes = this.idAttributes as Array<Key<O>>;
+        const idAttributes = this.endpoint.resource.identifyBy as Array<Key<O>>;
 
         function isCollectionChange(change: ResourceChange<any, any>): boolean {
             return change.collectionUrl === url.path;
@@ -443,7 +443,7 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
         const method = 'POST';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
         const resource = await this.ajax(method, url, payload);
-        const resourceIdentity = pick(resource, this.idAttributes);
+        const resourceIdentity = pick(resource, this.endpoint.resource.identifyBy);
         this.client.resourceAddition$.next({
             type: 'addition',
             collectionUrl: url.path,
@@ -461,7 +461,7 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
         const method = 'POST';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
         const resource$ = this.ajax(method, url, payload);
-        const resourceIdentity = pick(input as any, this.idAttributes);
+        const resourceIdentity = pick(input as any, this.endpoint.resource.identifyBy);
         const addition: ResourceAddition<any, any> = {
             type: 'addition',
             collectionUrl: url.path,
@@ -522,7 +522,7 @@ class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEnd
     private async update(method: 'PUT' | 'PATCH', input: I1 | P): Promise<S> {
         const {client} = this;
         const {url, payload} = this.endpoint.serializeRequest(method, input);
-        const idAttributes = this.idAttributes as Array<keyof (I1 | P)>;
+        const idAttributes = this.endpoint.resource.identifyBy as Array<keyof (I1 | P)>;
         const resourceIdentity = pick(input, idAttributes);
         const parent = this.endpoint.parent;
         const parentUrl = parent && parent.route.compile(input);
@@ -567,7 +567,7 @@ class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, 
         const parent = this.endpoint.parent;
         const parentUrl = parent && parent.route.compile(query);
         const collectionUrl = parentUrl ? parentUrl.path : undefined;
-        const idAttributes = this.idAttributes as Array<keyof I>;
+        const idAttributes = this.endpoint.resource.identifyBy as Array<keyof I>;
         const resourceIdentity = pick(query, idAttributes);
         const removal: ResourceRemoval<any, any> = {
             type: 'removal',
@@ -651,15 +651,14 @@ export type DestroyEndpointDefinition<S, U extends Key<S>, A extends Authenticat
 
 export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping, B extends U | undefined> implements EndpointDefinition<T, X> {
 
-    public static create<S, U extends Key<S>>(resource: Resource<S>, idAttributes: Array<Key<S>>, route: Route<Pick<S, U>, U>) {
-        return new ApiEndpoint(resource, idAttributes, route, undefined, null, ['OPTIONS'], {
+    public static create<S, K extends Key<S>, U extends Key<S>>(resource: Resource<S, K>, route: Route<Pick<S, U>, U>) {
+        return new ApiEndpoint(resource, route, undefined, null, ['OPTIONS'], {
             OPTIONS: {auth: 'none', route},
         });
     }
 
     private constructor(
-        public readonly resource: Resource<S>,
-        private readonly idAttributes: Array<Key<S>>,
+        public readonly resource: Resource<S, any>,
         public readonly route: Route<Pick<S, U>, U>,
         public readonly userIdAttribute: B,
         public readonly parent: ApiEndpoint<S, any, any, any, any> | null,
@@ -668,12 +667,13 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         private readonly modelPrototypes: ApiModel[] = [],
     ) {}
 
+    // TODO: Should not be needed anymore: delete it
     public singleton() {
         const parent = this;
         function url<K extends Key<S> = never>(strings: TemplateStringsArray, ...keywords: K[]): ApiEndpoint<S, K, {}, OptionsEndpointMethodMapping, undefined> {
-            const {resource, idAttributes} = parent;
+            const {resource} = parent;
             const r = route(pattern(strings, ...keywords), resource.pick(keywords));
-            return new ApiEndpoint(resource, idAttributes, r, undefined, parent, ['OPTIONS'], {
+            return new ApiEndpoint(resource, r, undefined, parent, ['OPTIONS'], {
                 OPTIONS: {auth: 'none', route: r},
             });
         }
@@ -681,19 +681,19 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
     }
 
     public authorizeBy<K extends U>(userIdKey: K): ApiEndpoint<S, U, T, X, K> {
-        return new ApiEndpoint(this.resource, this.idAttributes, this.route, userIdKey, this.parent, this.methods, this.methodHandlers, this.modelPrototypes);
+        return new ApiEndpoint(this.resource, this.route, userIdKey, this.parent, this.methods, this.methodHandlers, this.modelPrototypes);
     }
 
     public listable<K extends Key<S>, A extends AuthenticationType = 'none'>(options: {auth?: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X, B> {
         const {orderingKeys, auth = 'none' as A} = options;
         const urlSerializer = new CursorSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
-        const pageResource = resource({
+        const pageSerializer = new FieldSerializer({
             next: nullable(nested(urlSerializer)),
             results: nestedList(this.resource),
         });
         return new ApiEndpoint(
-            this.resource, this.idAttributes, this.route, this.userIdAttribute, this.parent, [...this.methods, 'GET'],
-            spread(this.methodHandlers, {GET: {auth, route: route(this.route.pattern, urlSerializer), resourceSerializer: pageResource} as ReadMethodHandler<A>}),
+            this.resource, this.route, this.userIdAttribute, this.parent, [...this.methods, 'GET'],
+            spread(this.methodHandlers, {GET: {auth, route: route(this.route.pattern, urlSerializer), resourceSerializer: pageSerializer} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, ListEndpointModel.prototype],
         );
     }
@@ -702,7 +702,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options && options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, this.idAttributes, route, this.userIdAttribute, this.parent, [...this.methods, 'GET'],
+            resource, route, this.userIdAttribute, this.parent, [...this.methods, 'GET'],
             spread(this.methodHandlers, {GET: {auth, route, resourceSerializer: resource} as ReadMethodHandler<A>}),
             [...this.modelPrototypes, RetrieveEndpointModel.prototype],
         );
@@ -713,7 +713,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, this.idAttributes, route, this.userIdAttribute, this.parent, [...this.methods, 'POST'],
+            resource, route, this.userIdAttribute, this.parent, [...this.methods, 'POST'],
             spread(this.methodHandlers, {POST: {auth, route, payloadSerializer: payloadResource, resourceSerializer: resource} as PayloadMethodHandler<A>}),
             [...this.modelPrototypes, CreateEndpointModel.prototype],
         );
@@ -726,7 +726,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const replaceResource = resource.optional(options);
         const updateResource = resource.pick([...required, ...optional, ...keys(defaults)]).fullPartial();
         return new ApiEndpoint(
-            resource, this.idAttributes, this.route, this.userIdAttribute, this.parent, [...this.methods, 'PUT', 'PATCH'],
+            resource, this.route, this.userIdAttribute, this.parent, [...this.methods, 'PUT', 'PATCH'],
             spread(this.methodHandlers, {
                 PUT: {auth, route, payloadSerializer: replaceResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
                 PATCH: {auth, route, payloadSerializer: updateResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
@@ -739,16 +739,26 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         const auth = options && options.auth || 'none' as A;
         const {resource, route} = this;
         return new ApiEndpoint(
-            resource, this.idAttributes, route, this.userIdAttribute, this.parent, [...this.methods, 'DELETE'],
+            resource, route, this.userIdAttribute, this.parent, [...this.methods, 'DELETE'],
             spread(this.methodHandlers, {DELETE: {auth, route} as NoContentMethodHandler<A>}),
             [...this.modelPrototypes, DestroyEndpointModel.prototype],
+        );
+    }
+
+    public join<E>(extension: {[P in keyof E & string]: Resource<E[P], any>}): ApiEndpoint<S & Nullable<E>, U, T, X, B> {
+        const fields = transformValues(extension, (value) => nullable(nested(value)));
+        const resource = this.resource.extend(fields as Fields<Nullable<E>>);
+        const route = this.route as Route<Pick<S & Nullable<E>, U>, U>;
+        return new ApiEndpoint(
+            // TODO: parent?
+            resource, route, this.userIdAttribute, null, this.methods, this.methodHandlers, this.modelPrototypes,
         );
     }
 
     public bind(rootUrl: string, client: Client, authClient?: AuthClient): T {
         class BoundApiEndpoint extends ApiModel {}
         Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(rootUrl, this.idAttributes, this.userIdAttribute, client, this, authClient) as any;
+        return new BoundApiEndpoint(rootUrl, this.userIdAttribute, client, this, authClient) as any;
     }
 
     public validate(method: HttpMethod, input: any): any {
@@ -810,9 +820,9 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
     }
 }
 
-export function endpoint<R>(resource: Resource<R>, ...idAttributes: Array<Key<R>>) {
-    function url<K extends Key<R> = never>(strings: TemplateStringsArray, ...keywords: K[]): ApiEndpoint<R, K, {}, OptionsEndpointMethodMapping, undefined> {
-        return ApiEndpoint.create(resource, idAttributes, route(pattern(strings, ...keywords), resource.pick(keywords)));
+export function endpoint<R, K extends Key<R>>(resource: Resource<R, K>) {
+    function url<U extends Key<R> = never>(strings: TemplateStringsArray, ...keywords: U[]): ApiEndpoint<R, U, {}, OptionsEndpointMethodMapping, undefined> {
+        return ApiEndpoint.create(resource, route(pattern(strings, ...keywords), resource.pick(keywords)));
     }
     return {url};
 }

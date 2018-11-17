@@ -4,7 +4,7 @@ import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
 import { OrderedQuery, Page } from './pagination';
-import { Resource } from './resources';
+import { VersionedResource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
 import { mapCached, order } from './utils/arrays';
@@ -25,7 +25,7 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
     private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<UserPartialUpdate<S>>;
     private identitySerializer = this.serializer.pick(['id']);
 
-    constructor(private userPoolId: string, private region: string, private serializer: Resource<S>) {}
+    constructor(private userPoolId: string, private region: string, private serializer: VersionedResource<S, 'id', 'updatedAt'>) {}
 
     public async retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         const {identitySerializer} = this;
@@ -110,13 +110,9 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
 export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private nedb = new NeDbModel(this.filePath, this.serializer, {
-        name: this.name,
-        identifyBy: ['id'],
-        versionBy: 'updatedAt',
-    });
+    private nedb = new NeDbModel(this.filePath, this.resource);
 
-    constructor(private filePath: string, private serializer: Resource<S>, private name: string) {}
+    constructor(private filePath: string, private resource: VersionedResource<S, 'id', 'updatedAt'>) {}
 
     public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>, notFoundError);
@@ -182,7 +178,7 @@ export const users: Table<CognitoModel> = {
         }
         if (uri.startsWith('file://')) {
             const filePath = uri.slice('file://'.length);
-            return new LocalCognitoModel(filePath, user, this.name);
+            return new LocalCognitoModel(filePath, user);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     },

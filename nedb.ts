@@ -1,8 +1,8 @@
 import * as Datastore from 'nedb';
-import { Identity, PartialUpdate, Query, TableOptions, VersionedModel } from './db';
+import { Identity, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
-import { Resource } from './resources';
+import { VersionedResource } from './resources';
 import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
@@ -12,16 +12,16 @@ const PRIMARY_KEY_FIELD = '_pk';
 
 export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
 
-    private updateSerializer = this.resource.partial([this.options.versionBy]);
-    private identitySerializer = this.resource.partial(this.options.identifyBy);
-    private primaryKeySerializer = this.resource.pick(this.options.identifyBy);
+    private updateSerializer = this.resource.partial([this.resource.versionBy]);
+    private identitySerializer = this.resource.partial(this.resource.identifyBy);
+    private primaryKeySerializer = this.resource.pick(this.resource.identifyBy);
     private readonly decoder: Serializer<any, S>;
     private db = getDb(this.filePath);
 
-    constructor(private filePath: string, private resource: Resource<S>, private options: TableOptions<S, PK, V, any>) {
-        this.decoder = options.defaults ?
+    constructor(private filePath: string, private resource: VersionedResource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
+        this.decoder = defaults ?
             // Decode by migrating the defaults
-            this.resource.defaults(options.defaults) :
+            this.resource.defaults(defaults) :
             // Otherwise migrate with a possibility that there are missing properties
             this.resource
         ;
@@ -93,7 +93,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
                 throw error;
             }
             return await this.replace(
-                pick(item, this.options.identifyBy) as Identity<S, PK, V>,
+                pick(item, this.resource.identifyBy) as Identity<S, PK, V>,
                 item,
             );
         }

@@ -3,6 +3,7 @@ import {__assign, __rest} from 'tslib';
 export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K & string>>;
 export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<T>;
 export type Require<T, K extends keyof T> = Pick<T, K> & Partial<T>;
+export type Nullable<T> = {[P in keyof T]: T[P] | null};
 export type Key<T> = keyof T & string;
 
 /**
