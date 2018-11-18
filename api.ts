@@ -202,6 +202,7 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
         return this.validate('GET', input);
     }
     public observe(input: I): Observable<O> {
+        const resourceName = this.endpoint.resource.name;
         const {url, payload} = this.endpoint.serializeRequest('GET', input);
         const cacheKey = url.toString();
         return defer(() => {
@@ -213,14 +214,14 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
                 return resource$;
             }
             const update$ = this.client.resourceUpdate$.pipe(
-                filter((update) => update.resourceUrl === url.path),
+                filter((update) => update.resourceName === resourceName),
                 map((update) => update.resource as Partial<O>),
             );
             const removal$ = this.client.resourceRemoval$.pipe(
                 filter((removal) => removal.resourceUrl === url.path),
             );
             const optimisticUpdates$ = this.client.optimisticUpdates$.pipe(
-                map((updates) => updates.filter((update) => update.resourceUrl === url.path)),
+                map((updates) => updates.filter((update) => update.resourceName === resourceName)),
                 distinctUntilChanged(isEqual),
             );
             resource$ = concat(
@@ -344,13 +345,17 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
         return this.observeIterable(input).pipe(map(observeIterable));
     }
     public observeIterable(input: I): Observable<AsyncIterable<O>> {
-        const {url} = this.endpoint.serializeRequest('GET', input);
+        const {endpoint} = this;
+        const {url} = endpoint.serializeRequest('GET', input);
         const cacheKey = url.toString();
         const {direction, ordering} = input;
-        const idAttributes = this.endpoint.resource.identifyBy as Array<Key<O>>;
+        const resourceName = endpoint.resource.name;
 
         function isCollectionChange(change: ResourceChange<any, any>): boolean {
-            return change.collectionUrl === url.path;
+            if (change.type === 'addition') {
+                return change.collectionUrl === url.path;
+            }
+            return change.resourceName === resourceName;
         }
 
         return defer(() => {
@@ -383,7 +388,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             collection$ = change$.pipe(
                 // Combine all the changes with the latest state to the resource.
                 scan<ResourceChange<O, keyof O>, AsyncIterable<O>>(
-                    (collection, change) => applyCollectionChange(collection, change, idAttributes, ordering, direction),
+                    (collection, change) => applyCollectionChange(collection, change, ordering, direction),
                     iterable,
                 ),
                 // Always start with the initial state
@@ -391,7 +396,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
                 // Apply optimistic changes
                 combineLatest(optimisticChanges$, (collection, changes) => (
                     changes.reduce((result, change) => (
-                        applyCollectionChange(result, change, idAttributes, ordering, direction)
+                        applyCollectionChange(result, change, ordering, direction)
                     ), collection)
                 )),
                 // When this Observable is unsubscribed, then remove from the cache.
@@ -440,13 +445,16 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
 
 class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoint<I1, I2, O, B> {
     public async post(input: I1): Promise<O> {
+        const {endpoint} = this;
         const method = 'POST';
-        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        const {url, payload} = endpoint.serializeRequest(method, input);
         const resource = await this.ajax(method, url, payload);
-        const resourceIdentity = pick(resource, this.endpoint.resource.identifyBy);
+        const resourceIdentity = pick(resource, endpoint.resource.identifyBy);
+        const resourceName = endpoint.resource.name;
         this.client.resourceAddition$.next({
             type: 'addition',
             collectionUrl: url.path,
+            resourceName,
             resource,
             resourceIdentity,
         });
@@ -457,15 +465,17 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
         return await this.post(input);
     }
     public async postOptimistically(input: I1 & O): Promise<O> {
-        const {client} = this;
+        const {client, endpoint} = this;
         const method = 'POST';
-        const {url, payload} = this.endpoint.serializeRequest(method, input);
+        const {url, payload} = endpoint.serializeRequest(method, input);
         const resource$ = this.ajax(method, url, payload);
-        const resourceIdentity = pick(input as any, this.endpoint.resource.identifyBy);
+        const resourceIdentity = pick(input as any, endpoint.resource.identifyBy);
+        const resourceName = endpoint.resource.name;
         const addition: ResourceAddition<any, any> = {
             type: 'addition',
             collectionUrl: url.path,
             resource: input,
+            resourceName,
             resourceIdentity,
         };
         try {
@@ -478,6 +488,7 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
                 type: 'addition',
                 collectionUrl: url.path,
                 resource,
+                resourceName,
                 resourceIdentity,
             });
             return resource;
@@ -520,17 +531,14 @@ class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEnd
         return this.validate('PATCH', input);
     }
     private async update(method: 'PUT' | 'PATCH', input: I1 | P): Promise<S> {
-        const {client} = this;
-        const {url, payload} = this.endpoint.serializeRequest(method, input);
-        const idAttributes = this.endpoint.resource.identifyBy as Array<keyof (I1 | P)>;
+        const {client, endpoint} = this;
+        const {url, payload} = endpoint.serializeRequest(method, input);
+        const idAttributes = endpoint.resource.identifyBy as Array<keyof (I1 | P)>;
         const resourceIdentity = pick(input, idAttributes);
-        const parent = this.endpoint.parent;
-        const parentUrl = parent && parent.route.compile(input);
-        const collectionUrl = parentUrl ? parentUrl.path : undefined;
+        const resourceName = endpoint.resource.name;
         const update: ResourceUpdate<any, any> = {
             type: 'update',
-            collectionUrl,
-            resourceUrl: url.path,
+            resourceName,
             resource: input,
             resourceIdentity,
         };
@@ -543,8 +551,7 @@ class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEnd
             const resource = await request;
             client.resourceUpdate$.next({
                 type: 'update',
-                collectionUrl,
-                resourceUrl: url.path,
+                resourceName,
                 resource,
                 resourceIdentity,
             });
@@ -561,18 +568,16 @@ class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEnd
 
 class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, B> {
     public async delete(query: I): Promise<void> {
-        const {client} = this;
+        const {client, endpoint} = this;
         const method = 'DELETE';
-        const {url, payload} = this.endpoint.serializeRequest(method, query);
-        const parent = this.endpoint.parent;
-        const parentUrl = parent && parent.route.compile(query);
-        const collectionUrl = parentUrl ? parentUrl.path : undefined;
-        const idAttributes = this.endpoint.resource.identifyBy as Array<keyof I>;
+        const {url, payload} = endpoint.serializeRequest(method, query);
+        const idAttributes = endpoint.resource.identifyBy as Array<keyof I>;
         const resourceIdentity = pick(query, idAttributes);
+        const resourceName = endpoint.resource.name;
         const removal: ResourceRemoval<any, any> = {
             type: 'removal',
-            collectionUrl,
             resourceUrl: url.path,
+            resourceName,
             resourceIdentity,
         };
         const request = this.ajax(method, url, payload);
