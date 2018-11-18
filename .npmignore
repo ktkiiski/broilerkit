@@ -7,3 +7,6 @@
 # Exclude eslint preferences
 /.eslintrc.json
 /.eslintignore
+
+# Ignore packed npm packages
+*.tgz
