@@ -1,7 +1,7 @@
 import { parseARN } from './aws/arn';
 import { NeDbModel } from './nedb';
 import { OrderedQuery, Page } from './pagination';
-import { VersionedResource } from './resources';
+import { Resource } from './resources';
 import { SimpleDbModel } from './simpledb';
 import { Key, Require } from './utils/objects';
 
@@ -158,7 +158,7 @@ export interface Table<M> {
 export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>> implements Table<VersionedModel<S, PK, V, Query<S>>> {
 
     public readonly name: string;
-    constructor(public readonly resource: VersionedResource<S, PK, V>, public readonly options: TableOptions<S, PK, V, D>) {
+    constructor(public readonly resource: Resource<S, PK, V>, public readonly options: TableOptions<S, PK, V, D>) {
         this.name = options.name;
     }
 
@@ -182,6 +182,6 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D extends E
     }
 }
 
-export function table<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>>(resource: VersionedResource<S, PK, V>, options: TableOptions<S, PK, V, D>) {
+export function table<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>>(resource: Resource<S, PK, V>, options: TableOptions<S, PK, V, D>) {
     return new TableDefinition(resource, options);
 }

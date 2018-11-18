@@ -35,7 +35,7 @@ export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements 
         ordering: choice(this.orderingKeys),
         direction: choice(['asc', 'desc']),
     });
-    constructor(private resource: Resource<T, any>, private urlKeywords: U[], private orderingKeys: K[]) {}
+    constructor(private resource: Resource<T, any, any>, private urlKeywords: U[], private orderingKeys: K[]) {}
 
     public validate(input: Cursor<T, U, K>): Cursor<T, U, K> {
         const validated = this.serializer.validate(input);

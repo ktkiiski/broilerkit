@@ -2,7 +2,7 @@ import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/s
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
-import { VersionedResource } from './resources';
+import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { hasAttributes } from './utils/compare';
@@ -14,7 +14,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     private identitySerializer = this.resource.pick([...this.resource.identifyBy, this.resource.versionBy]).partial(this.resource.identifyBy);
     private readonly decoder: Serializer<any, S>;
 
-    constructor(private domainName: string, private region: string, private resource: VersionedResource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
+    constructor(private domainName: string, private region: string, private resource: Resource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
         this.decoder = defaults ?
             // Decode by migrating the defaults
             this.resource.defaults(defaults) :

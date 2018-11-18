@@ -1,51 +1,32 @@
-import { Fields, FieldSerializer } from './serializers';
-import { Key, spread } from './utils/objects';
+import { Fields, FieldSerializer, Serializer } from './serializers';
+import { Key, pick, spread } from './utils/objects';
 
-export class Resource<T, K extends Key<T>> extends FieldSerializer<T> {
-    /**
-     * @param fields Attribute names with their field definitions of the resource.
-     * @param identifyBy Attributes whose values together uniquely identify resources.
-     */
-    constructor(fields: Fields<T>, public readonly identifyBy: K[]) {
-        super(fields);
-    }
-    public extend<E>(fields: Fields<E>): Resource<T & E, K> {
-        return new Resource(spread(this.fields, fields) as Fields<T & E>, this.identifyBy);
-    }
-}
-
-export class VersionedResource<T, K extends Key<T>, V extends Key<T>> extends Resource<T, K> {
+export class Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> {
     /**
      * @param fields Attribute names with their field definitions of the resource.
      * @param identifyBy Attributes whose values together uniquely identify resources.
      * @param versionBy Attribute whose value can be used to determine if the item's has updated.
      */
-    constructor(fields: Fields<T>, identifyBy: K[], public readonly versionBy: V) {
-        super(fields, identifyBy);
+    constructor(fields: Fields<T>, public readonly identifyBy: PK[], public readonly versionBy: V) {
+        super(fields);
     }
-    public extend<E>(fields: Fields<E>): VersionedResource<T & E, K, V> {
-        return new VersionedResource(spread(this.fields, fields) as Fields<T & E>, this.identifyBy, this.versionBy);
+    public expose<K extends Exclude<Key<T> & Key<Fields<T>>, PK>>(attrs: K[]): Resource<Pick<T, K | PK>, PK, V extends K ? V : undefined> {
+        const versionBy = attrs.indexOf(this.versionBy as any) >= 0 ? this.versionBy : undefined;
+        return new Resource(pick(this.fields, [...attrs, ...this.identifyBy]) as Fields<Pick<T, K | PK>>, this.identifyBy, versionBy as V extends K ? V : undefined);
+    }
+    public expand<E>(fields: Fields<E>): Resource<T & E, PK, V> {
+        return new Resource(spread(this.fields, fields) as Fields<T & E>, this.identifyBy, this.versionBy);
     }
 }
 
-export type Deserialization<T extends Resource<any, any>> = T extends Resource<infer R, any> ? R : any;
+export type Deserialization<T extends Serializer<any, any>> = T extends Serializer<infer R> ? R : any;
 
-interface ResourceOptions<T, K extends Key<T>> {
+interface ResourceOptions<T, PK extends Key<T>, V extends Key<T> | undefined> {
     fields: Fields<T>;
-    identifyBy: K[];
+    identifyBy: PK[];
+    versionBy?: V;
 }
 
-interface VersionedResourceOptions<T, K extends Key<T>, V extends Key<T>> {
-    fields: Fields<T>;
-    identifyBy: K[];
-    versionBy: V;
-}
-
-export function resource<T, K extends Key<T>>(options: ResourceOptions<T, K>): Resource<T, K>;
-export function resource<T, K extends Key<T>, V extends Key<T>>(options: VersionedResourceOptions<T, K, V>): VersionedResource<T, K, V>;
-export function resource<T, K extends Key<T>, V extends Key<T>>(options: ResourceOptions<T, K> | VersionedResourceOptions<T, K, V>): Resource<T, K> | VersionedResourceOptions<T, K, V> {
-    if ('versionBy' in options && options.versionBy != null) {
-        return new VersionedResource<T, K, V>(options.fields, options.identifyBy, options.versionBy);
-    }
-    return new Resource<T, K>(options.fields, options.identifyBy);
+export function resource<T, PK extends Key<T>, V extends Key<T> | undefined = undefined>(options: ResourceOptions<T, PK, V>): Resource<T, PK, V> {
+    return new Resource(options.fields, options.identifyBy, options.versionBy as V);
 }

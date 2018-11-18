@@ -106,7 +106,7 @@ export interface DestroyEndpoint<I, B> {
 }
 
 export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
-    resource: Resource<any, any>;
+    resource: Resource<any, any, any>;
     methodHandlers: X;
     methods: HttpMethod[];
     route: Route<any, any> | Route<any, never>;
@@ -651,14 +651,14 @@ export type DestroyEndpointDefinition<S, U extends Key<S>, A extends Authenticat
 
 export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping, B extends U | undefined> implements EndpointDefinition<T, X> {
 
-    public static create<S, K extends Key<S>, U extends Key<S>>(resource: Resource<S, K>, route: Route<Pick<S, U>, U>) {
+    public static create<S, K extends Key<S>, U extends Key<S>>(resource: Resource<S, K, any>, route: Route<Pick<S, U>, U>) {
         return new ApiEndpoint(resource, route, undefined, null, ['OPTIONS'], {
             OPTIONS: {auth: 'none', route},
         });
     }
 
     private constructor(
-        public readonly resource: Resource<S, any>,
+        public readonly resource: Resource<S, any, any>,
         public readonly route: Route<Pick<S, U>, U>,
         public readonly userIdAttribute: B,
         public readonly parent: ApiEndpoint<S, any, any, any, any> | null,
@@ -745,9 +745,9 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         );
     }
 
-    public join<E>(extension: {[P in keyof E & string]: Resource<E[P], any>}): ApiEndpoint<S & Nullable<E>, U, T, X, B> {
+    public join<E>(extension: {[P in keyof E]: Resource<E[P], any, any>}): ApiEndpoint<S & Nullable<E>, U, T, X, B> {
         const fields = transformValues(extension, (value) => nullable(nested(value)));
-        const resource = this.resource.extend(fields as Fields<Nullable<E>>);
+        const resource = this.resource.expand(fields as Fields<Nullable<E>>);
         const route = this.route as Route<Pick<S & Nullable<E>, U>, U>;
         return new ApiEndpoint(
             // TODO: parent?
@@ -820,7 +820,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
     }
 }
 
-export function endpoint<R, K extends Key<R>>(resource: Resource<R, K>) {
+export function endpoint<R, K extends Key<R>>(resource: Resource<R, K, any>) {
     function url<U extends Key<R> = never>(strings: TemplateStringsArray, ...keywords: U[]): ApiEndpoint<R, U, {}, OptionsEndpointMethodMapping, undefined> {
         return ApiEndpoint.create(resource, route(pattern(strings, ...keywords), resource.pick(keywords)));
     }

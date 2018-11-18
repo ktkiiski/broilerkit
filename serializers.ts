@@ -189,6 +189,7 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
 }
 
 class NestedSerializerField<I> implements Field<I, Serialization> {
+    // tslint:disable-next-line:no-shadowed-variable
     constructor(private serializer: Serializer<I, any>) {}
     public validate(value: I): I {
         return this.serializer.validate(value);
@@ -219,4 +220,8 @@ export function nested<I>(res: Serializer<I, any>): Field<I, Encoding> {
 
 export function nestedList<I>(res: Serializer<I, any>): Field<I[], Encoding[]> {
     return list(nested(res));
+}
+
+export function serializer<T>(fields: Fields<T>): Serializer<T> {
+    return new FieldSerializer<T>(fields);
 }

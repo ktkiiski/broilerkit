@@ -2,7 +2,7 @@ import * as Datastore from 'nedb';
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
 import { Page, prepareForCursor } from './pagination';
-import { VersionedResource } from './resources';
+import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
@@ -18,7 +18,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     private readonly decoder: Serializer<any, S>;
     private db = getDb(this.filePath);
 
-    constructor(private filePath: string, private resource: VersionedResource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
+    constructor(private filePath: string, private resource: Resource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
         this.decoder = defaults ?
             // Decode by migrating the defaults
             this.resource.defaults(defaults) :

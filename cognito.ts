@@ -4,7 +4,7 @@ import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
 import { OrderedQuery, Page } from './pagination';
-import { VersionedResource } from './resources';
+import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
 import { mapCached, order } from './utils/arrays';
@@ -25,7 +25,7 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
     private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<UserPartialUpdate<S>>;
     private identitySerializer = this.serializer.pick(['id']);
 
-    constructor(private userPoolId: string, private region: string, private serializer: VersionedResource<S, 'id', 'updatedAt'>) {}
+    constructor(private userPoolId: string, private region: string, private serializer: Resource<S, 'id', 'updatedAt'>) {}
 
     public async retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         const {identitySerializer} = this;
@@ -114,7 +114,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
         picture: null,
     });
 
-    constructor(private filePath: string, private resource: VersionedResource<S, 'id', 'updatedAt'>) {}
+    constructor(private filePath: string, private resource: Resource<S, 'id', 'updatedAt'>) {}
 
     public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>, notFoundError);
