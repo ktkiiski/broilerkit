@@ -8,7 +8,7 @@ import { AuthClient } from './auth';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
 import { Field, nullable } from './fields';
-import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, SuccesfulResponse, Unauthorized } from './http';
+import { AuthenticatedHttpRequest, HttpHeaders, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
 import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
 import { Cursor, CursorSerializer, OrderedQuery, Page } from './pagination';
