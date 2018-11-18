@@ -28,14 +28,16 @@ async function signUp() {
     const formElement = document.getElementById('registration-form') as HTMLFormElement;
     const emailInputElement = document.getElementById('email-input') as HTMLInputElement;
     const nameInputElement = document.getElementById('name-input') as HTMLInputElement;
+    const avatarCheckboxElement = document.getElementById('avatar-checkbox') as HTMLInputElement;
     formElement.addEventListener('submit', async (event) => {
         event.preventDefault();
         const email = emailInputElement.value;
         const name = nameInputElement.value;
+        const hasAvatar = avatarCheckboxElement.checked;
         const avatarHash = randomize(32, '01234567890abcdef');
         const user = await _usersCollection.post({
             email, name,
-            picture: `https://www.gravatar.com/avatar/${avatarHash}?d=wavatar`,
+            picture: hasAvatar ? `https://www.gravatar.com/avatar/${avatarHash}?d=wavatar` : null,
         });
         signInAs(user);
     });
