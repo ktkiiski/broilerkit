@@ -11,6 +11,7 @@ export interface User {
 }
 
 export const user: Resource<User, 'id', 'updatedAt'> = resource({
+    name: 'user',
     fields: {
         id: uuid(),
         name: string(),
