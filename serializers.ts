@@ -148,20 +148,21 @@ export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extend
     }
 
     protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+        const {requiredFields, optionalFields, defaults} = this;
         if (typeof value === 'undefined') {
             // Value is missing
-            const defaultValue = this.defaults[key as D];
+            const defaultValue = defaults[key as D];
             if (typeof defaultValue !== 'undefined') {
                 // Return the default value
                 return defaultValue;
             }
-            if (this.optionalFields.indexOf(key) >= 0) {
+            if (optionalFields.indexOf(key) >= 0) {
                 // Allow this value to be undefined
                 return value;
             }
         }
-        // Otherwise deserialize normally if a required field
-        if (this.requiredFields.indexOf(key) >= 0) {
+        // Otherwise deserialize normally if one of the allowed fields
+        if (requiredFields.indexOf(key) >= 0 || optionalFields.indexOf(key) >= 0) {
             return super.deserializeFieldWith(field, value, key, callback);
         }
         // Otherwise this should be omitted
