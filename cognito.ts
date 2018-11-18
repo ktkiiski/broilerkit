@@ -110,7 +110,9 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
 export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private nedb = new NeDbModel(this.filePath, this.resource);
+    private nedb = new NeDbModel(this.filePath, this.resource, {
+        picture: null,
+    });
 
     constructor(private filePath: string, private resource: VersionedResource<S, 'id', 'updatedAt'>) {}
 

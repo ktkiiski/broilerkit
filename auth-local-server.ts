@@ -10,9 +10,9 @@ export const _usersCollection = implement(localApi._usersCollection, {})
             ordering, direction, since,
         });
     })
-    .create(async ({name, email, picture}, {users}) => {
+    .create(async (props, {users}) => {
         const id = uuid4();
-        const user = await users.create({id, name, email, picture});
+        const user = await users.create({id, ...props});
         return new Created(user);
     })
 ;

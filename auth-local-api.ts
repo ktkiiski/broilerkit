@@ -12,6 +12,8 @@ export const _usersCollection = endpoint(user)
         auth: 'none',
         required: ['email', 'name'],
         optional: [],
-        defaults: {picture: null},
+        defaults: {
+            picture: null,
+        },
     })
 ;
