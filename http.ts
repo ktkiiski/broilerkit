@@ -196,5 +196,14 @@ export class UnsupportedMediaType extends ExceptionResponse {
     public readonly statusCode = HttpStatus.UnsupportedMediaType;
 }
 
-// Alias for the BadRequest
-export const ValidationError = BadRequest;
+export function isResponse(response: any): response is ApiResponse<any> {
+    if (!response) {
+        return false;
+    }
+    const {statusCode, data, headers} = response;
+    return typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object';
+}
+
+export function isErrorResponse(response: any): response is ApiResponse<any> {
+    return isResponse(response) && response.statusCode >= 400;
+}

@@ -15,7 +15,7 @@ export function isEqual(a: any, b: any): boolean {
     return isDeepEqual(a, b);
 }
 
-function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean {
+export function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean {
     if (a === b) {
         return true;
     }

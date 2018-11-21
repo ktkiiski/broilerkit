@@ -1,7 +1,7 @@
 import { AuthenticationType, AuthRequestMapping, CreateEndpoint, CreateEndpointMethodMapping, DestroyEndpoint, DestroyEndpointMethodMapping, EndpointDefinition, EndpointMethodMapping, ListEndpoint, ListEndpointMethodMapping, RetrieveEndpoint, RetrieveEndpointMethodMapping, UpdateEndpoint, UpdateEndpointMethodMapping } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
-import { HttpMethod, HttpRequest, MethodNotAllowed, NoContent, Unauthorized } from './http';
+import { HttpMethod, HttpRequest, isResponse, MethodNotAllowed, NoContent, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
 import { OrderedQuery, Page } from './pagination';
@@ -155,9 +155,7 @@ function handleApiRequest(request: HttpRequest, handler: () => Promise<ApiRespon
 
 function catchHttpException(error: any, request: HttpRequest): HttpResponse {
     // Determine if the error was a HTTP response
-    // tslint:disable-next-line:no-shadowed-variable
-    const {statusCode, data, headers} = error || {} as any;
-    if (typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object') {
+    if (isResponse(error)) {
         // This was an intentional HTTP error, so it should be considered
         // a successful execution of the lambda function.
         return finalizeApiResponse(error, request.siteOrigin);

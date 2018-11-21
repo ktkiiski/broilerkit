@@ -1,5 +1,6 @@
+import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
-import { ValidationError } from './http';
+import { isErrorResponse } from './http';
 import { difference } from './utils/arrays';
 import { forEachKey, Key, keys, omit, Omit, pick, Require, spread } from './utils/objects';
 
@@ -25,68 +26,68 @@ export interface Serializer<I = any, O = I> {
     decodeSortable(input: Encoding): O;
 }
 
-type FieldConverter = (field: Field<any>, value: any, key: any) => any;
+type FieldConverter<T = any> = (field: Field<any>, value: any, key: any) => T;
 
 abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     protected abstract readonly fields: Fields<T>;
 
-    public validate(input: T): S {
-        return this.serializeWith(input, (field, value) => field.validate(value)) as S;
-    }
     public serialize(input: T): Serialization {
-        return this.serializeWith(input, (field, value) => field.serialize(value));
+        return this.transformWith(input, (field, value) => field.serialize(value));
     }
     public encode(input: T): Encoding {
-        return this.serializeWith(input, (field, value) => field.encode(value));
+        return this.transformWith(input, (field, value) => field.encode(value));
     }
     public encodeSortable(input: T): Encoding {
-        return this.serializeWith(input, (field, value) => field.encodeSortable(value));
+        return this.transformWith(input, (field, value) => field.encodeSortable(value));
+    }
+    public validate(input: T): S {
+        return this.transformWith(input, (field, value) => field.validate(value)) as S;
     }
     public deserialize(input: unknown): S {
-        return this.deserializeWith(input, (field, value) => field.deserialize(value));
+        return this.transformWith(input, (field, value) => field.deserialize(value));
     }
     public decode(input: Encoding): S {
-        return this.deserializeWith(input, (field, value) => field.decode(value));
+        return this.transformWith(input, (field, value) => field.decode(value));
     }
     public decodeSortable(input: Encoding): S {
-        return this.deserializeWith(input, (field, value) => field.decodeSortable(value));
+        return this.transformWith(input, (field, value) => field.decodeSortable(value));
     }
-    protected serializeWith<V>(input: {[key: string]: any}, serializeField: (field: Field<any>, value: any, key: string) => V): {[key: string]: V} {
-        const fields: {[key: string]: Field<any>} = this.fields;
-        const output: {[key: string]: V} = {};
-        for (const key in fields) {
-            if (fields.hasOwnProperty(key)) {
-                const value = input[key];
-                if (value !== undefined) {
-                    output[key] = serializeField(fields[key], value, key);
-                }
-            }
+    protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+        if (typeof value === 'undefined') {
+            throw new ValidationError(`Missing required value`);
         }
-        return output;
+        return callback(field, value, key);
     }
-    protected deserializeWith(input: unknown, callback: FieldConverter): S {
+    private transformWith(input: any, callback: FieldConverter): any {
         if (typeof input !== 'object' || !input) {
             throw new ValidationError(`Invalid object`);
         }
         const fields: {[key: string]: Field<any>} = this.fields;
-        const output = {} as Partial<S>;
+        const output: {[key: string]: any} = {};
+        const errors: Array<KeyErrorData<string>> = [];
         // Deserialize each field
         forEachKey(fields, (key, field) => {
-            const rawValue = (input as any)[key];
-            const value = this.deserializeFieldWith(field, rawValue, key, callback);
-            if (typeof value !== 'undefined') {
-                output[key as keyof S] = value;
+            const rawValue = input[key];
+            try {
+                const value = this.transformFieldWith(field, rawValue, key, callback);
+                if (typeof value !== 'undefined') {
+                    output[key] = value;
+                }
+            } catch (error) {
+                // Collect nested validation errors
+                if (isErrorResponse(error)) {
+                    errors.push({...error.data, key});
+                } else {
+                    // Pass this error through, causing an internal server error
+                    throw error;
+                }
             }
         });
-        return output as S;
-    }
-    protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
-        if (value === undefined) {
-            // TODO: Gather errors
-            throw new ValidationError(`Missing required value for "${key}"`);
-        } else {
-            return callback(field, value, key);
+        if (errors.length) {
+            // Invalid data -> throw validation error that contains nested errors
+            throw new ValidationError(`Invalid fields`, errors);
         }
+        return output;
     }
 }
 
@@ -147,7 +148,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extend
         this.defaults = defaults;
     }
 
-    protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+    protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
         const {requiredFields, optionalFields, defaults} = this;
         if (typeof value === 'undefined') {
             // Value is missing
@@ -163,7 +164,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extend
         }
         // Otherwise deserialize normally if one of the allowed fields
         if (requiredFields.indexOf(key) >= 0 || optionalFields.indexOf(key) >= 0) {
-            return super.deserializeFieldWith(field, value, key, callback);
+            return super.transformFieldWith(field, value, key, callback);
         }
         // Otherwise this should be omitted
     }
@@ -174,7 +175,7 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
         super();
     }
 
-    protected deserializeFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
+    protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
         if (typeof value === 'undefined') {
             // Value is missing
             const defaultValue = this.defaults[key as D];
@@ -184,7 +185,7 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
             }
         }
         // Otherwise deserialize normally
-        return super.deserializeFieldWith(field, value, key, callback);
+        return super.transformFieldWith(field, value, key, callback);
     }
 }
 

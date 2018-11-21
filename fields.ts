@@ -1,4 +1,5 @@
-import { ValidationError } from './http';
+import { KeyErrorData, ValidationError } from './errors';
+import { isErrorResponse } from './http';
 import { padEnd, padStart } from './utils/strings';
 
 export type NonEmptyString = Exclude<string, ''>;
@@ -463,31 +464,50 @@ class NullableField<I, O> implements Field<I | null, O | null> {
 class ListField<I, O> implements Field<I[], O[]> {
     constructor(public readonly field: Field<I, O>) {}
     public validate(items: I[]): I[] {
-        for (const item of items) {
-            this.field.validate(item);
-        }
-        return items;
+        return this.mapWith(items, (item) => this.field.validate(item));
     }
     public serialize(items: I[]): O[] {
-        return items.map((item) => this.field.serialize(item));
+        return this.mapWith(items, (item) => this.field.serialize(item));
     }
     public deserialize(items: unknown): I[] {
         if (items && Array.isArray(items)) {
-            return items.map((item) => this.field.deserialize(item));
+            return this.mapWith(items, (item) => this.field.deserialize(item));
         }
         throw new ValidationError(`Value is not an array`);
     }
     public encode(value: I[]): string {
-        return value.map((item) => encodeURIComponent(this.field.encode(item))).join('&');
+        return this.mapWith(value, (item) => encodeURIComponent(this.field.encode(item))).join('&');
     }
     public decode(value: string): I[] {
-        return value.split('&').map((item) => this.field.decode(decodeURIComponent(item)));
+        const items = value.split('&');
+        return this.mapWith(items, (item) => this.field.decode(decodeURIComponent(item)));
     }
     public encodeSortable(value: I[]): string {
-        return value.map((item) => encodeURIComponent(this.field.encodeSortable(item))).join('&');
+        return this.mapWith(value, (item) => encodeURIComponent(this.field.encodeSortable(item))).join('&');
     }
     public decodeSortable(value: string): I[] {
-        return value.split('&').map((item) => this.field.decodeSortable(decodeURIComponent(item)));
+        const items = value.split('&');
+        return this.mapWith(items, (item) => this.field.decodeSortable(decodeURIComponent(item)));
+    }
+    private mapWith<X, Y>(items: X[], iteratee: (item: X, index: number) => Y): Y[] {
+        const errors: Array<KeyErrorData<number>> = [];
+        const results = items.map((item, key) => {
+            try {
+                return iteratee(item, key);
+            } catch (error) {
+                // Collect nested errors
+                if (isErrorResponse(error)) {
+                    errors.push({...error.data, key});
+                } else {
+                    // Pass through the error
+                    throw error;
+                }
+            }
+        });
+        if (errors.length) {
+            throw new ValidationError(`Invalid items`, errors);
+        }
+        return results as Y[];
     }
 }
 
