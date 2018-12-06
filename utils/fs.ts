@@ -118,3 +118,9 @@ export async function ensureDirectoryExists(dirPath: string) {
         }
     }
 }
+
+export async function fileExists(filePath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        return fs.exists(filePath, resolve);
+    });
+}
