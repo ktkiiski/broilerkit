@@ -35,7 +35,7 @@ export function renderUserResources<I, O extends object, S extends object>(endpo
                 endpoints as any,
                 (endpoint: ObservableUserEndpoint<I[keyof I], O[keyof O]>, key) => endpoint.observeWithUser(props[key]),
             ) as {[P in keyof O]: Observable<Nullable<O>[P]>}),
-            switchMap((observables) => observeValues(observables)),
+            switchMap((observables) => observeValues<Nullable<O>>(observables)),
         );
     }
     return UserResourceComponent;
@@ -53,7 +53,7 @@ export function renderResources<I, O extends object, S extends object>(endpoints
                 endpoints as any,
                 (endpoint: ObservableEndpoint<I[keyof I], O[keyof O]>, key) => endpoint.observe(props[key]),
             ) as {[P in keyof O]: Observable<Nullable<O>[P]>}),
-            switchMap((observables) => observeValues(observables)),
+            switchMap((observables) => observeValues<Nullable<O>>(observables)),
         );
     }
     return ResourceComponent;
