@@ -58,7 +58,7 @@ yargs
             .describe('template', 'Name of the Broilerplate branch to apply.')
             .default('template', 'master')
         ,
-        describe: 'Bootstrap your project with Broilerplate template.',
+        describe: 'Bootstrap your app with Broilerplate template.',
         handler: ({template, directory}: {template: string, directory: string}) => {
             const options: childProcess.ExecSyncOptions = {cwd: directory, stdio: 'inherit'};
             childProcess.execSync(`git init ${escapeForShell(directory)}`, options);

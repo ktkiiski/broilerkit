@@ -41,6 +41,33 @@ To use this utility, you need the following:
 - Your own **domain** for your web app. You can buy one, e.g, from [GoDaddy](https://www.godaddy.com/domains).
 - An [Amazon Web Services](https://aws.amazon.com/) account. You can get started with [AWS Free Tier](https://aws.amazon.com/free/).
 
+## Command line tools
+
+The BroilerKit contains a lot of command line utilities to initialize, deploy, manage and inspect your app!
+You can run these commands with `npx`. You can print out the help for the available commands:
+
+```
+$ npx broilerkit --help
+broilerkit <command>
+
+Commands:
+  broilerkit init [directory]      Bootstrap your app with Broilerplate template.    [aliases: pull]
+  broilerkit deploy <stage>        Deploy the web app for the given stage.
+  broilerkit undeploy <stage>      Deletes the previously deployed web app.
+  broilerkit logs <stage> [since]  Print app logs.
+  broilerkit compile <stage>       Compile the web app.                             [aliases: build]
+  broilerkit preview <stage>       Preview the changes that would be deployed.
+  broilerkit describe <stage>      Describes the deployed resources.
+  broilerkit serve [stage]         Run the local development server.
+
+Options:
+  --appConfigPath  Path to the app configuration                        [string] [default: "app.ts"]
+  --debug          Compile assets for debugging                                            [boolean]
+  --no-color       Print output without colors                                             [boolean]
+  --help           Show help                                                               [boolean]
+  --version        Show version number                                                     [boolean]
+```
+
 ## Creating a web app
 
 To start developing a new web app, first create a GIT repository for it:
