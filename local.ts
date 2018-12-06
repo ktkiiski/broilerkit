@@ -160,12 +160,16 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
     }
 }
 
+export function getDbFilePath(directoryPath: string, tableName: string): string {
+    return path.resolve(directoryPath, `./db/${tableName}.db`);
+}
+
 function getRequestEnvironment(service: ApiService, directoryPath: string): {[key: string]: string} {
     const environment: {[key: string]: string} = {
-        DatabaseTableUsersURI: `file://${path.resolve(directoryPath, `./db/Users.db`)}`,
+        DatabaseTableUsersURI: `file://${getDbFilePath(directoryPath, 'Users')}`,
     };
     forEachKey(service.dbTables, (_, table) => {
-        const filePath = `file://${path.resolve(directoryPath, `./db/${table.name}.db`)}`;
+        const filePath = `file://${getDbFilePath(directoryPath, table.name)}`;
         environment[`DatabaseTable${upperFirst(table.name)}URI`] = filePath;
     });
     return environment;

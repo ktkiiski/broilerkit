@@ -143,6 +143,14 @@ yargs
             broiler.serve().then(null, onError);
         },
     })
+    .command({
+        command: 'db list <stage>',
+        describe: 'List database tables',
+        handler: (argv: CommandOptions) => {
+            const broiler = getBroiler(argv);
+            broiler.printTables().then(null, onError);
+        },
+    })
     .demandCommand(1)
     .wrap(Math.min(yargs.terminalWidth(), 100))
     .help()

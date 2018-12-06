@@ -15,13 +15,13 @@ import { compile } from './compile';
 import { BroilerConfig } from './config';
 import { HttpMethod } from './http';
 import { AppStageConfig } from './index';
-import { serveBackEnd, serveFrontEnd } from './local';
+import { getDbFilePath, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
-import { readFile, readJSONFile, searchFiles, writeJSONFile } from './utils/fs';
+import { fileExists, readFile, readJSONFile, searchFiles, writeJSONFile } from './utils/fs';
 import { forEachKey, mapObject, spread, toPairs, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -273,6 +273,36 @@ export class Broiler {
         });
         for await (const event of logStream) {
             this.log(formatLogEvent(event, this.stackName));
+        }
+    }
+
+    public async printTables() {
+        const server = this.importServer();
+        if (!server) {
+            this.log(`No database tables. Your app does not define a backend.`);
+            return;
+        }
+        const sortedTables = order(values(server.dbTables), 'name', 'asc');
+        if (!sortedTables.length) {
+            this.log(`Your app does not define any database tables.`);
+            return;
+        }
+        const { stage, stageDir } = this.config;
+        if (stage === 'local') {
+            // Print local tables
+            for (const table of sortedTables) {
+                const tableFilePath = getDbFilePath(stageDir, table.name);
+                const isCreated = await fileExists(tableFilePath);
+                this.log(`${table.name} ${isCreated ? green('✔︎') : red('×')}`);
+            }
+        } else {
+            // Print remote tables
+            const resources = await this.cloudFormation.describeStackResources();
+            const resourceIds = new Set(resources.map((resource) => resource.LogicalResourceId));
+            for (const table of sortedTables) {
+                const isCreated = resourceIds.has(`DatabaseTable${upperFirst(table.name)}`);
+                this.log(`${table.name} ${isCreated ? green('✔︎') : red('×')}`);
+            }
         }
     }
 
