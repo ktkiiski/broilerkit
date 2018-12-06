@@ -41,14 +41,6 @@ To use this utility, you need the following:
 - Your own **domain** for your web app. You can buy one, e.g, from [GoDaddy](https://www.godaddy.com/domains).
 - An [Amazon Web Services](https://aws.amazon.com/) account. You can get started with [AWS Free Tier](https://aws.amazon.com/free/).
 
-## Installing
-
-The BroilerKit-based projects are used with the [BroilerPan](https://github.com/ktkiiski/broilerpan) command line utility:
-
-```bash
-npm install -g broilerpan
-```
-
 ## Creating a web app
 
 To start developing a new web app, first create a GIT repository for it:
@@ -61,7 +53,7 @@ cd myapp
 Then it is recommended that you apply the [Broilerplate template](https://github.com/ktkiiski/broilerplate.git) to your project:
 
 ```
-broil init
+npx broilerkit init
 ```
 
 If installing fails on OSX [you may try to install libpng with Homebrew](https://github.com/tcoopman/image-webpack-loader#libpng-issues).
@@ -82,7 +74,7 @@ You should change the configuration in `app.config.ts` according to your web app
 To run the app locally, start the local HTTP server and the build watch process:
 
 ```bash
-broil serve
+npx broilerkit serve
 ```
 
 Then navigate your browser to the website address as defined in your `local` stage configuration, which is http://localhost:1111/ by default!
@@ -115,19 +107,19 @@ aws configure
 Deployments are run with the following command:
 
 ```bash
-broil deploy <stage>
+npx broilerkit deploy <stage>
 ```
 
 For example, to deploy the development version to the `dev` stage:
 
 ```bash
-broil deploy dev
+npx broilerkit deploy dev
 ```
 
 To deploy the production version to the `prod` stage:
 
 ```bash
-broil deploy prod
+npx broilerkit deploy prod
 ```
 
 **IMPORTANT:** When deploying for the first time, you will receive email for confirming the certificate for the domain names!
