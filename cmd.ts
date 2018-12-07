@@ -144,12 +144,19 @@ yargs
         },
     })
     .command({
-        command: 'db list <stage>',
-        describe: 'List database tables',
-        handler: (argv: CommandOptions) => {
-            const broiler = getBroiler(argv);
-            broiler.printTables().then(null, onError);
-        },
+        command: 'db <command>',
+        describe: 'Manage database tables',
+        builder: (cmdYargs) => cmdYargs
+            .command({
+                command: 'list <stage>',
+                describe: 'List database tables',
+                handler: (argv: CommandOptions) => {
+                    const broiler = getBroiler(argv);
+                    broiler.printTables().then(null, onError);
+                },
+            })
+        ,
+        handler: () => { /* do nothing */ },
     })
     .demandCommand(1)
     .wrap(Math.min(yargs.terminalWidth(), 100))

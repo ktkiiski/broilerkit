@@ -22,7 +22,7 @@ import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
 import { fileExists, readFile, readJSONFile, searchFiles, writeJSONFile } from './utils/fs';
-import { forEachKey, mapObject, spread, toPairs, values } from './utils/objects';
+import { buildObject, forEachKey, mapObject, spread, toPairs, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
@@ -293,15 +293,18 @@ export class Broiler {
             for (const table of sortedTables) {
                 const tableFilePath = getDbFilePath(stageDir, table.name);
                 const isCreated = await fileExists(tableFilePath);
-                this.log(`${table.name} ${isCreated ? green('✔︎') : red('×')}`);
+                this.log(`${table.name} ${isCreated ? `${green('✔︎')} ${dim(tableFilePath)}` : red('×')}`);
             }
         } else {
             // Print remote tables
             const resources = await this.cloudFormation.describeStackResources();
-            const resourceIds = new Set(resources.map((resource) => resource.LogicalResourceId));
+            const resourcesByLogicalId = buildObject(resources, (resource) => [
+                resource.LogicalResourceId, resource,
+            ]);
             for (const table of sortedTables) {
-                const isCreated = resourceIds.has(`DatabaseTable${upperFirst(table.name)}`);
-                this.log(`${table.name} ${isCreated ? green('✔︎') : red('×')}`);
+                const resource = resourcesByLogicalId[`DatabaseTable${upperFirst(table.name)}`];
+                const {PhysicalResourceId = ''} = resource;
+                this.log(`${table.name} ${resource == null ? red('×') : `${green('✔︎')} ${dim(PhysicalResourceId)}` }`);
             }
         }
     }
