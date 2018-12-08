@@ -1,14 +1,13 @@
-import { toArray } from './async';
 import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Table } from './db';
 import { NeDbModel } from './nedb';
-import { OrderedQuery, Page } from './pagination';
+import { Page } from './pagination';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
-import { mapCached, order } from './utils/arrays';
-import { Key, Omit, spread } from './utils/objects';
+import { mapCached } from './utils/arrays';
+import { Omit, spread } from './utils/objects';
 
 export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
@@ -16,16 +15,14 @@ export interface UserIdentity {
     id: string;
 }
 export type UserPartialUpdate<S extends User> = Partial<UserMutableAttributes<S>>;
-export type UserQuery<S extends User> = OrderedQuery<S, Key<UserMutableAttributes<S>>>;
-
-export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, UserQuery<S>>;
+export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, {}>;
 
 export class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
     private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<UserPartialUpdate<S>>;
     private identitySerializer = this.serializer.pick(['id']);
 
-    constructor(private userPoolId: string, private region: string, private serializer: Resource<S, 'id', 'updatedAt'>) {}
+    constructor(private userPoolId: string, private region: string, public serializer: Resource<S, 'id', 'updatedAt'>) {}
 
     public async retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         const {identitySerializer} = this;
@@ -83,15 +80,20 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         }
     }
 
-    public async list(query: UserQuery<S>) {
+    public async list(_: {}) {
         // TODO: Improve the query possibilities!
-        const { ordering, direction, since } = query;
         const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
-        const cognitoUsers = await toArray(cognito.listUsers());
-        return {
-            results: order(cognitoUsers, ordering, direction, since) as S[],
-            next: null,
-        };
+        const results: S[] = [];
+        for await (const cognitoUsers of cognito.listUsers()) {
+            results.push(...cognitoUsers);
+        }
+        return {results, next: null};
+    }
+
+    public scan(_: {} = {}): AsyncIterableIterator<S[]> {
+        // TODO: Improve
+        const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
+        return cognito.listUsers();
     }
 
     public batchRetrieve(identities: UserIdentity[]) {
@@ -110,11 +112,11 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
 export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private nedb = new NeDbModel(this.filePath, this.resource, {
+    private nedb = new NeDbModel(this.filePath, this.serializer, {
         picture: null,
     });
 
-    constructor(private filePath: string, private resource: Resource<S, 'id', 'updatedAt'>) {}
+    constructor(private filePath: string, public readonly serializer: Resource<S, 'id', 'updatedAt'>) {}
 
     public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
         return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>, notFoundError);
@@ -152,9 +154,11 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
         return this.nedb.clear(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
-    public list<Q extends UserQuery<S>>(query: Q) {
-        // TODO: Max count!
+    public list<Q extends {}>(query: {}) {
         return this.nedb.list(query as any) as Promise<Page<S, Q>>;
+    }
+    public scan(query?: {}): AsyncIterableIterator<S[]> {
+        return this.nedb.scan(query as any);
     }
     public batchRetrieve(identities: UserIdentity[]) {
         return this.nedb.batchRetrieve(identities as Array<Identity<S, 'id', 'updatedAt'>>);

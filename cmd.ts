@@ -155,6 +155,18 @@ yargs
                     broiler.printTables().then(null, onError);
                 },
             })
+            .command({
+                command: 'dump <stage> <table>',
+                describe: 'Print out all the records from a table',
+                builder: (subCmdYargs) => subCmdYargs
+                    .boolean('pretty')
+                    .describe('pretty', 'Print formatted JSON')
+                ,
+                handler: (argv: CommandOptions & {table: string, pretty: boolean}) => {
+                    const broiler = getBroiler(argv);
+                    broiler.printTableRows(argv).then(null, onError);
+                },
+            })
         ,
         handler: () => { /* do nothing */ },
     })

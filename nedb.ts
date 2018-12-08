@@ -1,7 +1,7 @@
 import * as Datastore from 'nedb';
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound } from './http';
-import { Page, prepareForCursor } from './pagination';
+import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
@@ -12,18 +12,22 @@ const PRIMARY_KEY_FIELD = '_pk';
 
 export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
 
-    private updateSerializer = this.resource.partial([this.resource.versionBy]);
-    private identitySerializer = this.resource.partial(this.resource.identifyBy);
-    private primaryKeySerializer = this.resource.pick(this.resource.identifyBy);
+    private updateSerializer = this.serializer.partial([this.serializer.versionBy]);
+    private identitySerializer = this.serializer.partial(this.serializer.identifyBy);
+    private primaryKeySerializer = this.serializer.pick(this.serializer.identifyBy);
     private readonly decoder: Serializer<any, S>;
     private db = getDb(this.filePath);
+    private defaultScanQuery: OrderedQuery<S, V> = {
+        ordering: this.serializer.versionBy,
+        direction: 'asc',
+    };
 
-    constructor(private filePath: string, private resource: Resource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
+    constructor(private filePath: string, public readonly serializer: Resource<S, PK, V>, defaults?: {[P in any]: S[any]}) {
         this.decoder = defaults ?
             // Decode by migrating the defaults
-            this.resource.defaults(defaults) :
+            this.serializer.defaults(defaults) :
             // Otherwise migrate with a possibility that there are missing properties
-            this.resource
+            this.serializer
         ;
         // Ensure uniqueness for the primary key (in addition to the built-in `_id` field)
         this.db.ensureIndex({
@@ -43,7 +47,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
 
     public async create(item: S, alreadyExistsError?: Error) {
         const serializedItem = {
-            ...this.resource.serialize(item),
+            ...this.serializer.serialize(item),
             [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(item),
         };
         try {
@@ -55,7 +59,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     }
 
     public async replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
-        const {resource} = this;
+        const {serializer: resource} = this;
         const query = this.getItemQuery(identity);
         const serializedItem = {
             ...resource.serialize(item),
@@ -93,7 +97,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
                 throw error;
             }
             return await this.replace(
-                pick(item, this.resource.identifyBy) as Identity<S, PK, V>,
+                pick(item, this.serializer.identifyBy) as Identity<S, PK, V>,
                 item,
             );
         }
@@ -114,7 +118,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
 
     public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
         const { decoder } = this;
-        const { fields } = this.resource;
+        const { fields } = this.serializer;
         const { ordering, direction, since } = query;
         const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
         const filter: {[key: string]: any} = {};
@@ -141,6 +145,14 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
                     next: spread(query, {since: cursor.since}),
                 };
             }
+        }
+    }
+    public async *scan(query: Query<S> = this.defaultScanQuery): AsyncIterableIterator<S[]> {
+        let next: Query<S> | null = query;
+        while (next) {
+            const page: Page<S, Query<S>> = await this.list(next);
+            yield page.results;
+            next = page.next;
         }
     }
     public batchRetrieve(identities: Array<Identity<S, PK, V>>) {

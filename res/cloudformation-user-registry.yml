@@ -231,3 +231,6 @@ Outputs:
     Description: "Generated secret for the user pool client"
     Value:
       Fn::GetAtt: UserPoolClientSecret.ClientSecret
+  DatabaseTableUsersURI:
+    Value:
+      Fn::GetAtt: UserPool.Arn

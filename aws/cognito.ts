@@ -18,8 +18,10 @@ export class AmazonCognitoIdentity<S = {}> {
     constructor(private region: string, private userPoolId: string) {}
 
     public async getUserById(id: string, notFoundError?: Error): Promise<CognitoUser & S> {
-        for await (const user of this.listUsers({limit: 1, filterKey: 'sub', filterValue: id})) {
-            return user;
+        for await (const users of this.listUsers({limit: 1, filterKey: 'sub', filterValue: id})) {
+            for (const user of users) {
+                return user;
+            }
         }
         throw notFoundError || new NotFound(`User was not found.`);
     }
@@ -51,7 +53,7 @@ export class AmazonCognitoIdentity<S = {}> {
         await request.promise();
     }
 
-    public async *listUsers(options?: {limit?: number, filterKey?: string, filterValue?: string}): AsyncIterableIterator<CognitoUser & S> {
+    public async *listUsers(options?: {limit?: number, filterKey?: string, filterValue?: string}): AsyncIterableIterator<Array<CognitoUser & S>> {
         const limit = options && options.limit;
         const filterKey = options && options.filterKey;
         const filterValue = options && options.filterValue;
@@ -64,6 +66,7 @@ export class AmazonCognitoIdentity<S = {}> {
         for await (const users of retrievePages(request, 'Users')) {
             if (users) {
                 for (const user of users) {
+                    const results: Array<CognitoUser & S> = [];
                     const {Attributes, Username} = user;
                     if (Attributes && Username) {
                         const result: any = {
@@ -80,8 +83,9 @@ export class AmazonCognitoIdentity<S = {}> {
                                 }
                             }
                         }
-                        yield result as CognitoUser & S;
+                        results.push(result);
                     }
+                    yield results;
                 }
             }
         }

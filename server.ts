@@ -6,7 +6,7 @@ import { ApiResponse, HttpResponse, OK, SuccesfulResponse } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
 import { OrderedQuery, Page } from './pagination';
 import { Url } from './url';
-import { spread, transformValues } from './utils/objects';
+import { spread, transformValues, values } from './utils/objects';
 import { countBytes, upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
@@ -225,6 +225,12 @@ export class ApiService {
             {...this.implementations, ...implementations},
             {...this.dbTables, ...dbTables},
         );
+    }
+
+    public getTable(tableName: string): Table<Model<any, any, any, any, any>> | undefined {
+        const tableMapping = spread(this.dbTables, {users});
+        const tables = values(tableMapping);
+        return tables.find((table) => table.name === tableName);
     }
 }
 

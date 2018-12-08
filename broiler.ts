@@ -309,6 +309,39 @@ export class Broiler {
         }
     }
 
+    public async printTableRows(options: {table: string, pretty: boolean}) {
+        const tableName = options.table;
+        const { stage, stageDir } = this.config;
+        const service = this.importServer();
+        if (!service) {
+            throw new Error(`No tables defined for the app.`);
+        }
+        const table = service.getTable(tableName);
+        if (!table) {
+            throw new Error(`Table ${tableName} not found.`);
+        }
+        let tableUri: string;
+        if (stage === 'local') {
+            const tableFilePath = getDbFilePath(stageDir, tableName);
+            tableUri = `file://${tableFilePath}`;
+        } else {
+            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
+            const tableUriVar = `${logicalId}URI`;
+            const output = await this.cloudFormation.getStackOutput();
+            tableUri = output[tableUriVar];
+            if (!tableUri) {
+                throw new Error(`Table ${tableName} has not been deployed.`);
+            }
+        }
+        const model = table.getModel(tableUri);
+        for await (const items of model.scan()) {
+            for (const item of items) {
+                const serializedItem = model.serializer.serialize(item);
+                this.log(JSON.stringify(serializedItem, null, options.pretty ? 4 : undefined));
+            }
+        }
+    }
+
     /**
      * Ensures that the CloudFormation stack exists. If it does, this does
      * nothing. If it doesn't, then an initial stack will be created,

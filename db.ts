@@ -2,15 +2,20 @@ import { parseARN } from './aws/arn';
 import { NeDbModel } from './nedb';
 import { OrderedQuery, Page } from './pagination';
 import { Resource } from './resources';
+import { Serializer } from './serializers';
 import { SimpleDbModel } from './simpledb';
 import { Key, Require } from './utils/objects';
 
-export type Query<T> = Partial<Pick<T, Key<T>>> & OrderedQuery<T, Key<T>>;
+export type Query<T> = OrderedQuery<T, Key<T>> & Partial<T> | OrderedQuery<T, Key<T>>;
 
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
 export interface Model<T, I, R, P, D> {
+    /**
+     * Serializer for the items returned by the database table.
+     */
+    readonly serializer: Serializer<T>;
     /**
      * Gets the item from the database using the given identity
      * object, containing all the identifying attributes.
@@ -96,14 +101,20 @@ export interface Model<T, I, R, P, D> {
      */
     clear(identity: I): Promise<void>;
     /**
-     * Queries and finds the first items from the table.
-     * Always returns at least `minCount` number of items, unless there are no
-     * more matching items to follow. It never returns more than `maxCount` items.
+     * Queries and finds the first/next batch of items from the table
+     * matching the given criteria.
      *
-     * You can determine whether the end-of-query is reached by checking if the
-     * actual number of returned items is less than `minCount`.
+     * The return value is a page object containing an array of items,
+     * and the query parameters to retrieve the next batch, or null
+     * if no more items are found.
      */
     list<Q extends D>(query: Q): Promise<Page<T, Q>>;
+    /**
+     * Iterate over batches of items from the table matching the given criteria.
+     *
+     * Without parameters should scan the whole table, in some order.
+     */
+    scan(query?: D): AsyncIterable<T[]>;
     /**
      * Retrieves item for each of the identity given objects, or null values if no
      * matching item is found, in the most efficient way possible. The results
