@@ -18,11 +18,9 @@ You deploy your production-ready web app to [Amazon Web Services cloud platform]
 
 - Lint your JavaScript code style with [ESLint](http://eslint.org/)
 - Lint your TypeScript code style with [TSLint](https://palantir.github.io/tslint/)
-- Generate static HTML pages from [Pug](https://pugjs.org/) templates
 - Polyfill `Promise`, `Symbol` and other ES6 features for browsers that do not support them
 - Automatically bundle any images from your HTML, Pug, or Markdown files.
 - Automatically **optimize images losslessly** for minimal size
-- Include Markdown to your Pug templates. You may [include with filters](https://pugjs.org/language/includes.html#including-filtered-text) but `!= require("foo.md")` is preferred because it will also require any images.
 - Generate favicons and related asset files from a single icon image file, and insert references to the HTML pages
 - Refer to your current GIT version with `__COMMIT_HASH__`, `__VERSION__` and `__BRANCH__` constants
 

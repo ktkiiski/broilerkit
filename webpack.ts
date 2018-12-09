@@ -350,14 +350,6 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                     test: /\.scss($|\?)/,
                     loader: 'fast-sass-loader',
                 },
-                // Convert any Pug (previously 'Jade') templates to HTML
-                {
-                    test: /\.pug$/,
-                    loader: 'pug-loader',
-                    options: {
-                        pretty: debug,
-                    },
-                },
                 // Ensure that any images references in HTML files are included
                 {
                     test: /\.(md|markdown|html?|tmpl)$/,
