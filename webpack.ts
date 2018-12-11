@@ -10,7 +10,7 @@ import { buildObject, pick } from './utils/objects';
 
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-const ExtractTextPlugin = require('extract-text-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
@@ -74,9 +74,9 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             tslint: path.resolve(projectRootPath, './tslint.json'),
         }),
         // Extract stylesheets to separate files in production
-        new ExtractTextPlugin({
+        new MiniCssExtractPlugin({
             disable: devServer,
-            filename: devServer && debug ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[hash].css`,
+            filename: devServer && debug ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
         }),
         // Create HTML plugins for each webpage
         ...pages.map(
@@ -102,26 +102,22 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
          * Replace "global variables" from the scripts with the constant values.
          */
         new webpack.DefinePlugin({
-            // This will strip out development features from React when building for production
-            'process.env': {
-                NODE_ENV: JSON.stringify(debug ? 'development' : 'production'),
-            },
             // Static assets URL root
-            '__ASSETS_ROOT__': JSON.stringify(assetsRoot),
+            __ASSETS_ROOT__: JSON.stringify(assetsRoot),
             // Web site URL root
-            '__SITE_ROOT__': JSON.stringify(siteRoot),
+            __SITE_ROOT__: JSON.stringify(siteRoot),
             // API URL root
-            '__API_ROOT__': JSON.stringify(apiRoot),
+            __API_ROOT__: JSON.stringify(apiRoot),
             // Allow using the GIT commit hash ID
-            '__COMMIT_HASH__': JSON.stringify(gitCommitHash),
+            __COMMIT_HASH__: JSON.stringify(gitCommitHash),
             // Allow using the GIT version
-            '__VERSION__': JSON.stringify(gitVersion),
+            __VERSION__: JSON.stringify(gitVersion),
             // Allow using the GIT branch name
-            '__BRANCH__': JSON.stringify(gitBranch),
+            __BRANCH__: JSON.stringify(gitBranch),
             // AWS region to which the app is deployed
-            '__AWS_REGION__': JSON.stringify(region),
+            __AWS_REGION__: JSON.stringify(region),
             // Options for the authentication client
-            '__AUTH_OPTIONS__': JSON.stringify(authOptions),
+            __AUTH_OPTIONS__: JSON.stringify(authOptions),
         }),
         /**
          * Prevent all the MomentJS locales to be imported by default.
@@ -257,16 +253,6 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             }),
         );
     }
-    // If building for the production, minimize the JavaScript
-    if (!debug) {
-        plugins.push(
-            new webpack.optimize.UglifyJsPlugin({
-                compress: {
-                    warnings: false,
-                },
-            }),
-        );
-    }
     const entries = buildObject(scriptPaths, (entry) => {
         const entryName = path.basename(entry).replace(/\..*?$/, '');
         const entryPaths = [path.resolve(sourceDirPath, entry)];
@@ -279,6 +265,8 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         return [entryName, entryPaths];
     });
     return {
+        // Development or production build?
+        mode: devServer || debug ? 'development' : 'production',
         // The main entry points for source files.
         entry: entries,
 
@@ -331,8 +319,11 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                 // Extract CSS stylesheets from the main bundle
                 {
                     test: /\.(css|scss)($|\?)/,
-                    loader: ExtractTextPlugin.extract({
-                        use: [{
+                    sideEffects: true,
+                    use: [
+                        // For production extract to a separate CSS file
+                        devServer || debug ? 'style-loader' : MiniCssExtractPlugin.loader,
+                        {
                             loader: 'css-loader',
                             options: {
                                 // For production, compress the CSS
@@ -341,9 +332,8 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                                 url: true,
                                 import: true,
                             },
-                        }],
-                        fallback: 'style-loader',
-                    }),
+                        },
+                    ],
                 },
                 // Compile SASS files ('.scss')
                 {
@@ -377,9 +367,9 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                     }, {
                         loader: 'image-webpack-loader',
                         options: {
-                            progressive: true,
+                            disable: debug || devServer,
                             optipng: {
-                                optimizationLevel: debug ? 0 : 7,
+                                optimizationLevel: 7,
                             },
                         },
                     }],
@@ -492,6 +482,9 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         ),
     ];
     return {
+        // Development or production build?
+        mode: devServer ? 'development' : 'production',
+
         // Build for running in node environment, instead of web browser
         target: 'node',
 
