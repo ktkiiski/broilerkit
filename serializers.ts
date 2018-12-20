@@ -26,6 +26,10 @@ export interface Serializer<I = any, O = I> {
     decodeSortable(input: Encoding): O;
 }
 
+interface ExtendableSerializer<I, O = I> extends Serializer<I, O> {
+    extend<E>(fields: Fields<E>): ExtendableSerializer<I & E, O & E>;
+}
+
 type FieldConverter<T = any> = (field: Field<any>, value: any, key: any) => T;
 
 abstract class BaseSerializer<T, S> implements Serializer<T, S> {
@@ -91,7 +95,7 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     }
 }
 
-export class FieldSerializer<T> extends BaseSerializer<T, T> implements Serializer<T> {
+export class FieldSerializer<T> extends BaseSerializer<T, T> implements ExtendableSerializer<T> {
     constructor(public readonly fields: Fields<T>) {
         super();
     }
@@ -101,21 +105,21 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Serializ
     public omit<K extends Key<T>>(attrs: K[]): FieldSerializer<Omit<T, K>> {
         return new FieldSerializer(omit(this.fields, attrs) as Fields<Omit<T, K>>);
     }
-    public partial<K extends Key<T>>(attrs: K[]): Serializer<Require<T, K>> {
+    public partial<K extends Key<T>>(attrs: K[]): ExtendableSerializer<Require<T, K>> {
         return this.optional({
             required: attrs,
             optional: difference(keys(this.fields), attrs),
             defaults: {},
-        }) as Serializer<Require<T, K>>;
+        }) as ExtendableSerializer<Require<T, K>>;
     }
-    public fullPartial(): Serializer<Partial<T>> {
+    public fullPartial(): ExtendableSerializer<Partial<T>> {
         return this.optional({
             required: [],
             optional: keys(this.fields),
             defaults: {},
         });
     }
-    public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(options: OptionalOptions<T, R, O, D>): Serializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
+    public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(options: OptionalOptions<T, R, O, D>): ExtendableSerializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
         return new OptionalSerializer(options, this.fields);
     }
     public defaults<D extends keyof T>(defaults: {[P in D]: T[P]}): DefaultsSerializer<T, D> {
@@ -126,26 +130,39 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Serializ
     }
 }
 
-export interface OptionalOptions<S, R extends keyof S, O extends Key<S>, D extends keyof S> {
+export interface OptionalOptions<S, R extends keyof S, O extends keyof S, D extends keyof S> {
     required: R[];
     optional: O[];
     defaults: {[P in D]: S[P]};
 }
 
-export type OptionalInput<S, R extends keyof S, O extends Key<S>, D extends keyof S> = Pick<S, R> & Partial<Pick<S, O | D>>;
-export type OptionalOutput<S, R extends keyof S, O extends Key<S>, D extends keyof S> = Pick<S, R | D> & Partial<Pick<S, O>>;
+export type OptionalInput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Pick<S, R> & Partial<Pick<S, O | D>>;
+export type OptionalOutput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Pick<S, R | D> & Partial<Pick<S, O>>;
 
-export class OptionalSerializer<S, R extends keyof S, O extends Key<S>, D extends keyof S> extends BaseSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D extends keyof S>
+    extends BaseSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>>
+    implements ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+
     private readonly requiredFields: R[];
     private readonly optionalFields: Array<O | D>;
     private readonly defaults: {[P in D]: S[P]};
 
-    constructor(options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
+    constructor(private readonly options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
         super();
         const {required, optional, defaults} = options;
         this.requiredFields = required;
         this.optionalFields = [...optional, ...keys(defaults)];
         this.defaults = defaults;
+    }
+
+    public extend<E>(fields: Fields<E>): OptionalSerializer<S & E, R | keyof E, O, D> {
+        const additionalKeys = keys(fields) as Array<keyof E>;
+        const options = this.options;
+        return new OptionalSerializer<S & E, R | keyof E, O, D>({
+            required: [...options.required, ...additionalKeys] as Array<R | keyof E>,
+            optional: options.optional,
+            defaults: options.defaults as {[P in D]: (S & E)[P]},
+        }, {...this.fields, ...fields} as Fields<S & E>);
     }
 
     protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {

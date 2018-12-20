@@ -28,13 +28,16 @@ export type OrderedQuery<T, K extends keyof T> = {
  * A "cursor" is a full query, including the ordering and slicing attributes,
  * and the filtering parameters, to get a page from a collection.
  */
-export type Cursor<T, U extends keyof T, K extends keyof T> = Pick<T, U> & OrderedQuery<T, K>;
+export type Cursor<T, U extends keyof T, K extends keyof T> = Pick<T, U> & Partial<T> & OrderedQuery<T, K>;
 
 export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements Serializer<Cursor<T, U, K>> {
-    private serializer = this.resource.pick(this.urlKeywords).extend({
-        ordering: choice(this.orderingKeys),
-        direction: choice(['asc', 'desc']),
-    });
+    private serializer = this.resource
+        .partial(this.urlKeywords)
+        .extend({
+            ordering: choice(this.orderingKeys),
+            direction: choice(['asc', 'desc']),
+        })
+    ;
     constructor(private resource: Resource<T, any, any>, private urlKeywords: U[], private orderingKeys: K[]) {}
 
     public validate(input: Cursor<T, U, K>): Cursor<T, U, K> {
