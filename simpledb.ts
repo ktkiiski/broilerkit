@@ -5,7 +5,7 @@ import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
-import { hasAttributes } from './utils/compare';
+import { hasProperties } from './utils/compare';
 import { forEachKey, Key, keys, mapObject, omit, pick, spread } from './utils/objects';
 
 export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
@@ -37,7 +37,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             ItemName: itemName,
             ConsistentRead: true,
         });
-        if (!hasAttributes(encodedItem, encodedQuery)) {
+        if (!hasProperties(encodedItem, encodedQuery)) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
         return decoder.decodeSortable(encodedItem);
@@ -92,7 +92,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             DomainName: this.domainName,
             ItemName: encodedId,
         });
-        if (!hasAttributes(encodedItem, encodedIdentity)) {
+        if (!hasProperties(encodedItem, encodedIdentity)) {
             throw notFoundError || new NotFound(`Item was not found.`);
         }
         const encodedVersion: string = encodedItem[versionAttr];
@@ -162,7 +162,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
                 DomainName: this.domainName,
                 ItemName: itemName,
             });
-            if (!hasAttributes(encodedItem, encodedIdentity)) {
+            if (!hasProperties(encodedItem, encodedIdentity)) {
                 throw notFoundError || new NotFound(`Item was not found.`);
             }
             // For the next deletion, use the given version ID

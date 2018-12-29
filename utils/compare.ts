@@ -1,4 +1,4 @@
-import { keys } from './objects';
+import { hasOwnProperty, keys } from './objects';
 
 const isArray = Array.isArray;
 const hasProp = Object.prototype.hasOwnProperty;
@@ -107,10 +107,21 @@ export function compare<T>(a: T, b: T, direction: 'asc' | 'desc' = 'asc') {
     return 0;
 }
 
-export function hasAttributes(obj: {[key: string]: any}, values: {[key: string]: any}): boolean {
+/**
+ * Check that the given object has every matching property in the second object,
+ * returning true/false accordingly. The first object may contain additional properties.
+ * This is useful for simple filtering.
+ *
+ * @param obj Object whose properties are checked
+ * @param values The required values
+ */
+export function hasProperties(obj: {[key: string]: any}, values: {[key: string]: any}): boolean {
     for (const key in values) {
-        if (!isEqual(values[key], obj[key])) {
-            return false;
+        if (hasOwnProperty(values, key)) {
+            const value = values[key];
+            if (typeof value !== 'undefined' && !isEqual(values[key], obj[key])) {
+                return false;
+            }
         }
     }
     return true;
