@@ -1,9 +1,9 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
-import { concat, defer, from, merge, never, Observable, of, Subscribable } from 'rxjs';
+import { concat, defer, from, merge, Observable, of, Subscribable } from 'rxjs';
 import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
-import { toArray } from './async';
+import { filterAsync, toArray } from './async';
 import { AuthClient } from './auth';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
@@ -16,7 +16,7 @@ import { Resource } from './resources';
 import { Route, route } from './routes';
 import { Fields, FieldSerializer, nested, nestedList, Serializer } from './serializers';
 import { pattern, Url } from './url';
-import { isEqual } from './utils/compare';
+import { hasProperties, isEqual } from './utils/compare';
 import { Key, keys, Nullable, pick, spread, transformValues } from './utils/objects';
 
 export { Field };
@@ -71,9 +71,9 @@ export interface ListEndpoint<I, O, B> extends ObservableEndpoint<I, Intermediat
     validateGet(query: I): I;
     observeObservable(query: I): Observable<Observable<O>>;
     observeIterable(query: I): Observable<AsyncIterable<O>>;
-    observeAll(query: I): Observable<O[]>;
+    observeAll(query: I, filters?: Partial<O>): Observable<O[]>;
     observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null>;
-    observeAllWithUser(query: UserInput<I, B>): Observable<O[] | null>;
+    observeAllWithUser(query: UserInput<I, B>, filters?: Partial<O>): Observable<O[] | null>;
     observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null>;
 }
 
@@ -323,9 +323,6 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
                 )
             )),
         );
-        return this.observeAll(input).pipe(
-            map((items) => ({isComplete: true, items})),
-        );
     }
     public observeSwitch(query$: Subscribable<I>): Observable<IntermediateCollection<O>> {
         return from(query$).pipe(
@@ -406,11 +403,12 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             return collection$;
         });
     }
-    public observeAll(input: I): Observable<O[]> {
+    public observeAll(input: I, filters?: Partial<O>): Observable<O[]> {
         return this.observeIterable(input).pipe(
-            switchMap((iterable) => toArray(iterable)),
+            switchMap((iterable) => toArray(
+                !filters ? iterable : filterAsync(iterable, (item) => hasProperties(item, filters)),
+            )),
         );
-        return concat(this.getAll(input), never());
     }
     public observeWithUser(input: UserInput<I, B>): Observable<IntermediateCollection<O> | null> {
         return this.observeAllWithUser(input).pipe(
@@ -429,8 +427,8 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
     public observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null> {
         return this.withUserId(query, (input: I) => this.observeObservable(input));
     }
-    public observeAllWithUser(query: UserInput<I, B>): Observable<O[] | null> {
-        return this.withUserId(query, (input: I) => this.observeAll(input));
+    public observeAllWithUser(query: UserInput<I, B>, filters?: Partial<O>): Observable<O[] | null> {
+        return this.withUserId(query, (input: I) => this.observeAll(input, filters));
     }
     public observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null> {
         return this.withUserId(query, (input: I) => this.observeIterable(input));
