@@ -164,7 +164,24 @@ yargs
                 ,
                 handler: (argv: CommandOptions & {table: string, pretty: boolean}) => {
                     const broiler = getBroiler(argv);
-                    broiler.printTableRows(argv).then(null, onError);
+                    broiler.printTableRows(argv.table, argv.pretty).then(null, onError);
+                },
+            })
+            .command({
+                command: 'upload <stage> <table>',
+                describe: 'Write records to a database table',
+                builder: (subCmdYargs) => subCmdYargs
+                    .option('file', {
+                        alias: 'f',
+                        demandOption: true,
+                        normalize: true,
+                        describe: 'File from which the records are read',
+                        type: 'string',
+                    })
+                ,
+                handler: (argv: CommandOptions & {table: string, file: string}) => {
+                    const broiler = getBroiler(argv);
+                    broiler.uploadTableRows(argv.table, argv.file).then(null, onError);
                 },
             })
         ,

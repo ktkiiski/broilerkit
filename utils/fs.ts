@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
 import * as File from 'vinyl';
 import { src as _src, SrcOptions } from 'vinyl-fs';
+import { generate } from '../async';
 
 /**
  * Creates an observable that emits all entries matching the given
@@ -122,5 +124,25 @@ export async function ensureDirectoryExists(dirPath: string) {
 export async function fileExists(filePath: string): Promise<boolean> {
     return new Promise((resolve) => {
         return fs.exists(filePath, resolve);
+    });
+}
+
+/**
+ * Returns an async iterable for reading all the lines of the given file.
+ * @param filePath File to read
+ */
+export function readLines(filePath: string): AsyncIterable<string> {
+    return generate<string>(({next, error, complete}) => {
+        const fileStream = fs.createReadStream(filePath);
+        const rl =  readline.createInterface({
+            input: fileStream,
+            crlfDelay: Infinity,
+            // Note: we use the crlfDelay option to recognize all instances of CR LF
+            // ('\r\n') in input.txt as a single line break.
+        });
+        rl.on('line', (line) => next(line))
+            .on('close', () => complete())
+            .on('error', (err) => error(err))
+        ;
     });
 }

@@ -21,7 +21,7 @@ import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
-import { fileExists, readFile, readJSONFile, searchFiles, writeJSONFile } from './utils/fs';
+import { fileExists, readFile, readJSONFile, readLines, searchFiles, writeJSONFile } from './utils/fs';
 import { buildObject, forEachKey, mapObject, spread, toPairs, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -309,35 +309,29 @@ export class Broiler {
         }
     }
 
-    public async printTableRows(options: {table: string, pretty: boolean}) {
-        const tableName = options.table;
-        const { stage, stageDir } = this.config;
-        const service = this.importServer();
-        if (!service) {
-            throw new Error(`No tables defined for the app.`);
-        }
-        const table = service.getTable(tableName);
-        if (!table) {
-            throw new Error(`Table ${tableName} not found.`);
-        }
-        let tableUri: string;
-        if (stage === 'local') {
-            const tableFilePath = getDbFilePath(stageDir, tableName);
-            tableUri = `file://${tableFilePath}`;
-        } else {
-            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
-            const tableUriVar = `${logicalId}URI`;
-            const output = await this.cloudFormation.getStackOutput();
-            tableUri = output[tableUriVar];
-            if (!tableUri) {
-                throw new Error(`Table ${tableName} has not been deployed.`);
-            }
-        }
-        const model = table.getModel(tableUri);
+    public async printTableRows(tableName: string, pretty: boolean) {
+        const model = await this.getTableModel(tableName);
         for await (const items of model.scan()) {
             for (const item of items) {
                 const serializedItem = model.serializer.serialize(item);
-                this.log(JSON.stringify(serializedItem, null, options.pretty ? 4 : undefined));
+                this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
+            }
+        }
+    }
+
+    public async uploadTableRows(tableName: string, filePath: string) {
+        const model = await this.getTableModel(tableName);
+        let index = 0;
+        for await (const line of readLines(filePath)) {
+            index ++;
+            try {
+                const serializedItem = JSON.parse(line);
+                const item = model.serializer.deserialize(serializedItem);
+                model.write(item);
+                this.log(`Line ${index} ${green('✔︎')}`);
+            } catch (err) {
+                this.log(`Line ${index} ${red('×')}`);
+                this.logError(err.stack);
             }
         }
     }
@@ -911,6 +905,10 @@ export class Broiler {
         // tslint:disable-next-line:no-console
         console.log(message, ...params);
     }
+    private logError(message: any, ...params: any[]) {
+        // tslint:disable-next-line:no-console
+        console.error(red(message), ...params);
+    }
 
     private logChangeSet(changeSet: CloudFormation.DescribeChangeSetOutput) {
         if (!changeSet.Changes || !changeSet.Changes.length) {
@@ -968,6 +966,32 @@ export class Broiler {
             return api.config || api;
         }
         return null;
+    }
+
+    private async getTableModel(tableName: string) {
+        const { stage, stageDir } = this.config;
+        const service = this.importServer();
+        if (!service) {
+            throw new Error(`No tables defined for the app.`);
+        }
+        const table = service.getTable(tableName);
+        if (!table) {
+            throw new Error(`Table ${tableName} not found.`);
+        }
+        let tableUri: string;
+        if (stage === 'local') {
+            const tableFilePath = getDbFilePath(stageDir, tableName);
+            tableUri = `file://${tableFilePath}`;
+        } else {
+            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
+            const tableUriVar = `${logicalId}URI`;
+            const output = await this.cloudFormation.getStackOutput();
+            tableUri = output[tableUriVar];
+            if (!tableUri) {
+                throw new Error(`Table ${tableName} has not been deployed.`);
+            }
+        }
+        return table.getModel(tableUri);
     }
 }
 
