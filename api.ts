@@ -640,7 +640,7 @@ export interface DestroyEndpointMethodMapping<A extends AuthenticationType = Aut
 }
 export type EndpointMethodMapping = OptionsEndpointMethodMapping | RetrieveEndpointMethodMapping | ListEndpointMethodMapping | CreateEndpointMethodMapping | UpdateEndpointMethodMapping | DestroyEndpointMethodMapping;
 
-export type ListEndpointDefinition<S, U extends Key<S>, K extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, ListEndpoint<Cursor<S, U, K>, S, B> & T, ListEndpointMethodMapping<A> & R, B>;
+export type ListEndpointDefinition<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, ListEndpoint<Cursor<S, U, O, F>, S, B> & T, ListEndpointMethodMapping<A> & R, B>;
 export type RetrieveEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, RetrieveEndpoint<Pick<S, U>, S, B> & T, RetrieveEndpointMethodMapping<A> & R, B>;
 export type CreateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, CreateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, S, B> & T, CreateEndpointMethodMapping<A> & X, B>;
 export type UpdateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S, B> & T, UpdateEndpointMethodMapping<A> & X, B>;
@@ -681,9 +681,14 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         return new ApiEndpoint(this.resource, this.route, userIdKey, this.parent, this.methods, this.methodHandlers, this.modelPrototypes);
     }
 
-    public listable<K extends Key<S>, A extends AuthenticationType = 'none'>(options: {auth?: A, orderingKeys: K[]}): ListEndpointDefinition<S, U, K, A, T, X, B> {
-        const {orderingKeys, auth = 'none' as A} = options;
-        const urlSerializer = new CursorSerializer(this.resource, this.route.pattern.pathKeywords as U[], orderingKeys);
+    public listable<O extends Key<S>, F extends Key<S> = never, A extends AuthenticationType = 'none'>(options: {auth?: A, orderingKeys: O[], filteringKeys?: F[]}): ListEndpointDefinition<S, U, O, F, A, T, X, B> {
+        const {orderingKeys, filteringKeys = [], auth = 'none' as A} = options;
+        const urlSerializer = new CursorSerializer(
+            this.resource,
+            this.route.pattern.pathKeywords as U[],
+            orderingKeys,
+            filteringKeys,
+        );
         const pageSerializer = new FieldSerializer({
             next: nullable(nested(urlSerializer)),
             results: nestedList(this.resource),

@@ -16,60 +16,69 @@ export interface Page<T, C> {
 /**
  * Query parameters for getting an ordered slice of a collection.
  */
-export type OrderedQuery<T, K extends keyof T> = {
-    [P in K]: {
+export type OrderedQuery<T, O extends keyof T> = {
+    [P in O]: {
         ordering: P,
         direction: 'asc' | 'desc',
         since?: T[P],
     }
-}[K];
+}[O];
 
 /**
  * A "cursor" is a full query, including the ordering and slicing attributes,
  * and the filtering parameters, to get a page from a collection.
  */
-export type Cursor<T, U extends keyof T, K extends keyof T> = Pick<T, U> & Partial<T> & OrderedQuery<T, K>;
+export type Cursor<T, U extends keyof T, O extends keyof T, F extends keyof T> = Pick<T, U> & Partial<Pick<T, F>> & OrderedQuery<T, O>;
 
-export class CursorSerializer<T, U extends Key<T>, K extends Key<T>> implements Serializer<Cursor<T, U, K>> {
+export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends Key<T>> implements Serializer<Cursor<T, U, O, F>> {
     private serializer = this.resource
-        .partial(this.urlKeywords)
+        .optional({
+            required: this.urlKeywords,
+            optional: this.filteringKeys,
+            defaults: {},
+        })
         .extend({
             ordering: choice(this.orderingKeys),
             direction: choice(['asc', 'desc']),
         })
     ;
-    constructor(private resource: Resource<T, any, any>, private urlKeywords: U[], private orderingKeys: K[]) {}
+    constructor(
+        private resource: Resource<T, any, any>,
+        private urlKeywords: U[],
+        private orderingKeys: O[],
+        private filteringKeys: F[],
+    ) {}
 
-    public validate(input: Cursor<T, U, K>): Cursor<T, U, K> {
+    public validate(input: Cursor<T, U, O, F>): Cursor<T, U, O, F> {
         const validated = this.serializer.validate(input);
         return this.extendSince(validated, input.since, (field, since) => field.validate(since));
     }
-    public serialize(input: Cursor<T, U, K>): Serialization {
+    public serialize(input: Cursor<T, U, O, F>): Serialization {
         const serialized = this.serializer.serialize(input);
         return this.extendSince(serialized, input.since, (field, since) => field.serialize(since));
     }
-    public deserialize(input: any): Cursor<T, U, K> {
+    public deserialize(input: any): Cursor<T, U, O, F> {
         const deserialized = this.serializer.deserialize(input);
         return this.extendSince(deserialized, input.since, (field, since) => field.deserialize(since));
     }
-    public encode(input: Cursor<T, U, K>): Encoding {
+    public encode(input: Cursor<T, U, O, F>): Encoding {
         const encoded = this.serializer.encode(input);
         return this.extendSince(encoded, input.since, (field, since) => field.encode(since));
     }
-    public encodeSortable(input: Cursor<T, U, K>): Encoding {
+    public encodeSortable(input: Cursor<T, U, O, F>): Encoding {
         const encoded = this.serializer.encode(input);
         return this.extendSince(encoded, input.since, (field, since) => field.encodeSortable(since));
     }
-    public decode(input: Encoding): Cursor<T, U, K> {
+    public decode(input: Encoding): Cursor<T, U, O, F> {
         const decoded = this.serializer.decode(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decode(since));
     }
-    public decodeSortable(input: Encoding): Cursor<T, U, K> {
+    public decodeSortable(input: Encoding): Cursor<T, U, O, F> {
         const decoded = this.serializer.decodeSortable(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
     }
-    private extendSince(data: any, since: any, serialize: (field: Field<T[K], any>, since: any) => any) {
-        const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[K], any>;
+    private extendSince(data: any, since: any, serialize: (field: Field<T[O], any>, since: any) => any) {
+        const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[O], any>;
         if (since !== undefined) {
             return {...data, since: serialize(orderingField, since)};
         }
