@@ -120,9 +120,8 @@ export interface EndpointDefinition<T, X extends EndpointMethodMapping> extends 
 
 class ApiModel {
     constructor(
-        protected client: Client,
-        protected userIdAttribute: string | undefined,
         protected endpoint: EndpointDefinition<any, EndpointMethodMapping>,
+        protected client: Client,
     ) { }
 
     public validate(method: HttpMethod, input: any): any {
@@ -140,7 +139,7 @@ class ApiModel {
     }
 
     protected withUserId<I, T>(query: any, fn: (input: I) => Observable<T>): Observable<T | null> {
-        const {userIdAttribute} = this;
+        const {userIdAttribute} = this.endpoint;
         const {authClient} = this.client;
         if (!authClient) {
             throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
@@ -154,7 +153,7 @@ class ApiModel {
     }
 
     protected extendUserId<I>(input: any): Promise<I> {
-        const {userIdAttribute} = this;
+        const {userIdAttribute} = this.endpoint;
         const {authClient} = this.client;
         if (!authClient) {
             throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
@@ -763,7 +762,7 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
     public bind(client: Client): T {
         class BoundApiEndpoint extends ApiModel {}
         Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(client, this.userIdAttribute, this) as any;
+        return new BoundApiEndpoint(this, client) as any;
     }
 
     public validate(method: HttpMethod, input: any): any {
