@@ -1,4 +1,4 @@
-import { BehaviorSubject, Subject } from 'rxjs';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { AuthClient } from './auth';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 
@@ -7,6 +7,8 @@ import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections
  * for the client-side API usage.
  */
 export class Client {
+    public resourceCache = new Map<string, Observable<any>>();
+    public collectionCache = new Map<string, Observable<AsyncIterable<any>>>();
     public resourceAddition$ = new Subject<ResourceAddition<any, any>>();
     public resourceUpdate$ = new Subject<ResourceUpdate<any, any>>();
     public resourceRemoval$ = new Subject<ResourceRemoval<any, any>>();

@@ -188,7 +188,6 @@ class ApiModel {
 }
 
 class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoint<I, O, B> {
-    private resourceCache?: Map<string, Observable<O>>;
     public get(input: I): Promise<O> {
         const method = 'GET';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
@@ -203,9 +202,8 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
         const cacheKey = url.toString();
         return defer(() => {
             // Use a cached observable, if available
-            const resourceCache = this.resourceCache || new Map<string, Observable<O>>();
-            this.resourceCache = resourceCache;
-            let resource$ = resourceCache.get(cacheKey);
+            const {resourceCache} = this.client;
+            let resource$: Observable<O> | undefined = resourceCache.get(cacheKey);
             if (resource$) {
                 return resource$;
             }
@@ -276,7 +274,6 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
 }
 
 class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel implements ListEndpoint<I, O, B> {
-    private collectionCache?: Map<string, Observable<AsyncIterable<O>>>;
     public getPage(input: I): Promise<Page<O, I>> {
         const method = 'GET';
         const {url, payload} = this.endpoint.serializeRequest(method, input);
@@ -352,15 +349,14 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
         }
 
         return defer(() => {
+            const {client} = this;
             // Use a cached observable, if available
-            const collectionCache = this.collectionCache || new Map<string, Observable<AsyncIterable<O>>>();
-            this.collectionCache = collectionCache;
-            let collection$ = collectionCache.get(cacheKey);
+            const {collectionCache} = client;
+            let collection$: Observable<AsyncIterable<O>> | undefined = collectionCache.get(cacheKey);
             if (collection$) {
                 return collection$;
             }
             const iterable = this.getIterable(input);
-            const {client} = this;
             const addition$ = client.resourceAddition$;
             const update$ = client.resourceUpdate$;
             const removal$ = client.resourceRemoval$;
