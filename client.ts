@@ -1,4 +1,5 @@
 import { BehaviorSubject, Subject } from 'rxjs';
+import { AuthClient } from './auth';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 
 /**
@@ -12,4 +13,8 @@ export class Client {
     public optimisticAdditions$ = new BehaviorSubject<Array<ResourceAddition<any, any>>>([]);
     public optimisticUpdates$ = new BehaviorSubject<Array<ResourceUpdate<any, any>>>([]);
     public optimisticRemovals$ = new BehaviorSubject<Array<ResourceRemoval<any, any>>>([]);
+    constructor(
+        public readonly rootUrl: string,
+        public readonly authClient?: AuthClient,
+    ) {}
 }

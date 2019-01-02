@@ -21,6 +21,10 @@ import { Key, keys, Nullable, pick, spread, transformValues } from './utils/obje
 
 export { Field };
 
+export interface Bindable<T> {
+    bind(client: Client): T;
+}
+
 export interface AuthRequestMapping {
     none: HttpRequest;
     user: AuthenticatedHttpRequest;
@@ -99,14 +103,13 @@ export interface DestroyEndpoint<I, B> {
     deleteWithUser(query: UserInput<I, B>): Promise<void>;
 }
 
-export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
+export interface EndpointDefinition<T, X extends EndpointMethodMapping> extends Bindable<T> {
     resource: Resource<any, any, any>;
     methodHandlers: X;
     methods: HttpMethod[];
     route: Route<any, any> | Route<any, never>;
     userIdAttribute: string | undefined;
     parent: EndpointDefinition<any, any> | null;
-    bind(rootUrl: string, client: Client, authClient?: AuthClient): T;
     validate(method: HttpMethod, input: any): any;
     serializeRequest(method: HttpMethod, input: any): ApiRequest;
     deserializeRequest(request: ApiRequest): any;
@@ -117,11 +120,9 @@ export interface EndpointDefinition<T, X extends EndpointMethodMapping> {
 
 class ApiModel {
     constructor(
-        public rootUrl: string,
-        protected userIdAttribute: string | undefined,
         protected client: Client,
+        protected userIdAttribute: string | undefined,
         protected endpoint: EndpointDefinition<any, EndpointMethodMapping>,
-        protected authClient?: AuthClient,
     ) { }
 
     public validate(method: HttpMethod, input: any): any {
@@ -130,7 +131,7 @@ class ApiModel {
 
     protected async ajax(method: HttpMethod, url: Url | string, payload?: any) {
         if (typeof url !== 'string') {
-            url = `${this.rootUrl}${url}`;
+            url = `${this.client.rootUrl}${url}`;
         }
         const token = await this.getToken(method);
         const headers: {[header: string]: string} = token ? {Authorization: `Bearer ${token}`} : {};
@@ -139,7 +140,8 @@ class ApiModel {
     }
 
     protected withUserId<I, T>(query: any, fn: (input: I) => Observable<T>): Observable<T | null> {
-        const {authClient, userIdAttribute} = this;
+        const {userIdAttribute} = this;
+        const {authClient} = this.client;
         if (!authClient) {
             throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
         }
@@ -152,7 +154,8 @@ class ApiModel {
     }
 
     protected extendUserId<I>(input: any): Promise<I> {
-        const {authClient, userIdAttribute} = this;
+        const {userIdAttribute} = this;
+        const {authClient} = this.client;
         if (!authClient) {
             throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
         }
@@ -171,7 +174,7 @@ class ApiModel {
     }
 
     private async getToken(method: HttpMethod): Promise<string | null> {
-        const {authClient} = this;
+        const {authClient} = this.client;
         const authType = this.endpoint.getAuthenticationType(method);
         if (authType === 'none') {
             // No authentication required, but return the token if available
@@ -757,10 +760,10 @@ export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping
         );
     }
 
-    public bind(rootUrl: string, client: Client, authClient?: AuthClient): T {
+    public bind(client: Client): T {
         class BoundApiEndpoint extends ApiModel {}
         Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(rootUrl, this.userIdAttribute, client, this, authClient) as any;
+        return new BoundApiEndpoint(client, this.userIdAttribute, this) as any;
     }
 
     public validate(method: HttpMethod, input: any): any {
@@ -832,6 +835,6 @@ export function endpoint<R, K extends Key<R>>(resource: Resource<R, K, any>) {
 export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P], EndpointMethodMapping>};
 
 export function initApi<T>(rootUrl: string, endpoints: ApiEndpoints<T>, authClient?: AuthClient): T {
-    const client = new Client();
-    return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(rootUrl, client, authClient)) as any;
+    const client = new Client(rootUrl, authClient);
+    return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(client)) as any;
 }
