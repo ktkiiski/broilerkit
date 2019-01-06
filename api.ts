@@ -4,7 +4,6 @@ import { concat, defer, from, merge, Observable, of, Subscribable } from 'rxjs';
 import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { filterAsync, toArray } from './async';
-import { AuthClient } from './auth';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
 import { Field, nullable } from './fields';
@@ -829,7 +828,6 @@ export function endpoint<R, K extends Key<R>>(resource: Resource<R, K, any>) {
 
 export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P], EndpointMethodMapping>};
 
-export function initApi<T>(rootUrl: string, endpoints: ApiEndpoints<T>, authClient?: AuthClient): T {
-    const client = new Client(rootUrl, authClient);
+export function initApi<T>(endpoints: ApiEndpoints<T>, client: Client): T {
     return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(client)) as any;
 }

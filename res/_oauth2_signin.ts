@@ -1,6 +1,7 @@
 import { sign } from 'jsonwebtoken';
 import { initApi } from '../api';
 import * as api from '../auth-local-api';
+import { Client } from '../client';
 import { parseQuery } from '../url';
 import { User } from '../users';
 import { randomize } from '../utils/strings';
@@ -8,9 +9,10 @@ import { randomize } from '../utils/strings';
 declare const __API_ROOT__: string;
 
 const query = parseQuery(window.location.search || '');
+const client = new Client(__API_ROOT__);
 
 async function signIn() {
-    const {_usersCollection} = initApi(__API_ROOT__, api);
+    const {_usersCollection} = initApi(api, client);
     const users = await _usersCollection.getAll({ordering: 'name', direction: 'asc'});
     for (const user of users) {
         const element = document.createElement('button');
@@ -24,7 +26,7 @@ async function signIn() {
 }
 
 async function signUp() {
-    const {_usersCollection} = initApi(__API_ROOT__, api);
+    const {_usersCollection} = initApi(api, client);
     const formElement = document.getElementById('registration-form') as HTMLFormElement;
     const emailInputElement = document.getElementById('email-input') as HTMLInputElement;
     const nameInputElement = document.getElementById('name-input') as HTMLInputElement;
