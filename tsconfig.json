@@ -17,11 +17,12 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "sourceMap": false,
+        "jsx": "react",
         "strict": true,
-        "strictFunctionTypes": false,
         "target": "es5"
     },
     "include": [
+        "./**/*.tsx",
         "./**/*.ts"
     ],
     "exclude": [
