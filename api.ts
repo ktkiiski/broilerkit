@@ -4,24 +4,43 @@ import { concat, defer, from, merge, Observable, of, Subscribable } from 'rxjs';
 import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { filterAsync, toArray } from './async';
+import { Bindable, BindableConnectable, Connectable } from './bindable';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
 import { Field, nullable } from './fields';
-import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, Unauthorized } from './http';
+import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, MethodNotAllowed, SuccesfulResponse, Unauthorized } from './http';
 import { shareIterator } from './iteration';
 import { observeIterable, observeValues } from './observables';
-import { Cursor, CursorSerializer, OrderedQuery, Page } from './pagination';
+import { Cursor, CursorSerializer, Page, PageResponse } from './pagination';
 import { Resource } from './resources';
 import { Route, route } from './routes';
-import { Fields, FieldSerializer, nested, nestedList, Serializer } from './serializers';
-import { pattern, Url } from './url';
+import { Fields, FieldSerializer, nested, nestedList, OptionalInput, OptionalOptions, OptionalOutput, Serializer } from './serializers';
+import { Url, UrlPattern } from './url';
 import { hasProperties, isEqual } from './utils/compare';
 import { Key, keys, Nullable, pick, spread, transformValues } from './utils/objects';
 
 export { Field };
 
-export interface Bindable<T> {
-    bind(client: Client): T;
+export type Handler<I, O, D, A extends AuthenticationType> = (input: I, db: D, request: AuthRequestMapping[A]) => Promise<O>;
+export type ResponseHandler<I, O, D, A extends AuthenticationType> = Handler<I, SuccesfulResponse<O>, D, A>;
+export type MethodResponseHandlers<D, A extends AuthenticationType> = {
+    [P in HttpMethod]?: ResponseHandler<any, any, D, A>
+};
+
+export interface Operation<I, O, A extends AuthenticationType> {
+    type: 'retrieve' | 'update' | 'destroy' | 'list' | 'create';
+    authType: A;
+    urlPattern: UrlPattern;
+    methods: HttpMethod[];
+    route: Route<any, any>;
+    userIdAttribute?: string;
+    responseSerializer?: Serializer;
+    deserializeRequest(request: HttpRequest): any;
+    /**
+     * This method only works as a hint to TypeScript to correctly
+     * interprete operations as correct Implementable types.
+     */
+    asImplementable(): Operation<I, O, A>;
 }
 
 export interface AuthRequestMapping {
@@ -61,84 +80,71 @@ export interface ObservableUserEndpoint<I, O> {
     observeWithUserSwitch(query$: Subscribable<I>): Observable<O | null>;
 }
 
-export interface RetrieveEndpoint<I, O, B> extends ObservableEndpoint<I, O>, ObservableUserEndpoint<UserInput<I, B>, O> {
-    get(query: I): Promise<O>;
-    validateGet(query: I): I;
-    observe(query: I): Observable<O>;
-    stream(query: ApiInput<I>): Observable<O>;
+export interface RetrieveEndpoint<S, U extends Key<S>, B>
+extends ObservableEndpoint<Pick<S, U>, S>, ObservableUserEndpoint<Pick<S, Exclude<U, B>>, S> {
+    get(query: Pick<S, U>): Promise<S>;
+    validateGet(query: Pick<S, U>): Pick<S, U>;
+    observe(query: Pick<S, U>): Observable<S>;
+    stream(query: ApiInput<Pick<S, U>>): Observable<S>;
 }
 
-export interface ListEndpoint<I, O, B> extends ObservableEndpoint<I, IntermediateCollection<O>>, ObservableUserEndpoint<UserInput<I, B>, IntermediateCollection<O>> {
-    getPage(query: I): Promise<Page<O, I>>;
-    getAll(query: I): Promise<O[]>;
-    validateGet(query: I): I;
-    observeObservable(query: I): Observable<Observable<O>>;
-    observeIterable(query: I): Observable<AsyncIterable<O>>;
-    observeAll(query: I, filters?: Partial<O>): Observable<O[]>;
-    observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null>;
-    observeAllWithUser(query: UserInput<I, B>, filters?: Partial<O>): Observable<O[] | null>;
-    observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null>;
+export interface ListEndpoint<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B>
+extends ObservableEndpoint<Cursor<S, U, O, F>, IntermediateCollection<S>>, ObservableUserEndpoint<UserInput<Cursor<S, U, O, F>, B>, IntermediateCollection<S>> {
+    getPage(query: Cursor<S, U, O, F>): Promise<Page<S, Cursor<S, U, O, F>>>;
+    getAll(query: Cursor<S, U, O, F>): Promise<S[]>;
+    validateGet(query: Cursor<S, U, O, F>): Cursor<S, U, O, F>;
+    observeObservable(query: Cursor<S, U, O, F>): Observable<Observable<S>>;
+    observeIterable(query: Cursor<S, U, O, F>): Observable<AsyncIterable<S>>;
+    observeAll(query: Cursor<S, U, O, F>, filters?: Partial<S>): Observable<S[]>;
+    observeObservableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<Observable<S> | null>;
+    observeAllWithUser(query: UserInput<Cursor<S, U, O, F>, B>, filters?: Partial<S>): Observable<S[] | null>;
+    observeIterableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<AsyncIterable<S> | null>;
 }
 
-export interface CreateEndpoint<I1, I2, O, B> {
-    post(input: I1): Promise<O>;
-    postWithUser(input: UserInput<I1, B>): Promise<O>;
-    postOptimistically(input: I1 & O): Promise<O>;
-    postWithUserOptimistically(input: UserInput<I1 & O, B>): Promise<O>;
-    validatePost(input: I1): I2;
+export interface CreateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B>
+extends Connectable<{}, CreateEndpoint<S, U, R, O, D, B>> {
+    post(input: OptionalInput<S, U | R, O, D>): Promise<S>;
+    postWithUser(input: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S>;
+    postOptimistically(input: OptionalInput<S, U | R, O, D> & O): Promise<S>;
+    postWithUserOptimistically(input: UserInput<OptionalInput<S, U | R, O, D> & O, B>): Promise<S>;
+    validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D>;
 }
 
-export interface UpdateEndpoint<I1, I2, P, S, B> {
-    put(input: I1): Promise<S>;
-    patch(input: P): Promise<S>;
-    putWithUser(input: UserInput<I1, B>): Promise<S>;
-    patchWithUser(input: UserInput<P, B>): Promise<S>;
-    validatePut(input: I1): I2;
-    validatePatch(input: P): P;
+export interface UpdateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B>
+extends Connectable<{}, UpdateEndpoint<S, U, R, O, D, B>> {
+    put(input: OptionalInput<S, U | R, O, D>): Promise<S>;
+    patch(input: OptionalInput<S, U, R | O, D>): Promise<S>;
+    putWithUser(input: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S>;
+    validatePut(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D>;
+    patchWithUser(input: OptionalInput<S, Exclude<U, B>, R | O, D>): Promise<S>;
+    validatePatch(input: OptionalInput<S, U, R | O, D>): OptionalInput<S, U, R | O, D>;
 }
 
-export interface DestroyEndpoint<I, B> {
-    delete(query: I): Promise<void>;
-    deleteWithUser(query: UserInput<I, B>): Promise<void>;
+export interface DestroyEndpoint<S, U extends Key<S>, B>
+extends Connectable<{}, DestroyEndpoint<S, U, B>> {
+    delete(query: Pick<S, U>): Promise<void>;
+    deleteWithUser(query: Pick<S, Exclude<U, B>>): Promise<void>;
 }
 
-export interface EndpointDefinition<T, X extends EndpointMethodMapping> extends Bindable<T> {
-    resource: Resource<any, any, any>;
-    methodHandlers: X;
-    methods: HttpMethod[];
-    route: Route<any, any> | Route<any, never>;
-    userIdAttribute: string | undefined;
-    parent: EndpointDefinition<any, any> | null;
-    validate(method: HttpMethod, input: any): any;
-    serializeRequest(method: HttpMethod, input: any): ApiRequest;
-    deserializeRequest(request: ApiRequest): any;
-    serializeResponseData(method: HttpMethod, data: any): any;
-    deserializeResponseData(method: HttpMethod, data: any): any;
-    getAuthenticationType(method: HttpMethod): AuthenticationType;
-}
-
-class ApiModel {
+abstract class ApiModel<T extends Operation<any, any, any>> {
     constructor(
-        protected endpoint: EndpointDefinition<any, EndpointMethodMapping>,
+        protected operation: T,
         protected client: Client,
     ) { }
-
-    public validate(method: HttpMethod, input: any): any {
-        return this.endpoint.validate(method, input);
-    }
 
     protected async ajax(method: HttpMethod, url: Url | string, payload?: any) {
         if (typeof url !== 'string') {
             url = `${this.client.rootUrl}${url}`;
         }
-        const token = await this.getToken(method);
+        const token = await this.getToken();
         const headers: {[header: string]: string} = token ? {Authorization: `Bearer ${token}`} : {};
         const response = await ajax({url, method, payload, headers});
-        return this.endpoint.deserializeResponseData(method, response.data);
+        const {responseSerializer} = this.operation;
+        return responseSerializer ? responseSerializer.deserialize(response.data) : undefined;
     }
 
     protected withUserId<I, T>(query: any, fn: (input: I) => Observable<T>): Observable<T | null> {
-        const {userIdAttribute} = this.endpoint;
+        const {userIdAttribute} = this.operation;
         const {authClient} = this.client;
         if (!authClient) {
             throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
@@ -152,7 +158,7 @@ class ApiModel {
     }
 
     protected extendUserId<I>(input: any): Promise<I> {
-        const {userIdAttribute} = this.endpoint;
+        const {userIdAttribute} = this.operation;
         const {authClient} = this.client;
         if (!authClient) {
             throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
@@ -171,9 +177,9 @@ class ApiModel {
         ).toPromise();
     }
 
-    private async getToken(method: HttpMethod): Promise<string | null> {
+    private async getToken(): Promise<string | null> {
         const {authClient} = this.client;
-        const authType = this.endpoint.getAuthenticationType(method);
+        const {authType} = this.operation;
         if (authType === 'none') {
             // No authentication required, but return the token if available
             return authClient && authClient.getIdToken() || null;
@@ -186,29 +192,30 @@ class ApiModel {
     }
 }
 
-class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoint<I, O, B> {
-    public get(input: I): Promise<O> {
-        const method = 'GET';
-        const {url, payload} = this.endpoint.serializeRequest(method, input);
-        return this.ajax(method, url, payload);
+class RetrieveEndpointModel<S, U extends Key<S>, B extends U | undefined>
+extends ApiModel<RetrieveOperation<S, U, any, B>>
+implements RetrieveEndpoint<S, U, B> {
+    public get(input: Pick<S, U>): Promise<S> {
+        const url = this.operation.route.compile(input);
+        return this.ajax('GET', url);
     }
-    public validateGet(input: I): I {
-        return this.validate('GET', input);
+    public validateGet(input: Pick<S, U>): Pick<S, U> {
+        return this.operation.route.serializer.validate(input);
     }
-    public observe(input: I): Observable<O> {
-        const resourceName = this.endpoint.resource.name;
-        const {url, payload} = this.endpoint.serializeRequest('GET', input);
+    public observe(input: Pick<S, U>): Observable<S> {
+        const resourceName = this.operation.endpoint.resource.name;
+        const url = this.operation.route.compile(input);
         const cacheKey = url.toString();
         return defer(() => {
             // Use a cached observable, if available
             const {resourceCache} = this.client;
-            let resource$: Observable<O> | undefined = resourceCache.get(cacheKey);
+            let resource$: Observable<S> | undefined = resourceCache.get(cacheKey);
             if (resource$) {
                 return resource$;
             }
             const update$ = this.client.resourceUpdate$.pipe(
                 filter((update) => update.resourceName === resourceName),
-                map((update) => update.resource as Partial<O>),
+                map((update) => update.resource as Partial<S>),
             );
             const removal$ = this.client.resourceRemoval$.pipe(
                 filter((removal) => removal.resourceUrl === url.path),
@@ -219,12 +226,12 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             );
             resource$ = concat(
                 // Start with the retrieved state of the resource
-                this.ajax('GET', url, payload),
+                this.ajax('GET', url),
                 // Then emit all the updates to the resource
                 update$,
             ).pipe(
                 // Combine all the changes with the latest state to the resource.
-                scan<Partial<O>, O>((res, update) => spread(res, update), {} as O),
+                scan<Partial<S>, S>((res, update) => spread(res, update), {} as S),
                 // Apply any optimistic updates
                 combineLatest(optimisticUpdates$, (res, updates) => (
                     updates.reduce((res, update) => spread(res, update.resource), res)
@@ -244,7 +251,7 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             return resource$;
         });
     }
-    public observeSwitch(query$: Subscribable<I>): Observable<O> {
+    public observeSwitch(query$: Subscribable<Pick<S, U>>): Observable<S> {
         return from(query$).pipe(
             // Omit all the extra properties from the comparison
             map((query) => this.validateGet(query)),
@@ -252,19 +259,19 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
             switchMap((query) => this.observe(query)),
         );
     }
-    public observeWithUser(query: UserInput<I, B>): Observable<O | null> {
-        return this.withUserId(query, (input: I) => this.observe(input));
+    public observeWithUser(query: Pick<S, Exclude<U, B>>): Observable<S | null> {
+        return this.withUserId(query, (input: Pick<S, U>) => this.observe(input));
     }
-    public observeWithUserSwitch(query$: Subscribable<UserInput<I, B>>): Observable<O | null> {
+    public observeWithUserSwitch(query$: Subscribable<Pick<S, Exclude<U, B>>>): Observable<S | null> {
         return from(query$).pipe(
             // TODO: This can be simplified (and optimized)
-            switchMap((query) => this.withUserId(query, (r) => of(r as I))),
+            switchMap((query) => this.withUserId(query, (r) => of(r as Pick<S, U>))),
             map((query) => query && this.validateGet(query)),
             distinctUntilChanged(isEqual),
             switchMap((query) => query ? this.observe(query) : of(null)),
         );
     }
-    public stream(input$: ApiInput<I>): Observable<O> {
+    public stream(input$: ApiInput<Pick<S, U>>): Observable<S> {
         return observeValues(input$).pipe(
             distinctUntilChanged(isEqual),
             switchMap((input) => this.observe(input)),
@@ -272,28 +279,29 @@ class RetrieveEndpointModel<I, O, B> extends ApiModel implements RetrieveEndpoin
     }
 }
 
-class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel implements ListEndpoint<I, O, B> {
-    public getPage(input: I): Promise<Page<O, I>> {
-        const method = 'GET';
-        const {url, payload} = this.endpoint.serializeRequest(method, input);
-        return this.ajax(method, url, payload);
+class ListEndpointModel<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B extends U | undefined>
+extends ApiModel<ListOperation<S, U, O, F, any, B>>
+implements ListEndpoint<S, U, O, F, B> {
+    public getPage(input: Cursor<S, U, O, F>): Promise<Page<S, Cursor<S, U, O, F>>> {
+        const url = this.operation.route.compile(input);
+        return this.ajax('GET', url);
     }
-    public async getAll(input: I): Promise<O[]> {
-        const results: O[] = [];
+    public async getAll(input: Cursor<S, U, O, F>): Promise<S[]> {
+        const results: S[] = [];
         for await (const pageResults of this.iteratePages(input)) {
             results.push(...pageResults);
         }
         return results;
     }
-    public getIterable(input: I): AsyncIterable<O> {
+    public getIterable(input: Cursor<S, U, O, F>): AsyncIterable<S> {
         return shareIterator(this.iterate(input));
     }
-    public async *iterate(input: I) {
+    public async *iterate(input: Cursor<S, U, O, F>) {
         for await (const items of this.iteratePages(input)) {
             yield *items;
         }
     }
-    public async *iteratePages(input: I) {
+    public async *iteratePages(input: Cursor<S, U, O, F>) {
         let page = await this.getPage(input);
         while (true) {
             yield page.results;
@@ -304,25 +312,25 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             }
         }
     }
-    public validateGet(input: I): I {
-        return this.validate('GET', input);
+    public validateGet(input: Cursor<S, U, O, F>): Cursor<S, U, O, F> {
+        return this.operation.route.serializer.validate(input);
     }
-    public observe(input: I): Observable<IntermediateCollection<O>> {
+    public observe(input: Cursor<S, U, O, F>): Observable<IntermediateCollection<S>> {
         return this.observeObservable(input).pipe(
             switchMap((item$) => (
                 item$.pipe(
-                    scan((items: O[], item: O) => [...items, item], []),
-                    startWith([] as O[]),
+                    scan((items: S[], item: S) => [...items, item], []),
+                    startWith([] as S[]),
                     map((items) => ({items})),
                     extend(of({isComplete: true})),
-                    scan<Partial<IntermediateCollection<O>>, IntermediateCollection<O>>((collection, change) => (
+                    scan<Partial<IntermediateCollection<S>>, IntermediateCollection<S>>((collection, change) => (
                         {...collection, ...change}), {isComplete: false, items: []},
                     ),
                 )
             )),
         );
     }
-    public observeSwitch(query$: Subscribable<I>): Observable<IntermediateCollection<O>> {
+    public observeSwitch(query$: Subscribable<Cursor<S, U, O, F>>): Observable<IntermediateCollection<S>> {
         return from(query$).pipe(
             // Omit all the extra properties from the comparison
             map((query) => this.validateGet(query)),
@@ -330,15 +338,15 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             switchMap((query) => this.observe(query)),
         );
     }
-    public observeObservable(input: I): Observable<Observable<O>> {
+    public observeObservable(input: Cursor<S, U, O, F>): Observable<Observable<S>> {
         return this.observeIterable(input).pipe(map(observeIterable));
     }
-    public observeIterable(input: I): Observable<AsyncIterable<O>> {
-        const {endpoint} = this;
-        const {url} = endpoint.serializeRequest('GET', input);
+    public observeIterable(input: Cursor<S, U, O, F>): Observable<AsyncIterable<S>> {
+        const {operation} = this;
+        const url = operation.route.compile(input);
         const cacheKey = url.toString();
         const {direction, ordering} = input;
-        const resourceName = endpoint.resource.name;
+        const resourceName = operation.endpoint.resource.name;
 
         function isCollectionChange(change: ResourceChange<any, any>): boolean {
             if (change.type === 'addition') {
@@ -351,7 +359,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             const {client} = this;
             // Use a cached observable, if available
             const {collectionCache} = client;
-            let collection$: Observable<AsyncIterable<O>> | undefined = collectionCache.get(cacheKey);
+            let collection$: Observable<AsyncIterable<S>> | undefined = collectionCache.get(cacheKey);
             if (collection$) {
                 return collection$;
             }
@@ -375,7 +383,7 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             );
             collection$ = change$.pipe(
                 // Combine all the changes with the latest state to the resource.
-                scan<ResourceChange<O, keyof O>, AsyncIterable<O>>(
+                scan<ResourceChange<S, keyof S>, AsyncIterable<S>>(
                     (collection, change) => applyCollectionChange(collection, change, ordering, direction),
                     iterable,
                 ),
@@ -400,66 +408,73 @@ class ListEndpointModel<I extends OrderedQuery<any, any>, O, B> extends ApiModel
             return collection$;
         });
     }
-    public observeAll(input: I, filters?: Partial<O>): Observable<O[]> {
+    public observeAll(input: Cursor<S, U, O, F>, filters?: Partial<S>): Observable<S[]> {
         return this.observeIterable(input).pipe(
             switchMap((iterable) => toArray(
                 !filters ? iterable : filterAsync(iterable, (item) => hasProperties(item, filters)),
             )),
         );
     }
-    public observeWithUser(input: UserInput<I, B>): Observable<IntermediateCollection<O> | null> {
+    public observeWithUser(input: UserInput<Cursor<S, U, O, F>, B>): Observable<IntermediateCollection<S> | null> {
         return this.observeAllWithUser(input).pipe(
             map((items) => items && {isComplete: true, items}),
         );
     }
-    public observeWithUserSwitch(query$: Subscribable<UserInput<I, B>>): Observable<IntermediateCollection<O> | null> {
+    public observeWithUserSwitch(query$: Subscribable<UserInput<Cursor<S, U, O, F>, B>>): Observable<IntermediateCollection<S> | null> {
         return from(query$).pipe(
             // TODO: This can be simplified (and optimized)
-            switchMap((query) => this.withUserId(query, (r) => of(r as I))),
+            switchMap((query) => this.withUserId(query, (r) => of(r as Cursor<S, U, O, F>))),
             map((query) => query && this.validateGet(query)),
             distinctUntilChanged(isEqual),
             switchMap((query) => query ? this.observe(query) : of(null)),
         );
     }
-    public observeObservableWithUser(query: UserInput<I, B>): Observable<Observable<O> | null> {
-        return this.withUserId(query, (input: I) => this.observeObservable(input));
+    public observeObservableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<Observable<S> | null> {
+        return this.withUserId(query, (input: Cursor<S, U, O, F>) => this.observeObservable(input));
     }
-    public observeAllWithUser(query: UserInput<I, B>, filters?: Partial<O>): Observable<O[] | null> {
-        return this.withUserId(query, (input: I) => this.observeAll(input, filters));
+    public observeAllWithUser(query: UserInput<Cursor<S, U, O, F>, B>, filters?: Partial<S>): Observable<S[] | null> {
+        return this.withUserId(query, (input: Cursor<S, U, O, F>) => this.observeAll(input, filters));
     }
-    public observeIterableWithUser(query: UserInput<I, B>): Observable<AsyncIterable<O> | null> {
-        return this.withUserId(query, (input: I) => this.observeIterable(input));
+    public observeIterableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<AsyncIterable<S> | null> {
+        return this.withUserId(query, (input: Cursor<S, U, O, F>) => this.observeIterable(input));
     }
 }
 
-class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoint<I1, I2, O, B> {
-    public async post(input: I1): Promise<O> {
-        const {endpoint} = this;
+class CreateEndpointModel<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B extends U | undefined>
+extends ApiModel<CreateOperation<S, U, R, O, D, any, B>>
+implements CreateEndpoint<S, U, R, O, D, B> {
+    public async post(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         const method = 'POST';
-        const {url, payload} = endpoint.serializeRequest(method, input);
-        const resource = await this.ajax(method, url, payload);
-        const resourceIdentity = pick(resource, endpoint.resource.identifyBy);
-        const resourceName = endpoint.resource.name;
+        const {route, payloadSerializer} = this.operation;
+        const {resource} = this.operation.endpoint;
+        const url = route.compile(input);
+        const payload = payloadSerializer.serialize(input);
+        const item = await this.ajax(method, url, payload);
+        const resourceIdentity = pick(item, resource.identifyBy);
+        const resourceName = resource.name;
         this.client.resourceAddition$.next({
             type: 'addition',
             collectionUrl: url.path,
             resourceName,
-            resource,
+            resource: item,
             resourceIdentity,
         });
-        return resource;
+        return item;
     }
-    public async postWithUser(query: UserInput<I1, B>): Promise<O> {
-        const input = await this.extendUserId<I1>(query);
+    public async postWithUser(query: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S> {
+        const input = await this.extendUserId<OptionalInput<S, U | R, O, D>>(query);
         return await this.post(input);
     }
-    public async postOptimistically(input: I1 & O): Promise<O> {
-        const {client, endpoint} = this;
+    public async postOptimistically(input: OptionalInput<S, U | R, O, D> & O): Promise<S> {
+        const {client, operation} = this;
+        const {route, payloadSerializer} = operation;
+        const {resource} = operation.endpoint;
         const method = 'POST';
-        const {url, payload} = endpoint.serializeRequest(method, input);
+        const url = route.compile(input);
+        const payload = payloadSerializer.serialize(input);
         const resource$ = this.ajax(method, url, payload);
-        const resourceIdentity = pick(input as any, endpoint.resource.identifyBy);
-        const resourceName = endpoint.resource.name;
+        const resourceIdentity = pick(input as any, resource.identifyBy);
+        const resourceName = resource.name;
         const addition: ResourceAddition<any, any> = {
             type: 'addition',
             collectionUrl: url.path,
@@ -489,42 +504,70 @@ class CreateEndpointModel<I1, I2, O, B> extends ApiModel implements CreateEndpoi
             );
         }
     }
-    public async postWithUserOptimistically(query: UserInput<I1 & O, B>): Promise<O> {
-        const input = await this.extendUserId<I1 & O>(query);
+    public async postWithUserOptimistically(query: UserInput<OptionalInput<S, U | R, O, D> & O, B>): Promise<S> {
+        const input = await this.extendUserId<OptionalInput<S, U | R, O, D> & O>(query);
         return await this.postOptimistically(input);
     }
-    public validatePost(input: I1): I2 {
-        return this.validate('POST', input);
+    public validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
+        const {route, payloadSerializer} = this.operation;
+        return {
+            ...route.serializer.validate(input),
+            ...payloadSerializer.validate(input),
+        } as OptionalOutput<S, U | R, O, D>;
+    }
+    public connect(): Observable<CreateEndpointModel<S, U, R, O, D, B>> {
+        return of(this);
     }
 }
 
-class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEndpoint<I1, I2, P, S, B> {
-    public put(input: I1): Promise<S> {
+class UpdateEndpointModel<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B extends U | undefined>
+extends ApiModel<UpdateOperation<S, U, R, O, D, any, B>>
+implements UpdateEndpoint<S, U, R, O, D, B> {
+    public put(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         return this.update('PUT', input);
     }
-    public async putWithUser(query: UserInput<I1, B>): Promise<S> {
-        const input = await this.extendUserId<I1>(query);
+    public async putWithUser(query: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S> {
+        const input = await this.extendUserId<OptionalInput<S, U | R, O, D>>(query);
         return await this.update('PUT', input);
     }
-    public validatePut(input: I1): I2 {
-        return this.validate('PUT', input);
+    public validatePut(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
+        const {operation} = this;
+        // TODO: Combine validation errors
+        return {
+            ...operation.route.serializer.validate(input),
+            ...operation.replaceSerializer.validate(input),
+        } as OptionalOutput<S, U | R, O, D>;
     }
-    public patch(input: P): Promise<S> {
+    public patch(input: OptionalInput<S, U, R | O, D>): Promise<S> {
         return this.update('PATCH', input);
     }
-    public async patchWithUser(query: P): Promise<S> {
-        const input = await this.extendUserId<P>(query);
+    public async patchWithUser(query: OptionalInput<S, Exclude<U, B>, R | O, D>): Promise<S> {
+        const input = await this.extendUserId<OptionalInput<S, U, R | O, D>>(query);
         return await this.update('PATCH', input);
     }
-    public validatePatch(input: P): P {
-        return this.validate('PATCH', input);
+    public validatePatch(input: OptionalInput<S, U, R | O, D>): OptionalInput<S, U, R | O, D> {
+        const {operation} = this;
+        // TODO: Combine validation errors
+        return {
+            ...operation.route.serializer.validate(input),
+            ...operation.updateSerializer.validate(input),
+        } as OptionalOutput<S, U | R, O, D>;
     }
-    private async update(method: 'PUT' | 'PATCH', input: I1 | P): Promise<S> {
-        const {client, endpoint} = this;
-        const {url, payload} = endpoint.serializeRequest(method, input);
-        const idAttributes = endpoint.resource.identifyBy as Array<keyof (I1 | P)>;
+    public connect(): Observable<UpdateEndpoint<S, U, R, O, D, B>> {
+        return of(this);
+    }
+    private async update(method: 'PUT' | 'PATCH', input: any): Promise<S> {
+        const {client, operation} = this;
+        const {resource} = operation.endpoint;
+        const payloadSerializer = method === 'PATCH'
+            ? operation.updateSerializer
+            : operation.replaceSerializer
+        ;
+        const url = operation.route.compile(input);
+        const payload = payloadSerializer.serialize(input);
+        const idAttributes = resource.identifyBy as Array<keyof any>;
         const resourceIdentity = pick(input, idAttributes);
-        const resourceName = endpoint.resource.name;
+        const resourceName = resource.name;
         const update: ResourceUpdate<any, any> = {
             type: 'update',
             resourceName,
@@ -555,21 +598,24 @@ class UpdateEndpointModel<I1, I2, P, S, B> extends ApiModel implements UpdateEnd
     }
 }
 
-class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, B> {
-    public async delete(query: I): Promise<void> {
-        const {client, endpoint} = this;
+class DestroyEndpointModel<S, U extends Key<S>, B extends U | undefined>
+extends ApiModel<DestroyOperation<S, U, any, B>>
+implements DestroyEndpoint<S, U, B> {
+    public async delete(query: Pick<S, U>): Promise<void> {
+        const {client, operation} = this;
+        const {resource} = operation.endpoint;
         const method = 'DELETE';
-        const {url, payload} = endpoint.serializeRequest(method, query);
-        const idAttributes = endpoint.resource.identifyBy as Array<keyof I>;
+        const url = operation.route.compile(query);
+        const idAttributes = resource.identifyBy as U[];
         const resourceIdentity = pick(query, idAttributes);
-        const resourceName = endpoint.resource.name;
+        const resourceName = resource.name;
         const removal: ResourceRemoval<any, any> = {
             type: 'removal',
             resourceUrl: url.path,
             resourceName,
             resourceIdentity,
         };
-        const request = this.ajax(method, url, payload);
+        const request = this.ajax(method, url);
         try {
             client.optimisticRemovals$.next([
                 ...client.optimisticRemovals$.getValue(),
@@ -585,249 +631,267 @@ class DestroyEndpointModel<I, B> extends ApiModel implements DestroyEndpoint<I, 
             );
         }
     }
-    public async deleteWithUser(query: UserInput<I, B>): Promise<void> {
-        const input = await this.extendUserId<I>(query);
+    public async deleteWithUser(query: Pick<S, Exclude<U, B>>): Promise<void> {
+        const input = await this.extendUserId<Pick<S, U>>(query);
         return await this.delete(input);
     }
-}
-
-export interface EndpointMethodHandler<A extends AuthenticationType = AuthenticationType> {
-    auth: A;
-    route: Route<any, any> | Route<any, never>;
-    payloadSerializer?: Serializer;
-    resourceSerializer?: Serializer;
-}
-
-export interface PayloadMethodHandler<A extends AuthenticationType> {
-    auth: A;
-    route: Route<any, any> | Route<any, never>;
-    payloadSerializer: Serializer;
-    resourceSerializer: Serializer;
-}
-
-export interface ReadMethodHandler<A extends AuthenticationType> {
-    auth: A;
-    route: Route<any, any> | Route<any, never>;
-    resourceSerializer: Serializer;
-}
-
-export interface NoContentMethodHandler<A extends AuthenticationType> {
-    auth: A;
-    route: Route<any, any> | Route<any, never>;
-}
-
-export interface OptionsEndpointMethodMapping {
-    OPTIONS: NoContentMethodHandler<'none'>;
-}
-export interface RetrieveEndpointMethodMapping<A extends AuthenticationType = AuthenticationType> {
-    GET: ReadMethodHandler<A>;
-}
-export interface ListEndpointMethodMapping<A extends AuthenticationType = AuthenticationType> {
-    GET: ReadMethodHandler<A>;
-}
-export interface CreateEndpointMethodMapping<A extends AuthenticationType = AuthenticationType> {
-    POST: PayloadMethodHandler<A>;
-}
-export interface UpdateEndpointMethodMapping<A extends AuthenticationType = AuthenticationType> {
-    PUT: PayloadMethodHandler<A>;
-    PATCH: PayloadMethodHandler<A>;
-}
-export interface DestroyEndpointMethodMapping<A extends AuthenticationType = AuthenticationType> {
-    DELETE: NoContentMethodHandler<A>;
-}
-export type EndpointMethodMapping = OptionsEndpointMethodMapping | RetrieveEndpointMethodMapping | ListEndpointMethodMapping | CreateEndpointMethodMapping | UpdateEndpointMethodMapping | DestroyEndpointMethodMapping;
-
-export type ListEndpointDefinition<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, ListEndpoint<Cursor<S, U, O, F>, S, B> & T, ListEndpointMethodMapping<A> & R, B>;
-export type RetrieveEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, RetrieveEndpoint<Pick<S, U>, S, B> & T, RetrieveEndpointMethodMapping<A> & R, B>;
-export type CreateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, CreateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, S, B> & T, CreateEndpointMethodMapping<A> & X, B>;
-export type UpdateEndpointDefinition<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, T, X extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, UpdateEndpoint<Pick<S, R | U> & Partial<Pick<S, O | D>>, Pick<S, R | U | D> & Partial<Pick<S, O>>, Pick<S, U> & Partial<Pick<S, R | O | D>>, S, B> & T, UpdateEndpointMethodMapping<A> & X, B>;
-export type DestroyEndpointDefinition<S, U extends Key<S>, A extends AuthenticationType, T, R extends EndpointMethodMapping, B extends U | undefined> = ApiEndpoint<S, U, DestroyEndpoint<Pick<S, U>, B> & T, DestroyEndpointMethodMapping<A> & R, B>;
-
-export class ApiEndpoint<S, U extends Key<S>, T, X extends EndpointMethodMapping, B extends U | undefined> implements EndpointDefinition<T, X> {
-
-    public static create<S, K extends Key<S>, U extends Key<S>>(resource: Resource<S, K, any>, route: Route<Pick<S, U>, U>) {
-        return new ApiEndpoint(resource, route, undefined, null, ['OPTIONS'], {
-            OPTIONS: {auth: 'none', route},
-        });
+    public connect(): Observable<DestroyEndpoint<S, U, B>> {
+        return of(this);
     }
+}
 
-    private constructor(
-        public readonly resource: Resource<S, any, any>,
-        public readonly route: Route<Pick<S, U>, U>,
-        public readonly userIdAttribute: B,
-        public readonly parent: ApiEndpoint<S, any, any, any, any> | null,
-        public readonly methods: HttpMethod[],
-        public readonly methodHandlers: X,
-        private readonly modelPrototypes: ApiModel[] = [],
+interface CommonEndpointOptions<A extends AuthenticationType, B extends undefined | keyof any> {
+    auth?: A;
+    authorizeBy?: B;
+}
+
+class Endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>> {
+    constructor(
+        public readonly resource: Resource<S, PK, V>,
+        public readonly pattern: UrlPattern<U>,
     ) {}
 
-    // TODO: Should not be needed anymore: delete it
-    public singleton() {
-        const parent = this;
-        function url<K extends Key<S> = never>(strings: TemplateStringsArray, ...keywords: K[]): ApiEndpoint<S, K, {}, OptionsEndpointMethodMapping, undefined> {
-            const {resource} = parent;
-            const r = route(pattern(strings, ...keywords), resource.pick(keywords));
-            return new ApiEndpoint(resource, r, undefined, parent, ['OPTIONS'], {
-                OPTIONS: {auth: 'none', route: r},
-            });
-        }
-        return {url};
-    }
-
-    public authorizeBy<K extends U>(userIdKey: K): ApiEndpoint<S, U, T, X, K> {
-        return new ApiEndpoint(this.resource, this.route, userIdKey, this.parent, this.methods, this.methodHandlers, this.modelPrototypes);
-    }
-
-    public listable<O extends Key<S>, F extends Key<S> = never, A extends AuthenticationType = 'none'>(options: {auth?: A, orderingKeys: O[], filteringKeys?: F[]}): ListEndpointDefinition<S, U, O, F, A, T, X, B> {
-        const {orderingKeys, filteringKeys = [], auth = 'none' as A} = options;
-        const urlSerializer = new CursorSerializer(
-            this.resource,
-            this.route.pattern.pathKeywords as U[],
-            orderingKeys,
-            filteringKeys,
-        );
-        const pageSerializer = new FieldSerializer({
-            next: nullable(nested(urlSerializer)),
-            results: nestedList(this.resource),
-        });
-        return new ApiEndpoint(
-            this.resource, this.route, this.userIdAttribute, this.parent, [...this.methods, 'GET'],
-            spread(this.methodHandlers, {GET: {auth, route: route(this.route.pattern, urlSerializer), resourceSerializer: pageSerializer} as ReadMethodHandler<A>}),
-            [...this.modelPrototypes, ListEndpointModel.prototype],
-        );
-    }
-
-    public retrievable<A extends AuthenticationType = 'none'>(options?: {auth: A}): RetrieveEndpointDefinition<S, U, A, T, X, B> {
-        const auth = options && options.auth || 'none' as A;
-        const {resource, route} = this;
-        return new ApiEndpoint(
-            resource, route, this.userIdAttribute, this.parent, [...this.methods, 'GET'],
-            spread(this.methodHandlers, {GET: {auth, route, resourceSerializer: resource} as ReadMethodHandler<A>}),
-            [...this.modelPrototypes, RetrieveEndpointModel.prototype],
-        );
-    }
-
-    public creatable<R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none'>(options: {auth?: A, required: R[], optional: O[], defaults: {[P in D]: S[P]}}): CreateEndpointDefinition<S, U, R, O, D, A, T, X, B> {
-        const payloadResource = this.resource.optional(options);
-        const auth = options.auth || 'none' as A;
-        const {resource, route} = this;
-        return new ApiEndpoint(
-            resource, route, this.userIdAttribute, this.parent, [...this.methods, 'POST'],
-            spread(this.methodHandlers, {POST: {auth, route, payloadSerializer: payloadResource, resourceSerializer: resource} as PayloadMethodHandler<A>}),
-            [...this.modelPrototypes, CreateEndpointModel.prototype],
-        );
-    }
-
-    public updateable<R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none'>(options: {auth?: A, required: R[], optional: O[], defaults: {[P in D]: S[P]}}): UpdateEndpointDefinition<S, U, R, O, D, A, T, X, B> {
-        const {required, optional, defaults} = options;
-        const auth = options.auth || 'none' as A;
-        const {resource, route} = this;
-        const replaceResource = resource.optional(options);
-        const updateResource = resource.pick([...required, ...optional, ...keys(defaults)]).fullPartial();
-        return new ApiEndpoint(
-            resource, this.route, this.userIdAttribute, this.parent, [...this.methods, 'PUT', 'PATCH'],
-            spread(this.methodHandlers, {
-                PUT: {auth, route, payloadSerializer: replaceResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
-                PATCH: {auth, route, payloadSerializer: updateResource, resourceSerializer: resource} as PayloadMethodHandler<A>,
-            }),
-            [...this.modelPrototypes, UpdateEndpointModel.prototype],
-        );
-    }
-
-    public destroyable<A extends AuthenticationType = 'none'>(options?: {auth: A}): DestroyEndpointDefinition<S, U, A, T, X, B> {
-        const auth = options && options.auth || 'none' as A;
-        const {resource, route} = this;
-        return new ApiEndpoint(
-            resource, route, this.userIdAttribute, this.parent, [...this.methods, 'DELETE'],
-            spread(this.methodHandlers, {DELETE: {auth, route} as NoContentMethodHandler<A>}),
-            [...this.modelPrototypes, DestroyEndpointModel.prototype],
-        );
-    }
-
-    public join<E>(extension: {[P in keyof E]: Resource<E[P], any, any>}): ApiEndpoint<S & Nullable<E>, U, T, X, B> {
+    public join<E>(extension: {[P in keyof E]: Resource<E[P], any, any>}): Endpoint<S & Nullable<E>, PK, V, U> {
         const fields = transformValues(extension, (value) => nullable(nested(value)));
         const resource = this.resource.expand(fields as Fields<Nullable<E>>);
-        const route = this.route as Route<Pick<S & Nullable<E>, U>, U>;
-        return new ApiEndpoint(
-            // TODO: parent?
-            resource, route, this.userIdAttribute, null, this.methods, this.methodHandlers, this.modelPrototypes,
+        return new Endpoint(resource, this.pattern);
+    }
+
+    public listable<O extends Key<S>, F extends Key<S> = never, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+        options: CommonEndpointOptions<A, B> & {orderingKeys: O[], filteringKeys?: F[]},
+    ): ListOperation<S, U, O, F, A, B> {
+        return new ListOperation(
+            this, options.orderingKeys, options.filteringKeys || [], options.auth || 'none' as A, options.authorizeBy as B,
         );
     }
 
-    public bind(client: Client): T {
-        class BoundApiEndpoint extends ApiModel {}
-        Object.assign(BoundApiEndpoint.prototype, ...this.modelPrototypes);
-        return new BoundApiEndpoint(this, client) as any;
+    public creatable<R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+        options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
+    ): CreateOperation<S, U, R, O, D, A, B> {
+        const {auth = 'none' as A, authorizeBy, ...opts} = options;
+        return new CreateOperation(this, opts, auth, authorizeBy as B);
     }
 
-    public validate(method: HttpMethod, input: any): any {
-        const handler = this.requireMethodHandler(method);
-        const {payloadSerializer, route} = handler;
+    public retrievable<A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+        options?: CommonEndpointOptions<A, B>,
+    ): RetrieveOperation<S, U, A, B> {
+        const {auth = 'none' as A} = options || {};
+        return new RetrieveOperation(this, auth, (options && options.authorizeBy) as B);
+    }
+
+    public updateable<R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+        options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
+    ): UpdateOperation<S, U, R, O, D, A, B> {
+        const {auth = 'none' as A, authorizeBy, ...opts} = options;
+        return new UpdateOperation(this, opts, auth, authorizeBy as B);
+    }
+
+    public destroyable<A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+        options?: CommonEndpointOptions<A, B>,
+    ): DestroyOperation<S, U, A, B> {
+        const {auth = 'none' as A} = options || {};
+        return new DestroyOperation(this, auth, (options && options.authorizeBy) as B);
+    }
+}
+
+abstract class BaseOperation<S, U extends Key<S>, I, O, A extends AuthenticationType, B extends U | undefined>
+extends BindableConnectable<I, O> {
+    public abstract readonly methods: HttpMethod[];
+    public abstract readonly route: Route<any, U>;
+
+    constructor(
+        public readonly endpoint: Endpoint<S, any, any, U>,
+        public readonly authType: A,
+        public readonly userIdAttribute: B,
+    ) {
+        super();
+    }
+
+    protected deserializeRequest(request: HttpRequest): any | null {
+        const url = new Url(request.path, request.queryParameters);
+        // NOTE: Raises validation error if matches but invalid
+        const urlParameters = this.route.match(url);
+        if (!urlParameters) {
+            // The URL path does not match this endpoint!
+            return null;
+        }
+        if (this.methods.indexOf(request.method) < 0) {
+            // URL matches but the method is not accepted
+            throw new MethodNotAllowed(`Method ${request.method} is not allowed`);
+        }
+        return urlParameters;
+    }
+}
+
+class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, Cursor<S, U, O, F>, IntermediateCollection<S>, A, B>
+implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, A> {
+    public readonly type: 'list' = 'list';
+    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly urlPattern = this.endpoint.pattern;
+    public readonly urlSerializer = new CursorSerializer(
+        this.endpoint.resource,
+        this.endpoint.pattern.pathKeywords,
+        this.orderingKeys,
+        this.filteringKeys,
+    );
+    public readonly route = route(this.endpoint.pattern, this.urlSerializer);
+    public readonly responseSerializer = new FieldSerializer({
+        next: nullable(nested(this.urlSerializer)),
+        results: nestedList(this.endpoint.resource),
+    });
+    constructor(
+        endpoint: Endpoint<S, any, any, U>,
+        private readonly orderingKeys: O[],
+        private readonly filteringKeys: F[],
+        authType: A,
+        userIdAttribute: B,
+    ) {
+        super(endpoint, authType, userIdAttribute);
+    }
+    public bind(client: Client): Connectable<Cursor<S, U, O, F>, IntermediateCollection<S>> {
+        const model = new ListEndpointModel(this, client);
         return {
-            ...route.serializer.validate(input),
-            ...payloadSerializer && payloadSerializer.validate(input),
+            connect: (props$) => (
+                model.observeSwitch(props$).pipe(
+                    startWith({items: [], isComplete: false}),
+                )
+            ),
         };
     }
-
-    public serializeRequest(method: HttpMethod, input: any): ApiRequest {
-        const handler = this.requireMethodHandler(method);
-        const url = handler.route.compile(input);
-        const payload = handler.payloadSerializer && handler.payloadSerializer.serialize(input);
-        return {method, url, payload};
+    public all(): BindableConnectable<Cursor<S, U, O, F>, S[] | null> {
+        return this.pipe(
+            filter((collection) => collection.isComplete),
+            map((collection) => collection.items),
+            startWith(null),
+        );
     }
-
-    public deserializeRequest(request: ApiRequest) {
-        const {method, url, payload} = request;
-        const handler = this.getMethodHandler(method);
-        if (!handler) {
-            // Non-supported HTTP method
-            return null;
-        }
-        const urlParameters = handler.route.match(url);
-        if (!urlParameters) {
-            // The path does not match this endpoint!
-            return null;
-        }
-        const deserializedPayload = handler.payloadSerializer && handler.payloadSerializer.deserialize(payload);
-        return {...urlParameters, ...deserializedPayload};
+    public deserializeRequest(request: HttpRequest): Cursor<S, U, O, F> | null {
+        return super.deserializeRequest(request);
     }
-
-    public serializeResponseData(method: HttpMethod, data: any) {
-        const {resourceSerializer} = this.requireMethodHandler(method);
-        return resourceSerializer ? resourceSerializer.serialize(data) : undefined;
-    }
-
-    public deserializeResponseData(method: HttpMethod, data: any) {
-        const {resourceSerializer} = this.requireMethodHandler(method);
-        return resourceSerializer ? resourceSerializer.deserialize(data) : undefined;
-    }
-
-    public getAuthenticationType(method: HttpMethod): AuthenticationType {
-        return this.requireMethodHandler(method).auth;
-    }
-
-    private requireMethodHandler(method: HttpMethod): EndpointMethodHandler {
-        const handler = this.getMethodHandler(method);
-        if (!handler) {
-            throw new Error(`Unsupported method ${method}`);
-        }
-        return handler;
-    }
-
-    private getMethodHandler(method: HttpMethod): EndpointMethodHandler | null {
-        return this.methodHandlers[method as keyof X] as any || null;
+    public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, A> {
+        return this;
     }
 }
 
-export function endpoint<R, K extends Key<R>>(resource: Resource<R, K, any>) {
-    function url<U extends Key<R> = never>(strings: TemplateStringsArray, ...keywords: U[]): ApiEndpoint<R, U, {}, OptionsEndpointMethodMapping, undefined> {
-        return ApiEndpoint.create(resource, route(pattern(strings, ...keywords), resource.pick(keywords)));
+class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, Pick<S, U>, S | null, A, B>
+implements Operation<Pick<S, U>, S, A> {
+    public readonly type: 'retrieve' = 'retrieve';
+    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly urlPattern = this.endpoint.pattern;
+    public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
+    public bind(client: Client): Connectable<Pick<S, U>, S | null> {
+        const model = new RetrieveEndpointModel(this, client);
+        return {
+            connect: (props$) => (
+                model.observeSwitch(props$).pipe(
+                    startWith(null),
+                )
+            ),
+        };
     }
-    return {url};
+    public deserializeRequest(request: HttpRequest): Pick<S, U> | null {
+        return super.deserializeRequest(request);
+    }
+    public asImplementable(): Operation<Pick<S, U>, S, A> {
+        return this;
+    }
 }
 
-export type ApiEndpoints<T> = {[P in keyof T]: EndpointDefinition<T[P], EndpointMethodMapping>};
+class CreateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, {}, CreateEndpoint<S, U, R, O, D, B>, A, B>
+implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A>, Bindable<CreateEndpoint<S, U, R, O, D, B>> {
+    public readonly type: 'create' = 'create';
+    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly urlPattern = this.endpoint.pattern;
+    public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
+    public readonly payloadSerializer = this.endpoint.resource.optional(this.options);
+    constructor(
+        readonly endpoint: Endpoint<S, any, any, U>,
+        private readonly options: OptionalOptions<S, R, O, D>,
+        readonly authType: A,
+        readonly userIdAttribute: B,
+    ) {
+        super(endpoint, authType, userIdAttribute);
+    }
+    public bind(client: Client): CreateEndpoint<S, U, R, O, D, B> {
+        return new CreateEndpointModel(this, client);
+    }
+    public deserializeRequest(request: HttpRequest): OptionalOutput<S, R, O, D> | null {
+        const urlParameters = super.deserializeRequest(request);
+        // TODO: Combine validation errors
+        return urlParameters && {
+            ...urlParameters,
+            ...this.payloadSerializer.deserialize(request.payload),
+        };
+    }
+    public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, A> {
+        return this;
+    }
+}
 
-export function initApi<T>(endpoints: ApiEndpoints<T>, client: Client): T {
-    return transformValues(endpoints, (ep: EndpointDefinition<any, EndpointMethodMapping>) => ep.bind(client)) as any;
+class UpdateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, {}, UpdateEndpoint<S, U, R, O, D, B>, A, B>
+implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A> {
+    public readonly type: 'update' = 'update';
+    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly urlPattern = this.endpoint.pattern;
+    public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
+    public readonly replaceSerializer = this.endpoint.resource.optional(this.options);
+    public readonly updateSerializer = this.endpoint.resource
+        .pick([...this.options.required, ...this.options.optional, ...keys(this.options.defaults)])
+        .fullPartial()
+    ;
+    constructor(
+        endpoint: Endpoint<S, any, any, any>,
+        private readonly options: OptionalOptions<S, R, O, D>,
+        authType: A,
+        userIdAttribute: B,
+    ) {
+        super(endpoint, authType, userIdAttribute);
+    }
+    public bind(client: Client): UpdateEndpoint<S, U, R, O, D, B> {
+        return new UpdateEndpointModel(this, client);
+    }
+    public deserializeRequest(request: HttpRequest): OptionalOutput<S, R, O, D> | Pick<S, U> & Partial<Pick<S, R | O | D>> | null {
+        const payloadSerializer = request.method === 'PATCH'
+            ? this.updateSerializer
+            : this.replaceSerializer
+        ;
+        const urlParameters = super.deserializeRequest(request);
+        // TODO: Combine validation errors
+        return urlParameters && {
+            ...urlParameters,
+            ...payloadSerializer.deserialize(request.payload),
+        };
+    }
+    public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, A> {
+        return this;
+    }
+}
+
+class DestroyOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, {}, DestroyEndpoint<S, U, B>, A, B>
+implements Operation<Pick<S, U>, void, A> {
+    public readonly type: 'destroy' = 'destroy';
+    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly urlPattern = this.endpoint.pattern;
+    public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
+    public bind(client: Client): DestroyEndpoint<S, U, B> {
+        return new DestroyEndpointModel(this, client);
+    }
+    public deserializeRequest(request: HttpRequest): Pick<S, U> | null {
+        return super.deserializeRequest(request);
+    }
+    public asImplementable(): Operation<Pick<S, U>, void, A> {
+        return this;
+    }
+}
+
+export function endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    pattern: UrlPattern<U>,
+) {
+    return new Endpoint<S, PK, V, U>(resource, pattern);
 }

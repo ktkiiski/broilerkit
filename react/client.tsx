@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { combineLatest } from 'rxjs';
-import { distinctUntilChanged, filter, map, startWith, switchMap } from 'rxjs/operators';
-import { Bindable, ObservableEndpoint } from '../api';
+import { distinctUntilChanged, filter, map, switchMap } from 'rxjs/operators';
+import { Bindable, Connectable } from '../bindable';
 import { Client } from '../client';
 import { isEqual, isNotNully } from '../utils/compare';
 import { mapObject, omit } from '../utils/objects';
@@ -34,32 +34,31 @@ export const ClientProvider = ({client, ...props}: ClientProviderProps) => (
     <ClientContext.Provider value={client} {...props} />
 );
 
-export interface ApiModelBindable<I, O> extends Bindable<ObservableEndpoint<I, O>> {}
-
 export function connect<I, O>(
-    bindings: {[P in keyof I]: ApiModelBindable<I[P], any>} & {[P in keyof O]: ApiModelBindable<any, O[P]>},
-): PropInjector<UnionToIntersection<I[keyof I]> & Partial<O>, UnionToIntersection<I[keyof I]>> {
+    bindings: {[P in keyof I]: Bindable<Connectable<I[P], any>>} & {[P in keyof O]: Bindable<Connectable<any, O[P]>>},
+): PropInjector<UnionToIntersection<I[keyof I]> & O, UnionToIntersection<I[keyof I]>> {
     return (WrappedComponent: React.ComponentType<any>) => {
-        class ClientBoundComponent extends ObserverComponent<{client: Client | null}, {[key: string]: any}> {
+        class ClientBoundComponent extends ObserverComponent<{client: Client | null}, {props?: {[key: string]: any}}> {
             public state$ = this.pluckProp('client').pipe(
                 filter(isNotNully),
                 switchMap((client) => combineLatest(
                     this.props$,
                     ...mapObject(
                         bindings,
-                        (bindable: ApiModelBindable<any, any>, key: string) => (
-                            bindable.bind(client).observeSwitch(this.props$).pipe(
+                        (bindable: Bindable<Connectable<any, any>>, key: string) => (
+                            bindable.bind(client).connect(this.props$).pipe(
                                 map((value) => ({[key]: value})),
-                                startWith({} as {[key: string]: any}),
                             )
                         ),
                     ),
                     (...results) => omit(Object.assign({}, ...results), ['client']),
                 )),
                 distinctUntilChanged(isEqual),
+                map((props) => ({props})),
             );
             public render() {
-                return <WrappedComponent {...this.state} />;
+                const {props} = this.state;
+                return props == null ? null : <WrappedComponent {...props} />;
             }
         }
         return (props: any) => (

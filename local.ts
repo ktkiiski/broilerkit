@@ -1,4 +1,5 @@
 import { URL } from 'url';
+import authLocalServer from './auth-local-server';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
 import { BadRequest, HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
@@ -14,7 +15,6 @@ import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
-import * as authLocalServer from './auth-local-server';
 
 import chalk from 'chalk';
 const { cyan, green, red, yellow } = chalk;

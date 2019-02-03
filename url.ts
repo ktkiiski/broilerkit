@@ -90,13 +90,7 @@ export class UrlPattern<T extends string = string> {
         return new Url(path, queryParameters);
     }
 
-    public compilePath(urlParameters: {[P in T]: string}) {
-        return this.pattern.replace(/\{(\w+)\}/g, (_, urlKeyword: T) => (
-            encodeURIComponent(urlParameters[urlKeyword])
-        ));
-    }
-
-    public pickQueryParameters(urlParameters: {[key: string]: string}) {
+    public pickQueryParameters(urlParameters: {[key: string]: string}): {[key: string]: string} {
         return omit(urlParameters, this.pathKeywords);
     }
 }

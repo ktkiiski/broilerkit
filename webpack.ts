@@ -165,7 +165,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
     // If running the development server, then add the dummy OAuth2 service
     if (devServer && config.auth) {
         scriptPaths.push(
-            path.resolve(__dirname, `./res/_oauth2_signin.ts`),
+            path.resolve(__dirname, `./res/_oauth2_signin.tsx`),
             path.resolve(__dirname, `./res/_oauth2_signout.ts`),
         );
         plugins.push(

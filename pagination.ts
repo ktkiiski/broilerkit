@@ -24,6 +24,8 @@ export type OrderedQuery<T, O extends keyof T> = {
     }
 }[O];
 
+export type PageResponse<T, U extends keyof T, O extends keyof T, F extends keyof T> = Page<T, Cursor<T, U, O, F>>;
+
 /**
  * A "cursor" is a full query, including the ordering and slicing attributes,
  * and the filtering parameters, to get a page from a collection.

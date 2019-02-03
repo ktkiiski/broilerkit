@@ -21,6 +21,20 @@ export function forEachKey<T>(obj: T, iterator: (key: Key<T>, value: T[Key<T>]) 
 }
 
 /**
+ * Iterates through each own enumerable string property of the given
+ * object and calls the given callback for each of them.
+ * @param obj Object to iterate
+ * @param iterator Function to be called for each key
+ */
+export function forEachProperty<T>(obj: T, iterator: (key: keyof T, value: T[keyof T]) => void): void {
+    for (const key in obj) {
+        if (hasOwnProperty(obj, key)) {
+            iterator(key, obj[key]);
+        }
+    }
+}
+
+/**
  * Converts an object to an array of items by calling the given
  * iterator function for each key and value, and constructing a new
  * array from the returned values.
@@ -41,9 +55,9 @@ export function mapObject<T, R>(obj: T, iterator: (value: T[Key<T>], key: Key<T>
  * @param obj Object whose values are mapped
  * @param iterator Function that returns new value for each key
  */
-export function transformValues<T, R>(obj: T, iterator: (value: T[Key<T>], key: Key<T>, obj: T) => R): {[P in Key<T>]: R} {
-    const result = {} as {[P in Key<T>]: R};
-    forEachKey(obj, (key, value) => {
+export function transformValues<T, R>(obj: T, iterator: (value: T[keyof T], key: keyof T, obj: T) => R): {[P in keyof T]: R} {
+    const result = {} as {[P in keyof T]: R};
+    forEachProperty(obj, (key, value) => {
         result[key] = iterator(value, key, obj);
     });
     return result;

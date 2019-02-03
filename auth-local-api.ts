@@ -1,19 +1,19 @@
+// tslint:disable:variable-name
 import { endpoint } from './api';
+import { pattern } from './url';
 import { user } from './users';
 
-// tslint:disable-next-line:variable-name
-export const _usersCollection = endpoint(user)
-    .url `/_users`
-    .listable({
-        orderingKeys: ['name'],
-        auth: 'none',
-    })
-    .creatable({
-        auth: 'none',
-        required: ['email', 'name'],
-        optional: [],
-        defaults: {
-            picture: null,
-        },
-    })
-;
+const usersCollection = endpoint(user, pattern `/_users`);
+
+export const _listUsers = usersCollection.listable({
+    auth: 'none',
+    orderingKeys: ['name'],
+});
+export const _createUser = usersCollection.creatable({
+    auth: 'none',
+    required: ['email', 'name'],
+    optional: [],
+    defaults: {
+        picture: null,
+    },
+});
