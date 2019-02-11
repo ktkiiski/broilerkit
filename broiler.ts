@@ -2,14 +2,13 @@
 import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
-import { EndpointMethodHandler } from './api';
 import { mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
-import { formatS3KeyName } from './aws/utils';
 import { isDoesNotExistsError } from './aws/utils';
+import { formatS3KeyName } from './aws/utils';
 import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
@@ -22,7 +21,7 @@ import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
 import { fileExists, readFile, readJSONFile, readLines, searchFiles, writeJSONFile } from './utils/fs';
-import { buildObject, forEachKey, mapObject, spread, toPairs, values } from './utils/objects';
+import { buildObject, forEachKey, mapObject, toPairs, transformValues, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip } from './zip';
@@ -33,6 +32,7 @@ import * as File from 'vinyl';
 
 import chalk from 'chalk';
 import { askParameters } from './parameters';
+import { groupBy } from './utils/groups';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -690,12 +690,12 @@ export class Broiler {
     }
 
     private async generateApiTemplate(server: ApiService): Promise<any> {
-        const endpoints = sort(
-            mapObject(server && server.implementations || {}, ({endpoint}, name) => ({
-                endpoint, name,
-                path: endpoint.route.pattern.pattern.replace(/^\/|\/$/g, '').split('/'),
+        const operations = sort(
+            mapObject(server && server.implementations || {}, ({operation}, name) => ({
+                operation, name,
+                path: operation.route.pattern.pattern.replace(/^\/|\/$/g, '').split('/'),
             })),
-            ({endpoint}) => endpoint.route.pattern.pattern,
+            ({operation}) => operation.route.pattern.pattern,
         );
         const hash = await this.getApiHash();
         if (!hash) {
@@ -705,12 +705,12 @@ export class Broiler {
         // Collect all the template promises to an array
         const templatePromises: Array<Promise<any>> = [];
         // Build templates for API Lambda functions
-        templatePromises.push(...endpoints.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
+        templatePromises.push(...operations.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
             ApiFunctionName: getApiLambdaFunctionLogicalId(name),
             apiFunctionName: name,
         })));
         // Build templates for every API Gateway Resource
-        const nestedApiResources = flatMap(endpoints, ({path}) => path.map((_, index) => path.slice(0, index + 1)));
+        const nestedApiResources = flatMap(operations, ({path}) => path.map((_, index) => path.slice(0, index + 1)));
         templatePromises.push(Promise.resolve({
             Resources: nestedApiResources.map((path) => ({
                 [getApiResourceLogicalId(path)]: {
@@ -725,25 +725,24 @@ export class Broiler {
                         },
                     },
                 },
-            })).reduce((a, b) => spread(a, b), {}), // Shallow-merge required
+            })).reduce((a, b) => ({...a, ...b}), {}), // Shallow-merge required
         }));
-        // Build templates for every HTTP method, for every endpoint
+        // Build templates for every HTTP method, for every operation
         const apiMethods = flatMap(
-            endpoints, ({endpoint, path, name}) => mapObject(
-                endpoint.methodHandlers,
-                ({auth}: EndpointMethodHandler, method: HttpMethod) => ({method, path, name, auth}),
+            operations, ({operation, path, name}) => operation.methods.map(
+                (method) => ({method, path, name, auth: operation.authType}),
             ),
         );
         templatePromises.push(...apiMethods.filter(({auth, name, path, method}) => {
-            // Either ignore or fail if the user registry is not enabled but the endpoint requires one
+            // Either ignore or fail if the user registry is not enabled but the operation requires one
             const config = this.config;
             if (config.auth || auth === 'none') {
                 return true;
             } else if (config.debug) {
-                this.log(yellow(`${bold('WARNING!')} The endpoint ${name} (${method} /${path.join('/')}) is not deployed because no user registry for authentication is configured!`));
+                this.log(yellow(`${bold('WARNING!')} The operation ${name} (${method} /${path.join('/')}) is not deployed because no user registry for authentication is configured!`));
                 return false;
             }
-            throw new Error(`The endpoint ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
+            throw new Error(`The operation ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
         }).map(
             ({method, path, name, auth}) => readTemplates(['cloudformation-api-method.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, method),
@@ -755,8 +754,17 @@ export class Broiler {
                 AuthorizerId: JSON.stringify(auth === 'none' ? '' : {Ref: 'ApiGatewayUserPoolAuthorizer'}),
             })),
         );
-        // Enable CORS for every endpoint URL
-        templatePromises.push(...endpoints.map(({path, endpoint: {methods}}) => {
+        // Enable CORS for every operation URL
+        const methodsByPath = transformValues(
+            groupBy(
+                operations.map(({path, operation: {methods}}) => ({path, methods})),
+                ({path}) => formatPathForLogicalId(path),
+            ),
+            (operations) => operations.reduce((result, {path, methods}) => ({
+                ...result, path, methods: union(result.methods, methods),
+            })),
+        );
+        templatePromises.push(...mapObject(methodsByPath, ({path, methods}) => {
             return readTemplates(['cloudformation-api-resource-cors.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
                 ApiResourceName: getApiResourceLogicalId(path),

@@ -1,4 +1,4 @@
-import { AuthenticationType, AuthRequestMapping, Handler, Operation, ResponseHandler } from './api';
+import { AuthenticationType, Handler, Operation, ResponseHandler } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, NoContent, Unauthorized } from './http';
@@ -14,13 +14,13 @@ export type Tables<T> = {
     [P in keyof T]: Table<T[P]>;
 };
 
-type Implementables<I, O, A extends {[op: string]: AuthenticationType}> = (
+type Implementables<I, O, R> = (
     {[P in keyof I]: Operation<I[P], any, any>} &
     {[P in keyof O]: Operation<any, O[P], any>} &
-    {[P in keyof A]: Operation<any, any, A[P]>}
+    {[P in keyof R]: Operation<any, any, R[P]>}
 );
-type OperationImplementors<I, O, D, A extends {[op: string]: AuthenticationType}> = {
-    [P in keyof I & keyof O & keyof A]: Handler<I[P], O[P], D, A[P]>;
+type OperationImplementors<I, O, D, R> = {
+    [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], D, R[P]>;
 };
 class ImplementedOperation {
     constructor(
@@ -49,10 +49,13 @@ class ImplementedOperation {
                 // Not an admin!
                 throw new Unauthorized(`Administrator rights are missing.`);
             }
-        }
-        // Check the authorization
-        if (auth && userIdAttribute && input[userIdAttribute] !== auth.id && !isAdmin) {
-            throw new Unauthorized(`Unauthorized resource`);
+            if (authType !== 'user') {
+                // Needs to be either owner or admin!
+                // TODO: Handle invalid configuration where auth == 'owner' && !userIdAttribute!
+                if (userIdAttribute && input[userIdAttribute] !== auth.id && !isAdmin) {
+                    throw new Unauthorized(`Unauthorized resource`);
+                }
+            }
         }
         // Handle the request
         const {data, ...response} = await this.handler(input, models, request);
@@ -66,17 +69,18 @@ class ImplementedOperation {
     }
 }
 
-export function implement<I, O, A extends AuthenticationType, D>(
-    operation: Operation<I, O, A>,
+export function implement<I, O, R, D>(
+    operation: Operation<I, O, R>,
     db: Tables<D>,
-    implementation: Handler<I, O, D, A>,
+    implementation: Handler<I, O, D, R>,
 ): ImplementedOperation {
     switch (operation.type) {
         case 'list':
         return new ImplementedOperation(
             operation, db,
-            async (input: I, models: Models<D>, request: AuthRequestMapping[A]): Promise<OK<Page<O, any>>> => {
-                const page: Page<any, any> = await implementation(input, models, request) as any;
+            async (input: I, models: Models<D>, request: HttpRequest): Promise<OK<Page<O, any>>> => {
+                // TODO: Avoid force-typecasting of request!
+                const page: Page<any, any> = await implementation(input, models, request as unknown as R) as any;
                 if (!page.next) {
                     return new OK(page);
                 }
@@ -89,14 +93,14 @@ export function implement<I, O, A extends AuthenticationType, D>(
         case 'retrieve':
         return new ImplementedOperation(
             operation, db,
-            async (input: I, models: Models<D>, request: AuthRequestMapping[A]): Promise<OK<O>> => {
+            async (input: I, models: Models<D>, request: R): Promise<OK<O>> => {
                 return new OK(await implementation(input, models, request));
             },
         );
         case 'destroy':
         return new ImplementedOperation(
             operation, db,
-            async (input: I, models: Models<D>, request: AuthRequestMapping[A]): Promise<NoContent> => {
+            async (input: I, models: Models<D>, request: R): Promise<NoContent> => {
                 await implementation(input, models, request);
                 return new NoContent();
             },
@@ -107,15 +111,15 @@ export function implement<I, O, A extends AuthenticationType, D>(
     }
 }
 
-export function implementAll<I, O, A extends {[op: string]: AuthenticationType}, D>(
-    operations: Implementables<I, O, A>, db: Tables<D>,
+export function implementAll<I, O, R, D>(
+    operations: Implementables<I, O, R>, db: Tables<D>,
 ) {
     function using(
-        implementors: OperationImplementors<I, O, D, A>,
-    ): Record<keyof I & keyof O & keyof A, ImplementedOperation> {
+        implementors: OperationImplementors<I, O, D, R>,
+    ): Record<keyof I & keyof O & keyof R, ImplementedOperation> {
         return transformValues(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => (
-            implement(operation, db, implementors[key as keyof I & keyof O & keyof A])
-        )) as Record<keyof I & keyof O & keyof A, ImplementedOperation>;
+            implement(operation, db, implementors[key as keyof I & keyof O & keyof R])
+        )) as Record<keyof I & keyof O & keyof R, ImplementedOperation>;
     }
     return {using};
 }
@@ -178,7 +182,8 @@ export class ApiService {
                 'Content-Type': 'application/json',
             },
         };
-        const implementations = this.iterateForPath(request.path);
+        // TODO: Configure TypeScript to allow using iterables on server side
+        const implementations = Array.from(this.iterateForPath(request.path));
         // Respond to an OPTIONS request
         if (request.method === 'OPTIONS') {
             // Get the combined methods of all matching operations

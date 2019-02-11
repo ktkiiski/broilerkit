@@ -78,7 +78,7 @@
     "ts-node": "^7.0.1",
     "tslib": "^1.9.3",
     "tslint": "^5.11.0",
-    "typescript": "^3.2.2",
+    "typescript": "^3.3.3",
     "ulid": "^2.3.0",
     "url-loader": "^1.0.1",
     "vinyl-fs": "^3.0.3",
@@ -91,14 +91,14 @@
   },
   "devDependencies": {
     "@types/mocha": "^5.2.5",
-    "@types/react": "^16.7.13",
-    "@types/react-dom": "^16.0.11",
+    "@types/react": "^16.8.2",
+    "@types/react-dom": "^16.8.0",
     "@types/react-router-dom": "^4.3.1",
     "@types/yargs": "^12.0.1",
     "mocha": "^5.2.0",
-    "react": "^16.6.3",
-    "react-dom": "^16.7.0",
+    "react": "^16.8.1",
+    "react-dom": "^16.8.1",
     "react-router-dom": "^4.3.1",
-    "rxjs": "^6.1.0"
+    "rxjs": "^6.4.0"
   }
 }

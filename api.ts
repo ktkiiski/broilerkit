@@ -4,7 +4,7 @@ import { concat, defer, from, merge, Observable, of, Subscribable } from 'rxjs';
 import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { filterAsync, toArray } from './async';
-import { Bindable, BindableConnectable, Connectable } from './bindable';
+import { Bindable, Connectable } from './bindable';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
 import { Field, nullable } from './fields';
@@ -21,31 +21,32 @@ import { Key, keys, Nullable, pick, spread, transformValues } from './utils/obje
 
 export { Field };
 
-export type Handler<I, O, D, A extends AuthenticationType> = (input: I, db: D, request: AuthRequestMapping[A]) => Promise<O>;
-export type ResponseHandler<I, O, D, A extends AuthenticationType> = Handler<I, SuccesfulResponse<O>, D, A>;
-export type MethodResponseHandlers<D, A extends AuthenticationType> = {
-    [P in HttpMethod]?: ResponseHandler<any, any, D, A>
+export type Handler<I, O, D, R> = (input: I, db: D, request: R) => Promise<O>;
+export type ResponseHandler<I, O, D, R> = Handler<I, SuccesfulResponse<O>, D, R>;
+export type MethodResponseHandlers<D, R> = {
+    [P in HttpMethod]?: ResponseHandler<any, any, D, R>
 };
 
-export interface Operation<I, O, A extends AuthenticationType> {
+export interface Operation<I, O, R> {
     type: 'retrieve' | 'update' | 'destroy' | 'list' | 'create';
-    authType: A;
+    authType: AuthenticationType;
     urlPattern: UrlPattern;
     methods: HttpMethod[];
     route: Route<any, any>;
     userIdAttribute?: string;
-    responseSerializer?: Serializer;
+    responseSerializer: Serializer | null;
     deserializeRequest(request: HttpRequest): any;
     /**
      * This method only works as a hint to TypeScript to correctly
      * interprete operations as correct Implementable types.
      */
-    asImplementable(): Operation<I, O, A>;
+    asImplementable(): Operation<I, O, R>;
 }
 
 export interface AuthRequestMapping {
     none: HttpRequest;
     user: AuthenticatedHttpRequest;
+    owner: AuthenticatedHttpRequest;
     admin: AuthenticatedHttpRequest;
 }
 
@@ -105,8 +106,8 @@ export interface CreateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends
 extends Connectable<{}, CreateEndpoint<S, U, R, O, D, B>> {
     post(input: OptionalInput<S, U | R, O, D>): Promise<S>;
     postWithUser(input: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S>;
-    postOptimistically(input: OptionalInput<S, U | R, O, D> & O): Promise<S>;
-    postWithUserOptimistically(input: UserInput<OptionalInput<S, U | R, O, D> & O, B>): Promise<S>;
+    postOptimistically(input: OptionalInput<S, U | R, O, D> & S): Promise<S>;
+    postWithUserOptimistically(input: UserInput<OptionalInput<S, U | R, O, D> & S, B>): Promise<S>;
     validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D>;
 }
 
@@ -465,7 +466,7 @@ implements CreateEndpoint<S, U, R, O, D, B> {
         const input = await this.extendUserId<OptionalInput<S, U | R, O, D>>(query);
         return await this.post(input);
     }
-    public async postOptimistically(input: OptionalInput<S, U | R, O, D> & O): Promise<S> {
+    public async postOptimistically(input: OptionalInput<S, U | R, O, D> & S): Promise<S> {
         const {client, operation} = this;
         const {route, payloadSerializer} = operation;
         const {resource} = operation.endpoint;
@@ -504,8 +505,8 @@ implements CreateEndpoint<S, U, R, O, D, B> {
             );
         }
     }
-    public async postWithUserOptimistically(query: UserInput<OptionalInput<S, U | R, O, D> & O, B>): Promise<S> {
-        const input = await this.extendUserId<OptionalInput<S, U | R, O, D> & O>(query);
+    public async postWithUserOptimistically(query: UserInput<OptionalInput<S, U | R, O, D> & S, B>): Promise<S> {
+        const input = await this.extendUserId<OptionalInput<S, U | R, O, D> & S>(query);
         return await this.postOptimistically(input);
     }
     public validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
@@ -551,7 +552,7 @@ implements UpdateEndpoint<S, U, R, O, D, B> {
         return {
             ...operation.route.serializer.validate(input),
             ...operation.updateSerializer.validate(input),
-        } as OptionalOutput<S, U | R, O, D>;
+        } as OptionalInput<S, U, R | O, D>;
     }
     public connect(): Observable<UpdateEndpoint<S, U, R, O, D, B>> {
         return of(this);
@@ -642,10 +643,10 @@ implements DestroyEndpoint<S, U, B> {
 
 interface CommonEndpointOptions<A extends AuthenticationType, B extends undefined | keyof any> {
     auth?: A;
-    authorizeBy?: B;
+    ownership?: B;
 }
 
-class Endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>> {
+class Endpoint<S, PK extends Key<S>, V extends Key<S> | undefined, U extends Key<S>> {
     constructor(
         public readonly resource: Resource<S, PK, V>,
         public readonly pattern: UrlPattern<U>,
@@ -661,41 +662,40 @@ class Endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>> {
         options: CommonEndpointOptions<A, B> & {orderingKeys: O[], filteringKeys?: F[]},
     ): ListOperation<S, U, O, F, A, B> {
         return new ListOperation(
-            this, options.orderingKeys, options.filteringKeys || [], options.auth || 'none' as A, options.authorizeBy as B,
+            this, options.orderingKeys, options.filteringKeys || [], options.auth || 'none' as A, options.ownership as B,
         );
     }
 
     public creatable<R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
         options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
     ): CreateOperation<S, U, R, O, D, A, B> {
-        const {auth = 'none' as A, authorizeBy, ...opts} = options;
-        return new CreateOperation(this, opts, auth, authorizeBy as B);
+        const {auth = 'none' as A, ownership, ...opts} = options;
+        return new CreateOperation(this, opts, auth, ownership as B);
     }
 
     public retrievable<A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
         options?: CommonEndpointOptions<A, B>,
     ): RetrieveOperation<S, U, A, B> {
         const {auth = 'none' as A} = options || {};
-        return new RetrieveOperation(this, auth, (options && options.authorizeBy) as B);
+        return new RetrieveOperation(this, auth, (options && options.ownership) as B);
     }
 
     public updateable<R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
         options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
     ): UpdateOperation<S, U, R, O, D, A, B> {
-        const {auth = 'none' as A, authorizeBy, ...opts} = options;
-        return new UpdateOperation(this, opts, auth, authorizeBy as B);
+        const {auth = 'none' as A, ownership, ...opts} = options;
+        return new UpdateOperation(this, opts, auth, ownership as B);
     }
 
     public destroyable<A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
         options?: CommonEndpointOptions<A, B>,
     ): DestroyOperation<S, U, A, B> {
         const {auth = 'none' as A} = options || {};
-        return new DestroyOperation(this, auth, (options && options.authorizeBy) as B);
+        return new DestroyOperation(this, auth, (options && options.ownership) as B);
     }
 }
 
-abstract class BaseOperation<S, U extends Key<S>, I, O, A extends AuthenticationType, B extends U | undefined>
-extends BindableConnectable<I, O> {
+abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined> {
     public abstract readonly methods: HttpMethod[];
     public abstract readonly route: Route<any, U>;
 
@@ -703,29 +703,26 @@ extends BindableConnectable<I, O> {
         public readonly endpoint: Endpoint<S, any, any, U>,
         public readonly authType: A,
         public readonly userIdAttribute: B,
-    ) {
-        super();
-    }
+    ) {}
 
     protected deserializeRequest(request: HttpRequest): any | null {
         const url = new Url(request.path, request.queryParameters);
-        // NOTE: Raises validation error if matches but invalid
-        const urlParameters = this.route.match(url);
-        if (!urlParameters) {
-            // The URL path does not match this endpoint!
+        if (!this.route.pattern.match(url)) {
+            // The pattern doesn't match this URL path
             return null;
         }
         if (this.methods.indexOf(request.method) < 0) {
             // URL matches but the method is not accepted
             throw new MethodNotAllowed(`Method ${request.method} is not allowed`);
         }
-        return urlParameters;
+        // NOTE: Raises validation error if matches but invalid
+        return this.route.match(url);
     }
 }
 
-class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, Cursor<S, U, O, F>, IntermediateCollection<S>, A, B>
-implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, A> {
+export class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, A, B>
+implements Bindable<ListEndpoint<S, U, O, F, B>>, Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
     public readonly type: 'list' = 'list';
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly urlPattern = this.endpoint.pattern;
@@ -749,64 +746,45 @@ implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, A> {
     ) {
         super(endpoint, authType, userIdAttribute);
     }
-    public bind(client: Client): Connectable<Cursor<S, U, O, F>, IntermediateCollection<S>> {
-        const model = new ListEndpointModel(this, client);
-        return {
-            connect: (props$) => (
-                model.observeSwitch(props$).pipe(
-                    startWith({items: [], isComplete: false}),
-                )
-            ),
-        };
-    }
-    public all(): BindableConnectable<Cursor<S, U, O, F>, S[] | null> {
-        return this.pipe(
-            filter((collection) => collection.isComplete),
-            map((collection) => collection.items),
-            startWith(null),
-        );
+    public bind(client: Client): ListEndpoint<S, U, O, F, B> {
+        return new ListEndpointModel(this, client);
     }
     public deserializeRequest(request: HttpRequest): Cursor<S, U, O, F> | null {
         return super.deserializeRequest(request);
     }
-    public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, A> {
+    public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
         return this;
     }
 }
 
-class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, Pick<S, U>, S | null, A, B>
-implements Operation<Pick<S, U>, S, A> {
+export class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, A, B>
+implements Bindable<RetrieveEndpoint<S, U, B>>, Operation<Pick<S, U>, S, AuthRequestMapping[A]> {
     public readonly type: 'retrieve' = 'retrieve';
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly urlPattern = this.endpoint.pattern;
     public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
-    public bind(client: Client): Connectable<Pick<S, U>, S | null> {
-        const model = new RetrieveEndpointModel(this, client);
-        return {
-            connect: (props$) => (
-                model.observeSwitch(props$).pipe(
-                    startWith(null),
-                )
-            ),
-        };
+    public readonly responseSerializer = this.endpoint.resource;
+    public bind(client: Client): RetrieveEndpoint<S, U, B> {
+        return new RetrieveEndpointModel(this, client);
     }
     public deserializeRequest(request: HttpRequest): Pick<S, U> | null {
         return super.deserializeRequest(request);
     }
-    public asImplementable(): Operation<Pick<S, U>, S, A> {
+    public asImplementable(): Operation<Pick<S, U>, S, AuthRequestMapping[A]> {
         return this;
     }
 }
 
-class CreateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, {}, CreateEndpoint<S, U, R, O, D, B>, A, B>
-implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A>, Bindable<CreateEndpoint<S, U, R, O, D, B>> {
+export class CreateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, A, B>
+implements Bindable<CreateEndpoint<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
     public readonly type: 'create' = 'create';
-    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly methods: HttpMethod[] = ['POST'];
     public readonly urlPattern = this.endpoint.pattern;
     public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
     public readonly payloadSerializer = this.endpoint.resource.optional(this.options);
+    public readonly responseSerializer = this.endpoint.resource;
     constructor(
         readonly endpoint: Endpoint<S, any, any, U>,
         private readonly options: OptionalOptions<S, R, O, D>,
@@ -826,16 +804,16 @@ implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A>, Binda
             ...this.payloadSerializer.deserialize(request.payload),
         };
     }
-    public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, A> {
+    public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
         return this;
     }
 }
 
-class UpdateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, {}, UpdateEndpoint<S, U, R, O, D, B>, A, B>
-implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A> {
+export class UpdateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, A, B>
+implements Bindable<UpdateEndpoint<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
     public readonly type: 'update' = 'update';
-    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly methods: HttpMethod[] = ['PUT', 'PATCH'];
     public readonly urlPattern = this.endpoint.pattern;
     public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
     public readonly replaceSerializer = this.endpoint.resource.optional(this.options);
@@ -843,6 +821,7 @@ implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A> {
         .pick([...this.options.required, ...this.options.optional, ...keys(this.options.defaults)])
         .fullPartial()
     ;
+    public readonly responseSerializer = this.endpoint.resource;
     constructor(
         endpoint: Endpoint<S, any, any, any>,
         private readonly options: OptionalOptions<S, R, O, D>,
@@ -866,30 +845,31 @@ implements Operation<OptionalOutput<S, R, O, D>, SuccesfulResponse<S>, A> {
             ...payloadSerializer.deserialize(request.payload),
         };
     }
-    public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, A> {
+    public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
         return this;
     }
 }
 
-class DestroyOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, {}, DestroyEndpoint<S, U, B>, A, B>
-implements Operation<Pick<S, U>, void, A> {
+export class DestroyOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
+extends BaseOperation<S, U, A, B>
+implements Bindable<DestroyEndpoint<S, U, B>>, Operation<Pick<S, U>, void, AuthRequestMapping[A]> {
     public readonly type: 'destroy' = 'destroy';
-    public readonly methods: HttpMethod[] = ['GET'];
+    public readonly methods: HttpMethod[] = ['DELETE'];
     public readonly urlPattern = this.endpoint.pattern;
     public readonly route = route(this.urlPattern, this.endpoint.resource.pick(this.urlPattern.pathKeywords));
+    public readonly responseSerializer = null;
     public bind(client: Client): DestroyEndpoint<S, U, B> {
         return new DestroyEndpointModel(this, client);
     }
     public deserializeRequest(request: HttpRequest): Pick<S, U> | null {
         return super.deserializeRequest(request);
     }
-    public asImplementable(): Operation<Pick<S, U>, void, A> {
+    public asImplementable(): Operation<Pick<S, U>, void, AuthRequestMapping[A]> {
         return this;
     }
 }
 
-export function endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>>(
+export function endpoint<S, PK extends Key<S>, V extends Key<S> | undefined, U extends Key<S>>(
     resource: Resource<S, PK, V>,
     pattern: UrlPattern<U>,
 ) {

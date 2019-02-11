@@ -68,7 +68,7 @@ export function observeAsyncIterator<T>(iterator: AsyncIterator<T>): Observable<
  * to an observable that emits objects with actual, latest values.
  * @param input Object whose values are either regular values or observables
  */
-export function observeValues<I>(input: {[P in keyof I]: ObservableInput<I[P]>}): Observable<I> {
+export function observeValues<I extends Record<string, any>>(input: {[P in keyof I]: ObservableInput<I[P]>}): Observable<I> {
     const items$ = mapObject(input, (value: any, key: string) => from<any>(value).pipe(
         // tslint:disable-next-line:no-shadowed-variable
         map((value) => ({key, value})),
@@ -77,7 +77,7 @@ export function observeValues<I>(input: {[P in keyof I]: ObservableInput<I[P]>})
     if (!items$.length) {
         return of({} as I);
     }
-    return combineLatest<{key: string, value: any}, I>(
-        items$, (...items) => buildObject(items, ({key, value}) => [key, value]) as I,
+    return combineLatest(
+        ...items$, (...items) => buildObject(items, ({key, value}) => [key, value]) as I,
     );
 }

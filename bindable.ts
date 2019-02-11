@@ -37,6 +37,19 @@ export abstract class BindableConnectable<I, O> implements Bindable<Connectable<
     }
 }
 
+// export function selectThrough<I1, O1, I2, O2, N extends string, K1 extends keyof I1>(
+//     options: SelectThroughOptions<I1, O1, I2, O2, N, K1>,
+// ): SelectThroughBindableConnectable<I1, O1, I2, O2, N, K1> {
+//     return new SelectThroughBindableConnectable<I1, O1, I2, O2, N, K1>(options);
+// }
+
+// interface SelectThroughOptions<I1, O1, I2, O2, N extends string, K1 extends keyof I1> {
+//     source: Bindable<Connectable<I1, O1[]>>;
+//     nested: Bindable<Connectable<I2, O2[]>>;
+//     nestedAt: N;
+//     using: {[P in K1]: keyof O2};
+// }
+
 class MappedInputBindableConnectable<I1, I2, O>
 extends BindableConnectable<I2, O> {
     constructor(
@@ -72,3 +85,33 @@ extends BindableConnectable<I, O2> {
         };
     }
 }
+
+// class SelectThroughBindableConnectable<I1, O1, I2, O2, N extends string, K1 extends keyof I1>
+// extends BindableConnectable<Omit<I1, K1> & I2, Array<O1 & Record<N, O2>>> {
+//     constructor(private options: SelectThroughOptions<I1, O1, I2, O2, N, K1>) {
+//         super();
+//     }
+//     public bind(client: Client): Connectable<Omit<I1, K1> & I2, Array<O1 & Record<N, O2>>> {
+//         const {source, nested, nestedAt, using} = this.options;
+//         const boundSource = source.bind(client);
+//         const boundNested = nested.bind(client);
+//         return {
+//             connect: (props$) => combineLatest(
+//                 boundNested.connect(props$), props$,
+//                 (nestedItems, props) => nestedItems.map((nestedItem) => ({
+//                     ...props,
+//                     ...transformValues(using, (nestedKey) => nestedItem[nestedKey] as unknown),
+//                 })),
+//             ).pipe(
+//                 distinctUntilChanged(isEqual),
+//                 switchMap((selectors) => !selectors.length ? [[]] : combineLatest(
+//                     selectors
+//                         .map((selector) => boundSource.connect(of(selector as I1)).pipe(
+//                             map((ratings) => ratings.map((rating) => ({...rating, profile: selector}))),
+//                         )),
+//                 )),
+//                 map((ratingCollections) => new Array<DetailedRating>().concat(...ratingCollections)),
+//             ),
+//         };
+//     }
+// }
