@@ -1,6 +1,4 @@
-import { combineLatest, from, Observable, ObservableInput, of } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { buildObject, mapObject } from './utils/objects';
+import { Observable } from 'rxjs';
 
 /**
  * Converts an iterable to an Observable.
@@ -61,23 +59,4 @@ export function observeAsyncIterator<T>(iterator: AsyncIterator<T>): Observable<
         promise.then(handleNext, handleError);
         return () => { closed = true; };
     });
-}
-
-/**
- * Converts an object, which contains observables as values,
- * to an observable that emits objects with actual, latest values.
- * @param input Object whose values are either regular values or observables
- */
-export function observeValues<I extends Record<string, any>>(input: {[P in keyof I]: ObservableInput<I[P]>}): Observable<I> {
-    const items$ = mapObject(input, (value: any, key: string) => from<any>(value).pipe(
-        // tslint:disable-next-line:no-shadowed-variable
-        map((value) => ({key, value})),
-    ));
-    // If no observables as values, we can omit the original input as-is
-    if (!items$.length) {
-        return of({} as I);
-    }
-    return combineLatest(
-        ...items$, (...items) => buildObject(items, ({key, value}) => [key, value]) as I,
-    );
 }

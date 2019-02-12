@@ -20,3 +20,7 @@ export class Client {
         public readonly authClient?: AuthClient,
     ) {}
 }
+
+export interface Bindable<T> {
+    bind(client: Client): T;
+}

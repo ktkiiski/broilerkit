@@ -1,16 +1,15 @@
 // tslint:disable:max-classes-per-file
 // tslint:disable:no-shadowed-variable
-import { concat, defer, from, merge, Observable, of, Subscribable } from 'rxjs';
+import { concat, defer, merge, Observable, of } from 'rxjs';
 import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
 import { ajax } from './ajax';
 import { filterAsync, toArray } from './async';
-import { Bindable, Connectable } from './bindable';
-import { Client } from './client';
+import { Bindable, Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
-import { Field, nullable } from './fields';
+import { nullable } from './fields';
 import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, MethodNotAllowed, SuccesfulResponse, Unauthorized } from './http';
 import { shareIterator } from './iteration';
-import { observeIterable, observeValues } from './observables';
+import { observeIterable } from './observables';
 import { Cursor, CursorSerializer, Page, PageResponse } from './pagination';
 import { Resource } from './resources';
 import { Route, route } from './routes';
@@ -19,13 +18,8 @@ import { Url, UrlPattern } from './url';
 import { hasProperties, isEqual } from './utils/compare';
 import { Key, keys, Nullable, pick, spread, transformValues } from './utils/objects';
 
-export { Field };
-
 export type Handler<I, O, D, R> = (input: I, db: D, request: R) => Promise<O>;
 export type ResponseHandler<I, O, D, R> = Handler<I, SuccesfulResponse<O>, D, R>;
-export type MethodResponseHandlers<D, R> = {
-    [P in HttpMethod]?: ResponseHandler<any, any, D, R>
-};
 
 export interface Operation<I, O, R> {
     type: 'retrieve' | 'update' | 'destroy' | 'list' | 'create';
@@ -52,18 +46,6 @@ export interface AuthRequestMapping {
 
 export type AuthenticationType = Key<AuthRequestMapping>;
 
-export interface ApiRequest {
-    method: HttpMethod;
-    url: Url;
-    payload?: any;
-}
-
-export interface MethodHandlerRequest {
-    urlParameters: {[key: string]: string};
-    payload?: any;
-}
-
-export type ApiInput<I> = {[P in keyof I]: Subscribable<I[P]>};
 export type UserInput<I, B> = Pick<I, Exclude<keyof I, B>>;
 
 export interface IntermediateCollection<O> {
@@ -73,12 +55,10 @@ export interface IntermediateCollection<O> {
 
 export interface ObservableEndpoint<I, O> {
     observe(query: I): Observable<O>;
-    observeSwitch(query$: Subscribable<I>): Observable<O>;
 }
 
 export interface ObservableUserEndpoint<I, O> {
     observeWithUser(query: I): Observable<O | null>;
-    observeWithUserSwitch(query$: Subscribable<I>): Observable<O | null>;
 }
 
 export interface RetrieveEndpoint<S, U extends Key<S>, B>
@@ -86,7 +66,6 @@ extends ObservableEndpoint<Pick<S, U>, S>, ObservableUserEndpoint<Pick<S, Exclud
     get(query: Pick<S, U>): Promise<S>;
     validateGet(query: Pick<S, U>): Pick<S, U>;
     observe(query: Pick<S, U>): Observable<S>;
-    stream(query: ApiInput<Pick<S, U>>): Observable<S>;
 }
 
 export interface ListEndpoint<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B>
@@ -102,8 +81,7 @@ extends ObservableEndpoint<Cursor<S, U, O, F>, IntermediateCollection<S>>, Obser
     observeIterableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<AsyncIterable<S> | null>;
 }
 
-export interface CreateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B>
-extends Connectable<{}, CreateEndpoint<S, U, R, O, D, B>> {
+export interface CreateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B> {
     post(input: OptionalInput<S, U | R, O, D>): Promise<S>;
     postWithUser(input: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S>;
     postOptimistically(input: OptionalInput<S, U | R, O, D> & S): Promise<S>;
@@ -111,8 +89,7 @@ extends Connectable<{}, CreateEndpoint<S, U, R, O, D, B>> {
     validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D>;
 }
 
-export interface UpdateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B>
-extends Connectable<{}, UpdateEndpoint<S, U, R, O, D, B>> {
+export interface UpdateEndpoint<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B> {
     put(input: OptionalInput<S, U | R, O, D>): Promise<S>;
     patch(input: OptionalInput<S, U, R | O, D>): Promise<S>;
     putWithUser(input: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S>;
@@ -121,8 +98,7 @@ extends Connectable<{}, UpdateEndpoint<S, U, R, O, D, B>> {
     validatePatch(input: OptionalInput<S, U, R | O, D>): OptionalInput<S, U, R | O, D>;
 }
 
-export interface DestroyEndpoint<S, U extends Key<S>, B>
-extends Connectable<{}, DestroyEndpoint<S, U, B>> {
+export interface DestroyEndpoint<S, U extends Key<S>, B> {
     delete(query: Pick<S, U>): Promise<void>;
     deleteWithUser(query: Pick<S, Exclude<U, B>>): Promise<void>;
 }
@@ -252,31 +228,8 @@ implements RetrieveEndpoint<S, U, B> {
             return resource$;
         });
     }
-    public observeSwitch(query$: Subscribable<Pick<S, U>>): Observable<S> {
-        return from(query$).pipe(
-            // Omit all the extra properties from the comparison
-            map((query) => this.validateGet(query)),
-            distinctUntilChanged(isEqual),
-            switchMap((query) => this.observe(query)),
-        );
-    }
     public observeWithUser(query: Pick<S, Exclude<U, B>>): Observable<S | null> {
         return this.withUserId(query, (input: Pick<S, U>) => this.observe(input));
-    }
-    public observeWithUserSwitch(query$: Subscribable<Pick<S, Exclude<U, B>>>): Observable<S | null> {
-        return from(query$).pipe(
-            // TODO: This can be simplified (and optimized)
-            switchMap((query) => this.withUserId(query, (r) => of(r as Pick<S, U>))),
-            map((query) => query && this.validateGet(query)),
-            distinctUntilChanged(isEqual),
-            switchMap((query) => query ? this.observe(query) : of(null)),
-        );
-    }
-    public stream(input$: ApiInput<Pick<S, U>>): Observable<S> {
-        return observeValues(input$).pipe(
-            distinctUntilChanged(isEqual),
-            switchMap((input) => this.observe(input)),
-        );
     }
 }
 
@@ -329,14 +282,6 @@ implements ListEndpoint<S, U, O, F, B> {
                     ),
                 )
             )),
-        );
-    }
-    public observeSwitch(query$: Subscribable<Cursor<S, U, O, F>>): Observable<IntermediateCollection<S>> {
-        return from(query$).pipe(
-            // Omit all the extra properties from the comparison
-            map((query) => this.validateGet(query)),
-            distinctUntilChanged(isEqual),
-            switchMap((query) => this.observe(query)),
         );
     }
     public observeObservable(input: Cursor<S, U, O, F>): Observable<Observable<S>> {
@@ -419,15 +364,6 @@ implements ListEndpoint<S, U, O, F, B> {
     public observeWithUser(input: UserInput<Cursor<S, U, O, F>, B>): Observable<IntermediateCollection<S> | null> {
         return this.observeAllWithUser(input).pipe(
             map((items) => items && {isComplete: true, items}),
-        );
-    }
-    public observeWithUserSwitch(query$: Subscribable<UserInput<Cursor<S, U, O, F>, B>>): Observable<IntermediateCollection<S> | null> {
-        return from(query$).pipe(
-            // TODO: This can be simplified (and optimized)
-            switchMap((query) => this.withUserId(query, (r) => of(r as Cursor<S, U, O, F>))),
-            map((query) => query && this.validateGet(query)),
-            distinctUntilChanged(isEqual),
-            switchMap((query) => query ? this.observe(query) : of(null)),
         );
     }
     public observeObservableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<Observable<S> | null> {
@@ -516,9 +452,6 @@ implements CreateEndpoint<S, U, R, O, D, B> {
             ...payloadSerializer.validate(input),
         } as OptionalOutput<S, U | R, O, D>;
     }
-    public connect(): Observable<CreateEndpointModel<S, U, R, O, D, B>> {
-        return of(this);
-    }
 }
 
 class UpdateEndpointModel<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B extends U | undefined>
@@ -553,9 +486,6 @@ implements UpdateEndpoint<S, U, R, O, D, B> {
             ...operation.route.serializer.validate(input),
             ...operation.updateSerializer.validate(input),
         } as OptionalInput<S, U, R | O, D>;
-    }
-    public connect(): Observable<UpdateEndpoint<S, U, R, O, D, B>> {
-        return of(this);
     }
     private async update(method: 'PUT' | 'PATCH', input: any): Promise<S> {
         const {client, operation} = this;
@@ -635,9 +565,6 @@ implements DestroyEndpoint<S, U, B> {
     public async deleteWithUser(query: Pick<S, Exclude<U, B>>): Promise<void> {
         const input = await this.extendUserId<Pick<S, U>>(query);
         return await this.delete(input);
-    }
-    public connect(): Observable<DestroyEndpoint<S, U, B>> {
-        return of(this);
     }
 }
 

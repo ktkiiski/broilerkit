@@ -1,8 +1,6 @@
 // tslint:disable:no-shadowed-variable
-import { BehaviorSubject, Observable, throwError } from 'rxjs';
+import { BehaviorSubject, Observable } from 'rxjs';
 import { distinctUntilChanged, map } from 'rxjs/operators';
-import { BindableConnectable, Connectable } from './bindable';
-import { Client } from './client';
 import { parseJwt } from './jwt';
 import { sessionStorage } from './storage';
 import { parseQuery } from './url';
@@ -347,15 +345,3 @@ function parseAuth(tokens: AuthTokens) {
         ...tokens,
     };
 }
-
-class UserIdBindableConnectable extends BindableConnectable<{}, AuthUser['id'] | null> {
-    public bind(client: Client): Connectable<{}, AuthUser['id'] | null> {
-        const userId$ = client.authClient
-            ? client.authClient.userId$
-            : throwError(new Error(`Missing authentication client`))
-        ;
-        return {connect: () => userId$};
-    }
-}
-
-export const userId = new UserIdBindableConnectable();
