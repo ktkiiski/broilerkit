@@ -1,9 +1,10 @@
-import { AuthenticationType, Handler, Operation, ResponseHandler } from './api';
+import { Handler, ResponseHandler } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, NoContent, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
+import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Url } from './url';
 import { hasOwnProperty, spread, transformValues, values } from './utils/objects';

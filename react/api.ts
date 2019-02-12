@@ -1,7 +1,7 @@
 import { combineLatest, never, Observable, of } from 'rxjs';
 import { filter, map, take } from 'rxjs/operators';
-import { ListOperation, RetrieveOperation } from '../api';
 import { Bindable } from '../client';
+import { ListOperation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
 import { Key, Omit } from '../utils/objects';
 import { useClient, useWithClient } from './client';
