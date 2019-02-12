@@ -198,6 +198,14 @@ export class Broiler {
     }
 
     /**
+     * Prints the CloudFormation stack template.
+     */
+    public async printTemplate() {
+        const template = await this.generateTemplate();
+        this.log(dumpTemplate(template));
+    }
+
+    /**
      * Runs the local development server.
      */
     public async serve() {

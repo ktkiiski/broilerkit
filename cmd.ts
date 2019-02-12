@@ -121,9 +121,17 @@ yargs
     .command({
         command: 'preview <stage>',
         describe: 'Preview the changes that would be deployed.',
-        handler: (argv: CommandOptions) => {
+        builder: (cmdYargs) => cmdYargs
+            .boolean('template')
+            .describe('template', 'Preview the CloudFormation stack template')
+        ,
+        handler: (argv: CommandOptions & {template: boolean}) => {
             const broiler = getBroiler(argv);
-            broiler.preview().then(null, onError);
+            if (argv.template) {
+                broiler.printTemplate().then(null, onError);
+            } else {
+                broiler.preview().then(null, onError);
+            }
         },
     })
     .command({
