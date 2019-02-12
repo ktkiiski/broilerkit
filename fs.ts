@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import * as File from 'vinyl';
 import { src as _src, SrcOptions } from 'vinyl-fs';
-import { generate } from '../async';
+import { generate } from './async';
 
 /**
  * Creates an observable that emits all entries matching the given

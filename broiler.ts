@@ -7,20 +7,19 @@ import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation'
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
-import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
-import { clean } from './clean';
+import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
+import { fileExists, readFile, readJSONFile, readLines, searchFiles, writeJSONFile } from './fs';
 import { HttpMethod } from './http';
 import { AppStageConfig } from './index';
 import { getDbFilePath, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
-import { flatMap, union } from './utils/arrays';
 import { difference, differenceBy, order, sort } from './utils/arrays';
-import { fileExists, readFile, readJSONFile, readLines, searchFiles, writeJSONFile } from './utils/fs';
+import { flatMap, union } from './utils/arrays';
 import { buildObject, forEachKey, mapObject, toPairs, transformValues, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -31,6 +30,7 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
+import { clean } from './clean';
 import { askParameters } from './parameters';
 import { groupBy } from './utils/groups';
 

@@ -1,4 +1,4 @@
-import { readFile } from './utils/fs';
+import { readFile } from './fs';
 import { forEachKey, spread } from './utils/objects';
 
 import * as path from 'path';
