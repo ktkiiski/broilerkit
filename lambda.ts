@@ -1,4 +1,5 @@
-import { BadRequest, HttpHeaders, HttpMethod, HttpRequest, HttpResponse, isReadHttpMethod, isWriteHttpMethod, UnsupportedMediaType } from './http';
+import { HttpHeaders, HttpMethod, HttpResponse } from './http';
+import { requestMiddleware } from './middleware';
 
 export type LambdaHttpResponse = HttpResponse;
 
@@ -61,12 +62,10 @@ export interface LambdaHttpRequest {
 
 export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void;
 
-export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
-    let {httpMethod} = request;
-    const {body, isBase64Encoded, requestContext} = request;
+export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequest) => {
+    const {httpMethod, isBase64Encoded, requestContext} = request;
     const queryParameters = request.queryStringParameters || {};
     const headers = request.headers || {};
-    const {method = null} = queryParameters;
     const authorizer = requestContext && requestContext.authorizer;
     const claims = authorizer && authorizer.claims || null;
     const groupsStr = claims && claims['cognito:groups'];
@@ -77,30 +76,11 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
         picture: claims.picture || null,
         groups: groupsStr ? groupsStr.split(',') : [],
     };
-    if (method) {
-        // Allow changing the HTTP method with 'method' query string parameter
-        if (httpMethod === 'GET' && isReadHttpMethod(method)) {
-            httpMethod = method;
-        } else if (httpMethod === 'POST' && isWriteHttpMethod(method)) {
-            httpMethod = method;
-        } else {
-            throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
-        }
-    }
-    // Parse the request payload as JSON
-    const contentType = headers['Content-Type'];
-    if (contentType && contentType !== 'application/json') {
-        throw new UnsupportedMediaType(`Only application/json is accepted`);
-    }
-    let payload: any;
-    if (body) {
-        try {
-            const encodedBody = isBase64Encoded ? Buffer.from(body, 'base64').toString() : body;
-            payload = JSON.parse(encodedBody);
-        } catch {
-            throw new BadRequest(`Invalid JSON payload`);
-        }
-    }
+    const body = isBase64Encoded && request.body
+        // Decode base64 encoded body
+        ? Buffer.from(request.body, 'base64').toString()
+        : request.body
+    ;
     const environment = request.stageVariables || {};
     const region = environment.Region;
     if (!region) {
@@ -125,7 +105,7 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
     return {
         method: httpMethod,
         path: request.path,
-        queryParameters, headers, body, payload,
+        queryParameters, headers, body,
         environment, region,
         apiRoot, siteRoot,
         apiOrigin, siteOrigin,
@@ -133,4 +113,4 @@ export function convertLambdaRequest(request: LambdaHttpRequest): HttpRequest {
         // Read the directory path from environment variables
         // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
     };
-}
+});

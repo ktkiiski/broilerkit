@@ -1,14 +1,16 @@
+// tslint:disable:member-ordering
 import { Handler, ResponseHandler } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
-import { HttpMethod, HttpRequest, HttpStatus, isResponse, NoContent, Unauthorized } from './http';
+import { HttpMethod, HttpRequest, HttpStatus, isResponse, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
-import { convertLambdaRequest, LambdaCallback, LambdaHttpHandler, LambdaHttpRequest } from './lambda';
+import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, lambdaMiddleware } from './lambda';
+import { middleware } from './middleware';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Url } from './url';
 import { hasOwnProperty, spread, transformValues, values } from './utils/objects';
-import { countBytes, upperFirst } from './utils/strings';
+import { upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
 export type Tables<T> = {
@@ -30,14 +32,15 @@ class ImplementedOperation {
         private readonly handler: ResponseHandler<any, any, any, any>,
     ) {}
 
-    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse<any> | null> {
+    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse<any>> {
         const {tables, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const models = getModels(tables, request, cache);
         const input = operation.deserializeRequest(request);
         if (!input) {
             // Not matching endpoint
-            return null;
+            // This error code indicates to the caller that it should probably find another endpoint
+            throw new NotImplemented(`Request not processable by this endpoint`);
         }
         // Check the authentication
         const {auth} = request;
@@ -125,46 +128,6 @@ export function implementAll<I, O, R, D>(
     return {using};
 }
 
-async function handleApiRequest(request: HttpRequest, promise: Promise<ApiResponse<any> | null>): Promise<HttpResponse | null> {
-    try {
-        const apiResponse = await promise;
-        return apiResponse && finalizeApiResponse(apiResponse, request.siteOrigin);
-    } catch (error) {
-        return catchHttpException(error, request);
-    }
-}
-
-function catchHttpException(error: any, request: HttpRequest): HttpResponse {
-    // Determine if the error was a HTTP response
-    if (isResponse(error)) {
-        // This was an intentional HTTP error, so it should be considered
-        // a successful execution of the lambda function.
-        return finalizeApiResponse(error, request.siteOrigin);
-    }
-    // This doesn't seem like a HTTP response -> Pass through for the internal server error
-    throw error;
-}
-
-export function finalizeApiResponse(response: ApiResponse<any>, siteOrigin: string): HttpResponse {
-    const {statusCode, data} = response;
-    const encodedBody = data == null ? '' : JSON.stringify(data);
-    const headers = data == null
-        ? response.headers
-        : {'Content-Type': 'application/json', ...response.headers}
-    ;
-    return {
-        statusCode,
-        body: encodedBody,
-        headers: {
-            'Access-Control-Allow-Origin': siteOrigin,
-            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
-            'Access-Control-Allow-Credentials': 'true',
-            'Content-Length': String(countBytes(encodedBody)),
-            ...headers,
-        },
-    };
-}
-
 export class ApiService {
 
     constructor(
@@ -172,17 +135,8 @@ export class ApiService {
         public readonly dbTables: Tables<{[name: string]: Model<any, any, any, any, any>}>,
     ) {}
 
-    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<HttpResponse> {
-        let errorResponse: HttpResponse = {
-            statusCode: HttpStatus.NotFound,
-            body: JSON.stringify({
-                message: 'API endpoint not found.',
-                request,
-            }),
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        };
+    public execute = async (request: HttpRequest, cache?: {[uri: string]: any}) => {
+        let errorResponse: ApiResponse<any> | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
         const implementations = Array.from(this.iterateForPath(request.path));
         // Respond to an OPTIONS request
@@ -198,25 +152,33 @@ export class ApiService {
                 return errorResponse;
             }
             // Respond with the CORS headers
-            return finalizeApiResponse({
+            return {
                 statusCode: 200,
                 headers: {'Access-Control-Allow-Methods': methods.join(', ')},
-            }, request.siteOrigin);
+                body: '',
+            } as HttpResponse;
         }
         // Otherwise find the first implementation that processes the response
         for (const implementation of implementations) {
-            const promise = implementation.execute(request, cache);
-            const response = await handleApiRequest(request, promise);
-            if (response) {
-                if (response.statusCode === HttpStatus.MethodNotAllowed) {
-                    // The URL matches, but the method is not valid.
-                    // Some other implementation might still accept this method,
-                    // so continue iterating, or finally return this 405 if not found.
-                    errorResponse = response;
-                } else {
-                    // This implementation handled this response!
-                    return response;
+            try {
+                // Return response directly returned by the implementation
+                return await implementation.execute(request, cache);
+            } catch (error) {
+                // Thrown 405 or 501 response errors will have a special meaning
+                if (isResponse(error)) {
+                    if (error.statusCode === HttpStatus.NotImplemented) {
+                        // Continue to the next implementation
+                        continue;
+                    } else if (error.statusCode === HttpStatus.MethodNotAllowed) {
+                        // The URL matches, but the method is not valid.
+                        // Some other implementation might still accept this method,
+                        // so continue iterating, or finally return this 405 if not found.
+                        errorResponse = error;
+                        continue;
+                    }
                 }
+                // Raise through
+                throw error;
             }
         }
         // This should not be possible with API gateway, but possible with the local server
@@ -224,8 +186,7 @@ export class ApiService {
     }
 
     public request: LambdaHttpHandler = (lambdaRequest: LambdaHttpRequest, _: any, callback: LambdaCallback) => {
-        const request = convertLambdaRequest(lambdaRequest);
-        this.execute(request).then(
+        this.executeLambda(lambdaRequest).then(
             (result) => callback(null, result),
             (error) => callback(error),
         );
@@ -243,6 +204,10 @@ export class ApiService {
         const tables = values(tableMapping);
         return tables.find((table) => table.name === tableName);
     }
+
+    private executeLambda = lambdaMiddleware(
+        middleware(this.execute),
+    );
 
     private *iterateForPath(path: string) {
         const url = new Url(path);

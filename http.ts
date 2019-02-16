@@ -110,7 +110,7 @@ export interface HttpRequest {
      * If the request did not contain a payload body, then this
      * will be undefined.
      */
-    payload?: any;
+    payload?: unknown;
     /**
      * Environment or staging variables about the server on which
      * the request is being executed.
@@ -207,16 +207,24 @@ export class NotImplemented extends ExceptionResponse {
     public readonly statusCode = HttpStatus.NotImplemented;
 }
 
-export function isResponse(response: any): response is ApiResponse<any> {
+export function isApiResponse(response: any): response is ApiResponse<any> {
+    return isResponse(response) && !('body' in response);
+}
+
+export function isResponse(response: any): response is HttpResponse | ApiResponse<any> {
     if (!response) {
         return false;
     }
-    const {statusCode, data, headers} = response;
-    return typeof statusCode === 'number' && !isNaN(statusCode) && data != null && typeof headers === 'object';
+    const {statusCode} = response;
+    return typeof statusCode === 'number'
+        && !isNaN(statusCode)
+        && typeof response.headers === 'object'
+        && (typeof response.body === 'string' || response.data != null)
+    ;
 }
 
 export function isErrorResponse(response: any): response is ApiResponse<any> {
-    return isResponse(response) && response.statusCode >= 400;
+    return isApiResponse(response) && response.statusCode >= 400;
 }
 
 export function acceptsContentType(request: HttpRequest, contentType: string): boolean {
@@ -237,4 +245,20 @@ export function acceptsContentType(request: HttpRequest, contentType: string): b
         }
     }
     return false;
- }
+}
+
+export function parsePayload(request: HttpRequest): HttpRequest {
+    const {body} = request;
+    if (!body) {
+        return request;
+    }
+    const contentType = request.headers['Content-Type'];
+    if (contentType && contentType !== 'application/json') {
+        throw new UnsupportedMediaType(`Only 'application/json' requests are accepted`);
+    }
+    try {
+        return {...request, payload: JSON.parse(body)};
+    } catch {
+        throw new BadRequest(`Invalid JSON payload`);
+    }
+}

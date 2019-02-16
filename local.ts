@@ -3,8 +3,8 @@ import authLocalServer from './auth-local-server';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
 import { readStream } from './fs';
-import { BadRequest, HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
-import { ApiService, finalizeApiResponse } from './server';
+import { HttpAuth, HttpMethod, HttpRequest, HttpStatus, Unauthorized } from './http';
+import { ApiService } from './server';
 import { forEachKey, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -17,6 +17,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 
 import chalk from 'chalk';
+import { middleware, requestMiddleware } from './middleware';
 const { cyan, green, red, yellow } = chalk;
 
 /**
@@ -131,12 +132,21 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
                 ...params,
                 ...getRequestEnvironment(handler, stageDirPath),
             };
+            const context = {
+                siteOrigin, apiOrigin, siteRoot, apiRoot, environment,
+            };
+            const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
+                await convertNodeRequest(httpRequest, context)
+            ));
+            const executeRequest = nodeMiddleware(
+                middleware(
+                    localAuthenticationMiddleware(handler.execute),
+                ),
+            );
             // Start the server
             server = http.createServer(async (httpRequest, httpResponse) => {
                 try {
-                    const response = await handleNodeRequest(httpRequest, handler, {
-                        siteOrigin, apiOrigin, siteRoot, apiRoot, environment,
-                    }, cache);
+                    const response = await executeRequest(httpRequest, cache);
                     const textColor = httpRequest.method === 'OPTIONS' ? chalk.dim : (x: string) => x;
                     // tslint:disable-next-line:no-console
                     console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
@@ -175,16 +185,34 @@ function getRequestEnvironment(service: ApiService, directoryPath: string): {[ke
     return environment;
 }
 
-async function handleNodeRequest(nodeRequest: http.IncomingMessage, handler: ApiService, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}, cache: {[uri: string]: any}): Promise<HttpResponse> {
+async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {
     const {method} = nodeRequest;
-    const {siteOrigin} = context;
     const headers = flattenParameters(nodeRequest.headers);
-    const authHeader = headers.authorization;
+    const requestUrlObj = url.parse(nodeRequest.url as string, true);
+    const request: HttpRequest = {
+        method: method as HttpMethod,
+        path: requestUrlObj.pathname as string,
+        queryParameters: flattenParameters(requestUrlObj.query),
+        headers,
+        region: 'local',
+        auth: null, // NOTE: This will be set by another middleware!
+        ...context,
+    };
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        const chunks = await readStream(nodeRequest);
+        const body = chunks.map((chunk) => chunk.toString()).join('');
+        request.body = body;
+    }
+    return request;
+}
+
+const localAuthenticationMiddleware = requestMiddleware(async (request: HttpRequest) => {
+    const authHeader = request.headers.Authorization;
     let auth: HttpAuth | null = null;
     if (authHeader) {
         const authTokenMatch = /^Bearer\s+(\S+)$/.exec(authHeader);
         if (!authTokenMatch) {
-            return finalizeApiResponse(new Unauthorized(`Invalid authorization header`), siteOrigin);
+            throw new Unauthorized(`Invalid authorization header`);
         }
         try {
             const payload = jwt.verify(authTokenMatch[1], 'LOCAL_SECRET') as any;
@@ -196,33 +224,11 @@ async function handleNodeRequest(nodeRequest: http.IncomingMessage, handler: Api
                 groups: payload['cognito:groups'] || [],
             };
         } catch {
-            return finalizeApiResponse(new Unauthorized(`Invalid access token`), siteOrigin);
+            throw new Unauthorized(`Invalid access token`);
         }
     }
-    const requestUrlObj = url.parse(nodeRequest.url as string, true);
-    const request: HttpRequest = {
-        method: method as HttpMethod,
-        path: requestUrlObj.pathname as string,
-        queryParameters: flattenParameters(requestUrlObj.query),
-        headers,
-        region: 'local',
-        auth,
-        ...context,
-    };
-    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
-        const chunks = await readStream(nodeRequest);
-        const body = chunks.map((chunk) => chunk.toString()).join('');
-        request.body = body;
-        if (body) {
-            try {
-                request.payload = JSON.parse(body);
-            } catch {
-                return finalizeApiResponse(new BadRequest(`Invalid JSON payload`), siteOrigin);
-            }
-        }
-    }
-    return await handler.execute(request, cache);
-}
+    return {...request, auth};
+});
 
 function colorizeStatusCode(statusCode: HttpStatus): string {
     const codeStr = String(statusCode);
