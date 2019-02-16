@@ -218,3 +218,23 @@ export function isResponse(response: any): response is ApiResponse<any> {
 export function isErrorResponse(response: any): response is ApiResponse<any> {
     return isResponse(response) && response.statusCode >= 400;
 }
+
+export function acceptsContentType(request: HttpRequest, contentType: string): boolean {
+    const splittedContentType = contentType.split('/');
+    const type = splittedContentType[0].toLowerCase();
+    const subType = splittedContentType[1].toLowerCase();
+    const {headers} = request;
+    const acceptHeader = headers && headers.Accept;
+    if (!acceptHeader) {
+        // No Accept header available
+        return false;
+    }
+    const acceptedMimes = acceptHeader.toLowerCase().split(/\s*,\s*/g);
+    for (const acceptedMime of acceptedMimes) {
+        const match = /^(\w+)\/(\w+)/.exec(acceptedMime);
+        if (match && match[1] === type && (match[2] === subType || match[2] === '*')) {
+            return true;
+        }
+    }
+    return false;
+ }
