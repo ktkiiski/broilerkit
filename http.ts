@@ -21,11 +21,18 @@ export const enum HttpStatus {
     Conflict = 409,
     Gone = 410,
     UnsupportedMediaType = 415,
+    // Server-side errors
+    InternalServerError = 500,
+    NotImplemented = 501,
+    BadGateway = 502,
+    ServiceUnavailable = 503,
 }
 
 export type HttpSuccessStatus = 200 | 201 | 202 | 204;
 export type HttpRedirectStatus = 301 | 302;
 export type HttpClientErrorStatus = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 409 | 410 | 415;
+export type HttpServerErrorStatus = 500 | 501 | 502 | 503;
+export type HttpErrorStatus = HttpClientErrorStatus | HttpServerErrorStatus;
 
 /**
  * Any supported HTTP method.
@@ -153,7 +160,7 @@ export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
 }
 
 export abstract class ExceptionResponse extends Error implements ApiResponse<any> {
-    public readonly abstract statusCode: HttpRedirectStatus | HttpClientErrorStatus;
+    public readonly abstract statusCode: HttpRedirectStatus | HttpErrorStatus;
     public readonly data: any;
     constructor(message: string, data?: object, public readonly headers: HttpHeaders = {}) {
         super(message);
@@ -194,6 +201,10 @@ export class MethodNotAllowed extends ExceptionResponse {
 
 export class UnsupportedMediaType extends ExceptionResponse {
     public readonly statusCode = HttpStatus.UnsupportedMediaType;
+}
+
+export class NotImplemented extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.NotImplemented;
 }
 
 export function isResponse(response: any): response is ApiResponse<any> {
