@@ -64,6 +64,21 @@ export function transformValues<T, R>(obj: T, iterator: (value: T[keyof T], key:
 }
 
 /**
+ * Maps each key of an object to a new key, as returned by the given
+ * function that is called for each key.
+ * @param obj Object whose values are mapped
+ * @param iterator Function that returns new value for each key
+ */
+export function transformKeys<T, R extends string>(obj: T, iterator: (key: Key<T>, value: T[Key<T>], obj: T) => R): {[P in R]: T[Key<T>]} {
+    const result = {} as {[key: string]: T[Key<T>]};
+    forEachKey(obj, (key, value) => {
+        const newKey: string = iterator(key, value, obj);
+        result[newKey] = value;
+    });
+    return result as {[P in R]: T[Key<T>]};
+}
+
+/**
  * Creates an object by mapping each item in the given array to
  * pairs of keys and values. The given iterator function is called
  * for each item in the array and it should return the key-value pair
