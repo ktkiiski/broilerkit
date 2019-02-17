@@ -534,6 +534,10 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                         configFile: path.resolve(projectRootPath, './tsconfig.json'),
                         // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                         transpileOnly: true,
+                        // The target NodeJS environment supports ES2017, so override the target for it
+                        compilerOptions: {
+                            target: 'ES2017',
+                        },
                     },
                 },
             ],
