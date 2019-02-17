@@ -4,8 +4,6 @@ import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
-import { LambdaCallback, LambdaHttpHandler, LambdaHttpRequest, lambdaMiddleware } from './lambda';
-import { middleware } from './middleware';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Url } from './url';
@@ -185,13 +183,6 @@ export class ApiService {
         return errorResponse;
     }
 
-    public request: LambdaHttpHandler = (lambdaRequest: LambdaHttpRequest, _: any, callback: LambdaCallback) => {
-        this.executeLambda(lambdaRequest).then(
-            (result) => callback(null, result),
-            (error) => callback(error),
-        );
-    }
-
     public extend(implementations: Record<string, ImplementedOperation>, dbTables?: Tables<{[name: string]: Model<any, any, any, any, any>}>) {
         return new ApiService(
             {...this.implementations, ...implementations},
@@ -204,10 +195,6 @@ export class ApiService {
         const tables = values(tableMapping);
         return tables.find((table) => table.name === tableName);
     }
-
-    private executeLambda = lambdaMiddleware(
-        middleware(this.execute),
-    );
 
     private *iterateForPath(path: string) {
         const url = new Url(path);

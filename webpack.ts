@@ -421,7 +421,7 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {serverFile, sourceDir, buildDir, projectRootPath, devServer} = config;
+    const {serverFile, sourceDir, buildDir, projectRootPath, devServer, debug} = config;
     const {region, apiRoot, assetsRoot, siteRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
@@ -483,14 +483,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     ];
     return {
         // Development or production build?
-        mode: devServer ? 'development' : 'production',
+        mode: devServer || debug ? 'development' : 'production',
 
         // Build for running in node environment, instead of web browser
         target: 'node',
 
         // The main entry points for source files.
         entry: {
-            _api: path.resolve(projectRootPath, sourceDir, serverFile as string),
+            _api: require.resolve('./bootstrap/api'),
         },
 
         output: {
@@ -547,6 +547,10 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         resolve: {
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js'],
+            alias: {
+                // The entry point will `require` this module for finding the API service
+                _service: path.resolve(projectRootPath, sourceDir, serverFile as string),
+            },
         },
 
         resolveLoader: {

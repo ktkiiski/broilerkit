@@ -979,7 +979,7 @@ export class Broiler {
         const { serverFile, projectRootPath, sourceDir } = this.config;
         if (serverFile) {
             const api = require(path.resolve(projectRootPath, sourceDir, serverFile));
-            return api.config || api;
+            return api.default;
         }
         return null;
     }
