@@ -118,10 +118,11 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             const apiRequestHandlerFilePath = path.resolve(options.projectRootPath, buildDir, apiRequestHandlerFileName);
             // Ensure that module will be re-loaded
             delete require.cache[apiRequestHandlerFilePath];
-            let handler: ApiService = require(apiRequestHandlerFilePath);
+            const serviceModule = require(apiRequestHandlerFilePath);
+            let handler: ApiService = serviceModule.default;
             if (!handler || typeof handler.execute !== 'function') {
                 // tslint:disable-next-line:no-console
-                console.error(red(`The exported API module must have a 'execute' callable!`));
+                console.error(red(`The API module must export an APIService instance as a default export!`));
                 continue;
             }
             // If user registry is enabled then add APIs for local sign in functionality
