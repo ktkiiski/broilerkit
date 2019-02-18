@@ -431,7 +431,7 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteRoot, apiRoot, assetsRoot, auth, defaultPage, parameters} = this.config;
+        const {siteRoot, apiRoot, assetsRoot, auth, parameters} = this.config;
         const siteRootUrl = new URL(siteRoot);
         const siteDomain = siteRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
@@ -472,7 +472,7 @@ export class Broiler {
             SiteOrigin: siteRootUrl.origin,
             SiteDomainName: siteDomain,
             SiteHostedZoneName: getHostedZone(siteDomain),
-            SiteDefaultPage: defaultPage != null ? path.resolve('/', defaultPage) : undefined,
+            SiteDefaultPage: '/index.html',
             AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
@@ -644,12 +644,12 @@ export class Broiler {
     private async generateTemplate(): Promise<any> {
         const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
-        const templateFiles = ['cloudformation-init.yml', 'cloudformation-app.yml'];
-        const {auth, defaultPage, parameters} = this.config;
-        if (defaultPage) {
-            // Enable fallback page for single-page apps using HTML5 History API
-            templateFiles.push('cloudformation-spa.yml');
-        }
+        const templateFiles = [
+            'cloudformation-init.yml',
+            'cloudformation-app.yml',
+            'cloudformation-spa.yml',
+        ];
+        const {auth, parameters} = this.config;
         if (auth) {
             // User registry enabled
             templateFiles.push('cloudformation-user-registry.yml');

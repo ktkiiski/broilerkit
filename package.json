@@ -47,6 +47,9 @@
     "@types/mime": "^2.0.0",
     "@types/nedb": "^1.8.6",
     "@types/node": "^10.12.12",
+    "@types/react": "^16.8.2",
+    "@types/react-dom": "^16.8.0",
+    "@types/react-router-dom": "^4.3.1",
     "@types/vinyl-fs": "^2.4.9",
     "@types/webpack": "^4.4.21",
     "@types/webpack-dev-server": "3.1.1",
@@ -65,13 +68,15 @@
     "html-webpack-plugin": "^3.1.0",
     "image-webpack-loader": "^4.6.0",
     "jsonwebtoken": "^8.4.0",
-    "jstransformer-markdown-it": "^2.0.0",
     "jszip": "^3.1.5",
-    "markdown-loader": "^4.0.0",
     "mime": "^2.4.0",
     "mini-css-extract-plugin": "^0.5.0",
     "nedb": "^1.8.0",
     "node-sass": "^4.11.0",
+    "react": "^16.8.1",
+    "react-dom": "^16.8.1",
+    "react-router-dom": "^4.3.1",
+    "rxjs": "^6.4.0",
     "source-map-loader": "^0.2.3",
     "style-loader": "^0.23.1",
     "ts-loader": "^5.3.1",
@@ -91,14 +96,7 @@
   },
   "devDependencies": {
     "@types/mocha": "^5.2.5",
-    "@types/react": "^16.8.2",
-    "@types/react-dom": "^16.8.0",
-    "@types/react-router-dom": "^4.3.1",
     "@types/yargs": "^12.0.1",
-    "mocha": "^5.2.0",
-    "react": "^16.8.1",
-    "react-dom": "^16.8.1",
-    "react-router-dom": "^4.3.1",
-    "rxjs": "^6.4.0"
+    "mocha": "^5.2.0"
   }
 }

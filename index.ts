@@ -31,22 +31,6 @@ export interface StageConfig {
     apiRoot?: string;
 }
 
-export interface WebPageConfig {
-    /**
-     * Title of this web page.
-     */
-    title?: string;
-    /**
-     * The HTML file path relative to the source directory.
-     */
-    file: string;
-    /**
-     * List of scripts entries to inject to the web page,
-     * relative to the source directory.
-     */
-    scripts: string[];
-}
-
 export interface AuthConfig {
     /**
      * The Facebook client ID for sign in.
@@ -73,22 +57,20 @@ export interface AppConfig {
      */
     name: string;
     /**
+     * Human-readable title for the app.
+     */
+    title: string;
+    /**
      * Icon file for your app that is used to generate favicons and mobile-compatible
      * icons. The path is relative to the source directory.
      */
     iconFile: string;
     /**
-     * Pages
+     * The file containing the React component that renders the website.
+     * You should use React Router for different URLs.
+     * The component should be the default export of this file.
      */
-    pages: WebPageConfig[];
-    /**
-     * Optional default web page that will be served when no web page file
-     * is found by the requested URL. If null or undefined, an 404 error page will be
-     * shown. Otherwise, the defined file will be served with 200 response.
-     *
-     * This is useful for single page apps using HTML5 History API.
-     */
-    defaultPage?: string;
+    siteFile: string;
     /**
      * To which Amazon region the web app will be hosted.
      * Currently, only 'us-east-1' is supported!

@@ -5,8 +5,7 @@ import * as webpack from 'webpack';
 import { AuthOptions } from './auth';
 import { BroilerConfig } from './config';
 import { executeSync } from './exec';
-import { union } from './utils/arrays';
-import { buildObject, pick } from './utils/objects';
+import { forEachProperty } from './utils/objects';
 
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
@@ -31,12 +30,11 @@ export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
  * https://webpack.js.org/configuration/
  */
 export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): webpack.Configuration {
-    const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, pages, projectRootPath, stage, analyze} = config;
+    const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, title, siteFile, projectRootPath, stage, analyze} = config;
     const {region, apiRoot, assetsRoot, siteRoot, authClientId, authRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const stageDirPath = path.resolve(projectRootPath, stageDir);
-    const scriptPaths = union(...pages.map((page) => page.scripts));
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
@@ -46,9 +44,6 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
     const assetsDir = assetsPath.replace(/^\/+/, '');
     const assetsFilePrefix = assetsDir && (assetsDir + '/');
     const assetsOrigin = `${assetsRootUrl.protocol}//${assetsRootUrl.host}`;
-    const sitePath = url.parse(siteRoot).pathname || '/';
-    const siteDir = sitePath.replace(/^\/+/, '');
-    const siteFilePrefix = siteDir && (siteDir + '/');
     // Determine options for the AuthClient
     const authOptions: AuthOptions = {
         clientId: authClientId,
@@ -79,18 +74,16 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             filename: devServer && debug ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
         }),
         // Create HTML plugins for each webpage
-        ...pages.map(
-            ({file, title, scripts}) => new HtmlWebpackPlugin({
-                title: title == null ? path.basename(file) : title,
-                filename: siteFilePrefix + path.format({...pick(path.parse(file), ['dir', 'name']), ext: '.html'}),
-                template: path.resolve(sourceDirPath, file),
-                chunks: scripts.map((name) => path.basename(name).replace(/\..*?$/, '')),
-                // Insert tags for stylesheets and scripts
-                inject: true,
-                // No cache-busting needed, because hash is included in file names
-                hash: false,
-            }),
-        ),
+        new HtmlWebpackPlugin({
+            title,
+            filename: 'index.html',
+            template: path.resolve(__dirname, './res/index.html'),
+            chunks: ['index'],
+            // Insert tags for stylesheets and scripts
+            inject: 'body',
+            // No cache-busting needed, because hash is included in file names
+            hash: false,
+        }),
         /**
          * Provide polyfills with ProvidePlugin.
          */
@@ -162,12 +155,14 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             logLevel: 'info',
         }),
     ];
+    // Define the entry for the app
+    const entries: Record<string, string[]> = {
+        index: [require.resolve('./bootstrap/site')],
+    };
     // If running the development server, then add the dummy OAuth2 service
     if (devServer && config.auth) {
-        scriptPaths.push(
-            path.resolve(__dirname, `./res/_oauth2_signin.tsx`),
-            path.resolve(__dirname, `./res/_oauth2_signout.ts`),
-        );
+        entries._oauth2_signin = [require.resolve('./res/_oauth2_signin')];
+        entries._oauth2_signout = [require.resolve('./res/_oauth2_signout')];
         plugins.push(
             new HtmlWebpackPlugin({
                 title: 'Sign in',
@@ -253,17 +248,14 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             }),
         );
     }
-    const entries = buildObject(scriptPaths, (entry) => {
-        const entryName = path.basename(entry).replace(/\..*?$/, '');
-        const entryPaths = [path.resolve(sourceDirPath, entry)];
-        if (devServer) {
+    if (devServer) {
+        forEachProperty(entries, (_, entryPaths) => {
             // Enable auto-reloading when running the Webpack dev server
             // TODO: Is this configuration for the inline livereloading still required?
             // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
             entryPaths.unshift(`webpack-dev-server/client?${siteRoot}`);
-        }
-        return [entryName, entryPaths];
-    });
+        });
+    }
     return {
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
@@ -340,19 +332,6 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                     test: /\.scss($|\?)/,
                     loader: 'fast-sass-loader',
                 },
-                // Ensure that any images references in HTML files are included
-                {
-                    test: /\.(md|markdown|html?|tmpl)$/,
-                    loader: 'html-loader',
-                    options: {
-                        attrs: ['img:src', 'link:href'],
-                    },
-                },
-                // Convert any Markdown files to HTML, and require any referred images/stylesheet
-                {
-                    test: /\.(md|markdown)$/,
-                    loader: 'markdown-loader',
-                },
                 // Optimize image files and bundle them as files or data URIs
                 {
                     test: /\.(gif|png|jpe?g|svg)$/,
@@ -391,6 +370,10 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         resolve: {
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js'],
+            alias: {
+                // The entry point will `require` this module for finding the website component
+                _site: path.resolve(projectRootPath, sourceDir, siteFile),
+            },
         },
 
         resolveLoader: {
