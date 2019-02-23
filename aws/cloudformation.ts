@@ -234,7 +234,9 @@ export class AmazonCloudFormation {
             // Get all the changes in the change set
             const Changes = [];
             for await (const changes of retrievePages(changeSetReq, 'Changes')) {
-                Changes.push(...changes);
+                if (changes) {
+                    Changes.push(...changes);
+                }
             }
             const fullChangeSet = {...changeSet, Changes};
             const { Status, StatusReason } = fullChangeSet;

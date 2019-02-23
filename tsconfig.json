@@ -19,7 +19,7 @@
         "sourceMap": false,
         "jsx": "react",
         "strict": true,
-        "target": "es5"
+        "target": "ES2017"
     },
     "include": [
         "./**/*.tsx",

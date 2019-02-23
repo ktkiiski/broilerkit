@@ -33,7 +33,7 @@ export async function toArray<T>(iterator: AsyncIterable<T>): Promise<T[]> {
     return items;
 }
 
-export async function *mapAsync<T, R>(iterable: AsyncIterable<T> | AsyncIterator<T>, iteratee: (item: T, index: number) => R) {
+export async function *mapAsync<T, R>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => R) {
     let index = 0;
     for await (const item of iterable) {
         yield iteratee(item, index);
@@ -41,7 +41,7 @@ export async function *mapAsync<T, R>(iterable: AsyncIterable<T> | AsyncIterator
     }
 }
 
-export async function *filterAsync<T>(iterable: AsyncIterable<T> | AsyncIterator<T>, iteratee: (item: T, index: number) => boolean): AsyncIterableIterator<T> {
+export async function *filterAsync<T>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => boolean): AsyncIterableIterator<T> {
     let index = 0;
     for await (const item of iterable) {
         if (iteratee(item, index)) {
@@ -94,7 +94,7 @@ export async function *mergeSortedAsync<T, K extends keyof T>(iterables: Array<A
     }
 }
 
-export async function *flatMapAsync<T, R>(iterable: AsyncIterable<T> | AsyncIterator<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterableIterator<R> | R[] | undefined): AsyncIterableIterator<R> {
+export async function *flatMapAsync<T, R>(iterable: AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterableIterator<R> | R[] | undefined): AsyncIterableIterator<R> {
     let index = 0;
     for await (const sourceItem of iterable) {
         const targetItems = callback(sourceItem, index);
@@ -127,8 +127,10 @@ export async function reduceAsync<T, R>(iterable: AsyncIterable<T>, callback: (a
     return value as R;
 }
 
-export async function *toAsync<T>(values: T[] | Iterable<T> | Iterator<T> | AsyncIterable<T> | AsyncIterator<T>) {
-    yield *values;
+export async function *toAsync<T>(values: T[] | Iterable<T>) {
+    for (const value of values) {
+        yield value;
+    }
 }
 
 export interface ExecutorParams<T> {
