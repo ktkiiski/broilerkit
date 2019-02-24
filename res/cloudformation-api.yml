@@ -17,65 +17,6 @@ Parameters:
     Type: String
 
 Resources:
-  # The role that is used by the API Lambda function execution
-  LambdaExecutionIamRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - lambda.amazonaws.com
-          Action:
-          - sts:AssumeRole
-      Policies:
-      - PolicyName:
-          Fn::Sub: ${AWS::Region}-lambda
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-            - logs:CreateLogStream
-            Resource:
-            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*
-          - Effect: Allow
-            Action:
-            - logs:PutLogEvents
-            Resource:
-            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*:*
-          # Allow access to any SimpleDB domains related to this stack
-          # NOTE: We assume that auto-generated domain names start with the stack name
-          - Effect: Allow
-            Action:
-            - sdb:BatchDeleteAttributes
-            - sdb:BatchPutAttributes
-            - sdb:DeleteAttributes
-            - sdb:DomainMetadata
-            - sdb:GetAttributes
-            - sdb:PutAttributes
-            - sdb:Select
-            Resource:
-            - Fn::Sub: arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-*
-          # Allow access to the user pool
-          - Effect: Allow
-            Action:
-            - cognito-idp:AdminDeleteUser
-            - cognito-idp:AdminGetUser
-            - cognito-idp:AdminUpdateUserAttributes
-            - cognito-idp:DeleteUser
-            - cognito-idp:GetUser
-            - cognito-idp:ListUsers
-            - cognito-idp:UpdateUserAttributes
-            Resource:
-            # TODO: Could we restrict access to the particular userpool only?
-            - Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
-      Path: "/"
-      RoleName:
-        Fn::Sub: "${AWS::StackName}-${AWS::Region}-lambdaRole"
-
   # API gateway REST API
   ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
@@ -84,7 +25,7 @@ Resources:
         Fn::Sub: "${AWS::StackName}-api"
 
   # Deployment of the API gateway
-  <ApiGatewayDeploymentName>:
+  ApiGatewayDeployment<ApiDeploymentId>:
     Type: AWS::ApiGateway::Deployment
     Properties:
       RestApiId:
@@ -95,7 +36,7 @@ Resources:
     Type: AWS::ApiGateway::Stage
     Properties:
       DeploymentId:
-        Ref: <ApiGatewayDeploymentName>
+        Ref: ApiGatewayDeployment<ApiDeploymentId>
       Variables:
         # Make the API root URL available as a stage variable
         ApiRoot:
@@ -121,44 +62,6 @@ Resources:
       RestApiId:
         Ref: ApiGatewayRestApi
       StageName: api
-
-  # Role for the API gateway for enabling CloudWatch logging
-  ApiGatewayCloudWatchLoggingRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - apigateway.amazonaws.com
-          Action:
-          - sts:AssumeRole
-      Policies:
-      - PolicyName: ApiGatewayLoggingPolicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-            - logs:CreateLogGroup
-            - logs:CreateLogStream
-            - logs:DescribeLogGroups
-            - logs:DescribeLogStreams
-            - logs:PutLogEvents
-            - logs:GetLogEvents
-            - logs:FilterLogEvents
-            Resource: "*"
-
-  # Accout for the API Gateway for enabling CloudWatch logging
-  ApiGatewayAccount:
-    Type: AWS::ApiGateway::Account
-    Properties:
-      CloudWatchRoleArn:
-        Fn::GetAtt: ["ApiGatewayCloudWatchLoggingRole", "Arn" ]
-    DependsOn:
-    - ApiGatewayCloudWatchLoggingRole
 
   # Custom domain name for the REST API
   ApiGatewayRestApiDomainName:

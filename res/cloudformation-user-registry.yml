@@ -178,6 +178,22 @@ Resources:
         DatabaseTableUsersURI:
           Fn::GetAtt: UserPool.Arn
 
+  # Make the user pool client information available for server-side rendering Lambda function
+  # as API Gateway stage variables
+  SiteGatewayStage:
+    Properties:
+      Variables:
+        AuthSignInUri:
+          Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
+        AuthSignOutUri:
+          Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/logout"
+        AuthSignInRedirectUri:
+          Fn::Sub: "${AssetsRoot}/_oauth2_signin_complete.html"
+        AuthSignOutRedirectUri:
+          Fn::Sub: "${AssetsRoot}/_oauth2_signout_complete.html"
+        AuthClientId:
+          Ref: UserPoolClient
+
   # A lambda function that adds the 'picture' claim to the ID tokens on authentication
   UserPoolPreTokenGenerationLambdaFunction:
     Type: AWS::Lambda::Function

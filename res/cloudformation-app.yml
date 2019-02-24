@@ -13,6 +13,9 @@ Parameters:
   # Hosted zone name of the domain for the website HTML files
   SiteHostedZoneName:
     Type: String
+  # The key of the ZIP file in the deployment S3 bucket
+  SiteRequestLambdaFunctionS3Key:
+    Type: String
   # Root URL for the static asset files
   AssetsRoot:
     Type: String
@@ -77,14 +80,6 @@ Mappings:
       S3HostedZoneId: Z7KQH4QJS55SO
 
 Conditions:
-  # Condition whether the assets and the website are stored
-  # to separate AWS S3 buckets and have their own CloudFront distributions.
-  # If false, then they are stored to the shared bucket.
-  SeparateAssetsAndSiteS3Buckets:
-    Fn::Not:
-      - Fn::Equals:
-        - Ref: SiteDomainName
-        - Ref: AssetsDomainName
   # Condition whether the website domain starts with `www.`
   # indicating that the root domain should be redirected to that domain
   SiteIsWwwDomain:
@@ -99,21 +94,10 @@ Conditions:
           - Ref: SiteDomainName
 
 Resources:
-  # S3 bucket for storing the website HTML files
-  SiteS3Bucket:
-    Type: 'AWS::S3::Bucket'
-    DeletionPolicy: Delete
-    Properties:
-      BucketName:
-        Fn::Sub: "${AWS::StackName}-website"
-      WebsiteConfiguration:
-        IndexDocument: index.html
   # S3 bucket for storing the static asset files
   AssetsS3Bucket:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Delete
-    # Only create if separate assets and website buckets
-    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       BucketName:
         Fn::Sub: "${AWS::StackName}-assets"
@@ -137,26 +121,9 @@ Resources:
           HostName:
             Ref: SiteDomainName
           Protocol: https
-  # Make website HTML files public for everyone
-  SiteS3BucketPolicy:
-    Type: 'AWS::S3::BucketPolicy'
-    Properties:
-      Bucket:
-        Ref: SiteS3Bucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: AddPerm
-            Effect: Allow
-            Principal: '*'
-            Action: 's3:GetObject'
-            Resource:
-              Fn::Sub: "${SiteS3Bucket.Arn}/*"
   # Make static asset files public for everyone
   AssetsS3BucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
-    # Only create if separate assets and website buckets
-    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       Bucket:
         Ref: AssetsS3Bucket
@@ -172,8 +139,6 @@ Resources:
   # CloudFront distribution for the static asset files cached forever
   AssetsCloudFrontDistribution:
     Type: "AWS::CloudFront::Distribution"
-    # Only create if separate assets and website buckets
-    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       DistributionConfig:
         # Use a cheaper price class for now.
@@ -204,44 +169,9 @@ Resources:
           AcmCertificateArn:
             Ref: DomainCertificate
           SslSupportMethod: "sni-only"
-  # CloudFront distribution for the website HTML files
-  SiteCloudFrontDistribution:
-    Type: "AWS::CloudFront::Distribution"
-    Properties:
-      DistributionConfig:
-        # Use a cheaper price class for now.
-        # TODO: Make this configurable, as 'PriceClass_All' is better for production
-        PriceClass: PriceClass_100
-        Aliases:
-          - Ref: SiteDomainName
-        Origins:
-          - DomainName:
-              Fn::Select:
-                - 2
-                - Fn::Split:
-                  - "/"
-                  - Fn::GetAtt: SiteS3Bucket.WebsiteURL
-            Id: SiteS3BucketOrigin
-            CustomOriginConfig:
-              OriginProtocolPolicy: "http-only"
-        Comment:
-          Fn::Sub: "${AWS::StackName} website CloudFront distribution"
-        Enabled: true
-        DefaultCacheBehavior:
-          Compress: true
-          ForwardedValues:
-            QueryString: false
-          TargetOriginId: SiteS3BucketOrigin
-          ViewerProtocolPolicy: "redirect-to-https"
-        ViewerCertificate:
-          AcmCertificateArn:
-            Ref: DomainCertificate
-          SslSupportMethod: "sni-only"
   # DNS domain name for the host of the static asset files
   AssetsDNS:
     Type: "AWS::Route53::RecordSetGroup"
-    # Only create if separate assets and website buckets
-    Condition: SeparateAssetsAndSiteS3Buckets
     Properties:
       HostedZoneName:
         Fn::Sub: "${AssetsHostedZoneName}."
@@ -254,21 +184,6 @@ Resources:
             HostedZoneId: Z2FDTNDATAQYW2
             DNSName:
               Fn::GetAtt: AssetsCloudFrontDistribution.DomainName
-  # DNS domain name for the host of the website HTML files
-  SiteDNS:
-    Type: "AWS::Route53::RecordSetGroup"
-    Properties:
-      HostedZoneName:
-        Fn::Sub: "${SiteHostedZoneName}."
-      Comment: "Domain for the CloudFront distribution of the HTML website files"
-      RecordSets:
-        - Name:
-            Fn::Sub: "${SiteDomainName}."
-          Type: A
-          AliasTarget:
-            HostedZoneId: Z2FDTNDATAQYW2
-            DNSName:
-              Fn::GetAtt: SiteCloudFrontDistribution.DomainName
   # DNS domain name for the S3 bucket that redirects from the APEX domain to the website
   # NOTE: This does not support HTTPS!
   RedirectDNS:
@@ -321,22 +236,259 @@ Resources:
           - Ref: AssetsDomainName
           - Ref: AWS::NoValue
 
+  # The role that is used by the Lambda function execution
+  LambdaExecutionIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName:
+          Fn::Sub: ${AWS::Region}-lambda
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            Resource:
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*
+          - Effect: Allow
+            Action:
+            - logs:PutLogEvents
+            Resource:
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*:*
+          # Allow access to any SimpleDB domains related to this stack
+          # NOTE: We assume that auto-generated domain names start with the stack name
+          - Effect: Allow
+            Action:
+            - sdb:BatchDeleteAttributes
+            - sdb:BatchPutAttributes
+            - sdb:DeleteAttributes
+            - sdb:DomainMetadata
+            - sdb:GetAttributes
+            - sdb:PutAttributes
+            - sdb:Select
+            Resource:
+            - Fn::Sub: arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-*
+          # Allow access to the user pool
+          - Effect: Allow
+            Action:
+            - cognito-idp:AdminDeleteUser
+            - cognito-idp:AdminGetUser
+            - cognito-idp:AdminUpdateUserAttributes
+            - cognito-idp:DeleteUser
+            - cognito-idp:GetUser
+            - cognito-idp:ListUsers
+            - cognito-idp:UpdateUserAttributes
+            Resource:
+            # TODO: Could we restrict access to the particular userpool only?
+            - Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+      Path: "/"
+      RoleName:
+        Fn::Sub: "${AWS::StackName}-${AWS::Region}-lambdaRole"
+
+  # Role for the API gateway for enabling CloudWatch logging
+  ApiGatewayCloudWatchLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - apigateway.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: ApiGatewayLoggingPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+            - logs:PutLogEvents
+            - logs:GetLogEvents
+            - logs:FilterLogEvents
+            Resource: "*"
+
+  # Accout for the API Gateway for enabling CloudWatch logging
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn:
+        Fn::GetAtt: ["ApiGatewayCloudWatchLoggingRole", "Arn" ]
+    DependsOn:
+    - ApiGatewayCloudWatchLoggingRole
+
+  # API gateway for server-side rendering
+  SiteGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ssr"
+
+  # Deployment of the API gateway
+  SiteGatewayDeployment<SiteDeploymentId>:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId:
+        Ref: SiteGatewayRestApi
+    DependsOn:
+    - SiteRenderViewGETApiGatewayMethod
+
+  # Stage for the API gateway
+  SiteGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId:
+        Ref: SiteGatewayDeployment<SiteDeploymentId>
+      Variables:
+        # Make the API root URL available as a stage variable
+        ApiRoot:
+          Ref: ApiRoot
+        # Make the API origin available as a stage variable
+        ApiOrigin:
+          Ref: ApiOrigin
+        # Make the website root URL available as a stage variable
+        SiteRoot:
+          Ref: SiteRoot
+        # Make the website origin available as a stage variable
+        SiteOrigin:
+          Ref: SiteOrigin
+        # Make the AWS region available as a stage variable
+        Region:
+          Ref: AWS::Region
+      MethodSettings:
+      # Enables CloudWatch logging for the site rendering requests
+      - DataTraceEnabled: true
+        HttpMethod: "*"
+        LoggingLevel: INFO
+        ResourcePath: "/*"
+      RestApiId:
+        Ref: SiteGatewayRestApi
+      StageName: site
+
+  # Custom domain name for the website
+  SiteGatewayRestApiDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      CertificateArn:
+        Ref: DomainCertificate
+      DomainName:
+        Ref: SiteDomainName
+
+  # Removes the '/site' part from the URL path
+  SiteGatewayRestApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      BasePath: ''
+      DomainName:
+        Ref: SiteGatewayRestApiDomainName
+      RestApiId:
+        Ref: SiteGatewayRestApi
+      Stage:
+        Ref: SiteGatewayStage
+
+  # DNS domain name for the website
+  SiteDNS:
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneName:
+        Fn::Sub: "${SiteHostedZoneName}."
+      Comment: "Domain for the server-side rendering API Gateway deployment"
+      RecordSets:
+        - Name:
+            Fn::Sub: "${SiteDomainName}."
+          Type: A
+          AliasTarget:
+            HostedZoneId: Z2FDTNDATAQYW2
+            DNSName:
+              Fn::GetAtt: SiteGatewayRestApiDomainName.DistributionDomainName
+
+  # Lambda function
+  SiteRenderViewLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          Ref: DeploymentManagementS3Bucket
+        S3Key:
+          Ref: SiteRequestLambdaFunctionS3Key
+      FunctionName:
+        Fn::Sub: "${AWS::StackName}-site-renderView"
+      Handler: ssr.request
+      MemorySize: 1024
+      Role:
+        Fn::GetAtt: ["LambdaExecutionIamRole", "Arn"]
+      Runtime: nodejs8.10
+      Timeout: 6
+    DependsOn:
+    - SiteRenderViewLambdaFunctionLogGroup
+    - LambdaExecutionIamRole
+
+  # Grant API Gateway REST API a permission to execute the Lambda function
+  SiteRenderViewLambdaFunctionPermissionApiGateway:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::GetAtt: ["SiteRenderViewLambdaFunction", "Arn"]
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SiteGatewayRestApi}/*/*"
+
+  # CloudWatch log group for the lambda function
+  SiteRenderViewLambdaFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: "/aws/lambda/${AWS::StackName}-site-renderView"
+
+  SiteRenderViewApiGatewayResource:
+    Type: 'AWS::ApiGateway::Resource',
+    Properties:
+      ParentId:
+        Fn::GetAtt: ['SiteGatewayRestApi', 'RootResourceId']
+      PathPart: '{proxy+}'
+      RestApiId:
+        Ref: SiteGatewayRestApi
+
+  # HTTP method for rendering the view
+  SiteRenderViewGETApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId:
+        Ref: SiteRenderViewApiGatewayResource
+      RestApiId:
+        Ref: SiteGatewayRestApi
+      RequestParameters: {}
+      AuthorizationType: NONE
+      Integration:
+        # NOTE: Lambda execution endpoint is always called with POST
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SiteRenderViewLambdaFunction.Arn}/invocations"
+      MethodResponses: []
+
 Outputs:
-  SiteS3BucketName:
-    Value:
-      Ref: SiteS3Bucket
   AssetsS3BucketName:
     Value:
-      Fn::If:
-        - SeparateAssetsAndSiteS3Buckets
-        - Ref: AssetsS3Bucket
-        - Ref: SiteS3Bucket
-  SiteCloudFrontDistributionId:
-    Value:
-      Ref: SiteCloudFrontDistribution
+      Ref: AssetsS3Bucket
   AssetsCloudFrontDistributionId:
     Value:
-      Fn::If:
-        - SeparateAssetsAndSiteS3Buckets
-        - Ref: AssetsCloudFrontDistribution
-        - Ref: SiteCloudFrontDistribution
+      Ref: AssetsCloudFrontDistribution

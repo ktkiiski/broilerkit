@@ -21,20 +21,3 @@ declare module "*.gif" {
     const imageUrl: string;
     export = imageUrl;
 }
-
-/**
- * When importing a TMPL file (expected to contain HTML), then the imported
- * value is a the string contents of the file.
- */
-declare module "*.tmpl" {
-    const content: string;
-    export = content;
-}
-
-/**
- * When importing a PUG file, the imported value is the template function.
- */
-declare module "*.pug" {
-    const compiler: (locals?: {[propName: string]: any}) => string;
-    export = compiler;
-}

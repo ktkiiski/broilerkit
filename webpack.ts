@@ -2,10 +2,9 @@ import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
 
-import { AuthOptions } from './auth';
 import { BroilerConfig } from './config';
 import { executeSync } from './exec';
-import { forEachProperty } from './utils/objects';
+import { encodeSafeJSON } from './html';
 
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
@@ -29,9 +28,9 @@ export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
  * The options are documented at
  * https://webpack.js.org/configuration/
  */
-export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): webpack.Configuration {
+export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, title, siteFile, projectRootPath, stage, analyze} = config;
-    const {region, apiRoot, assetsRoot, siteRoot, authClientId, authRoot} = config;
+    const {assetsRoot, siteRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const stageDirPath = path.resolve(projectRootPath, stageDir);
@@ -44,14 +43,6 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
     const assetsDir = assetsPath.replace(/^\/+/, '');
     const assetsFilePrefix = assetsDir && (assetsDir + '/');
     const assetsOrigin = `${assetsRootUrl.protocol}//${assetsRootUrl.host}`;
-    // Determine options for the AuthClient
-    const authOptions: AuthOptions = {
-        clientId: authClientId,
-        signInUri: devServer ? `${authRoot}/_oauth2_signin.html` : `${authRoot}/oauth2/authorize`,
-        signOutUri: devServer ? `${authRoot}/_oauth2_signout.html` : `${authRoot}/logout`,
-        signInRedirectUri: `${siteRoot}/_oauth2_signin_complete.html`,
-        signOutRedirectUri: `${siteRoot}/_oauth2_signout_complete.html`,
-    };
     const gitCommitHash = executeSync('git rev-parse HEAD');
     const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
     const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
@@ -76,9 +67,9 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
             title,
-            filename: 'index.html',
+            filename: devServer ? 'index.html' : 'index.[contenthash].html',
             template: path.resolve(__dirname, './res/index.html'),
-            chunks: ['index'],
+            chunks: ['app'],
             // Insert tags for stylesheets and scripts
             inject: 'body',
             // No cache-busting needed, because hash is included in file names
@@ -95,22 +86,12 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
          * Replace "global variables" from the scripts with the constant values.
          */
         new webpack.DefinePlugin({
-            // Static assets URL root
-            __ASSETS_ROOT__: JSON.stringify(assetsRoot),
-            // Web site URL root
-            __SITE_ROOT__: JSON.stringify(siteRoot),
-            // API URL root
-            __API_ROOT__: JSON.stringify(apiRoot),
             // Allow using the GIT commit hash ID
             __COMMIT_HASH__: JSON.stringify(gitCommitHash),
             // Allow using the GIT version
             __VERSION__: JSON.stringify(gitVersion),
             // Allow using the GIT branch name
             __BRANCH__: JSON.stringify(gitBranch),
-            // AWS region to which the app is deployed
-            __AWS_REGION__: JSON.stringify(region),
-            // Options for the authentication client
-            __AUTH_OPTIONS__: JSON.stringify(authOptions),
         }),
         /**
          * Prevent all the MomentJS locales to be imported by default.
@@ -157,39 +138,27 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
     ];
     // Define the entry for the app
     const entries: Record<string, string[]> = {
-        index: [require.resolve('./bootstrap/site')],
+        app: [require.resolve(devServer ? './bootstrap/local-site' : './bootstrap/site')],
     };
     // If running the development server, then add the dummy OAuth2 service
-    if (devServer && config.auth) {
-        entries._oauth2_signin = [require.resolve('./res/_oauth2_signin')];
-        entries._oauth2_signout = [require.resolve('./res/_oauth2_signout')];
+    if (config.auth) {
         plugins.push(
             new HtmlWebpackPlugin({
-                title: 'Sign in',
-                filename: '_oauth2_signin.html',
-                template: path.resolve(__dirname, `./res/_oauth2_signin.html`),
-                chunks: ['_oauth2_signin'],
-                inject: true,
-                hash: false,
-            }),
-            new HtmlWebpackPlugin({
-                title: 'Sign out',
-                filename: '_oauth2_signout.html',
-                template: path.resolve(__dirname, `./res/_oauth2_signout.html`),
-                chunks: ['_oauth2_signout'],
-                inject: true,
-                hash: false,
-            }),
-            new HtmlWebpackPlugin({
                 filename: '_oauth2_signin_complete.html',
-                template: path.resolve(__dirname, `./res/_oauth2_signin_complete.html`),
+                template: path.resolve(__dirname, `./res/_oauth2_signin_complete.ejs`),
+                templateParameters: {
+                    siteRootJson: encodeSafeJSON(siteRoot),
+                },
                 chunks: [],
                 inject: false,
                 hash: false,
             }),
             new HtmlWebpackPlugin({
                 filename: '_oauth2_signout_complete.html',
-                template: path.resolve(__dirname, `./res/_oauth2_signout_complete.html`),
+                template: path.resolve(__dirname, `./res/_oauth2_signout_complete.ejs`),
+                templateParameters: {
+                    siteRootJson: encodeSafeJSON(siteRoot),
+                },
                 chunks: [],
                 inject: false,
                 hash: false,
@@ -248,14 +217,6 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
             }),
         );
     }
-    if (devServer) {
-        forEachProperty(entries, (_, entryPaths) => {
-            // Enable auto-reloading when running the Webpack dev server
-            // TODO: Is this configuration for the inline livereloading still required?
-            // https://webpack.github.io/docs/webpack-dev-server.html#inline-mode-with-node-js-api
-            entryPaths.unshift(`webpack-dev-server/client?${siteRoot}`);
-        });
-    }
     return {
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
@@ -306,6 +267,10 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
                         configFile: path.resolve(projectRootPath, './tsconfig.json'),
                         // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                         transpileOnly: true,
+                        // We build for web so compile for ES5 for maximum compatibility
+                        compilerOptions: {
+                            target: 'es5',
+                        },
                     },
                 },
                 // Extract CSS stylesheets from the main bundle
@@ -404,17 +369,12 @@ export function getFrontendWebpackConfig(config: WebpackFrontendConfigOptions): 
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {serverFile, sourceDir, buildDir, projectRootPath, devServer, debug} = config;
-    const {region, apiRoot, assetsRoot, siteRoot} = config;
+    const {serverFile, siteFile, sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
-
-    const gitCommitHash = executeSync('git rev-parse HEAD');
-    const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
-    const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
 
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
@@ -428,25 +388,6 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
             // Use the tslint.json in the project folder (not in this library)
             tslint: path.resolve(projectRootPath, './tslint.json'),
-        }),
-        /**
-         * Replace "global variables" from the scripts with the constant values.
-         */
-        new webpack.DefinePlugin({
-            // Static assets URL root
-            __ASSETS_ROOT__: JSON.stringify(assetsRoot),
-            // Web site URL root
-            __SITE_ROOT__: JSON.stringify(siteRoot),
-            // API URL root
-            __API_ROOT__: JSON.stringify(apiRoot),
-            // Allow using the GIT commit hash ID
-            __COMMIT_HASH__: JSON.stringify(gitCommitHash),
-            // Allow using the GIT version
-            __VERSION__: JSON.stringify(gitVersion),
-            // Allow using the GIT branch name
-            __BRANCH__: JSON.stringify(gitBranch),
-            // AWS region to which the app is deployed
-            __AWS_REGION__: JSON.stringify(region),
         }),
         /**
          * AWS Lambda does not support async iterators Symbol, so
@@ -464,6 +405,21 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             /\ben.js/,
         ),
     ];
+    // Entry points to be bundled
+    const entries: Record<string, string> = {
+        // Entry point for rendering the views on server-side
+        _ssr: require.resolve(devServer ? './bootstrap/local-ssr' : './bootstrap/ssr'),
+    };
+    // Aliases that entry points will `require`
+    const aliases: Record<string, string> = {
+        _site: path.resolve(projectRootPath, sourceDir, siteFile),
+    };
+    // If an API is defined, compile it as well
+    if (serverFile) {
+        entries._api = require.resolve('./bootstrap/api');
+        aliases._service = path.resolve(projectRootPath, sourceDir, serverFile);
+    }
+
     return {
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
@@ -472,9 +428,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         target: 'node',
 
         // The main entry points for source files.
-        entry: {
-            _api: require.resolve('./bootstrap/api'),
-        },
+        entry: entries,
 
         output: {
             // Output files are placed to this folder
@@ -534,10 +488,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         resolve: {
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js'],
-            alias: {
-                // The entry point will `require` this module for finding the API service
-                _service: path.resolve(projectRootPath, sourceDir, serverFile as string),
-            },
+            alias: aliases,
         },
 
         resolveLoader: {

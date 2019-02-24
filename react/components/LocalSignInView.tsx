@@ -1,21 +1,14 @@
 import { sign } from 'jsonwebtoken';
-import { useState } from 'react';
 import * as React from 'react';
-import { render } from 'react-dom';
-import * as api from '../auth-local-api';
-import { Client } from '../client';
-import { useList, useOperation } from '../react/api';
-import { ClientProvider } from '../react/client';
-import { parseQuery } from '../url';
-import { User } from '../users';
-import { randomize } from '../utils/strings';
+import { useState } from 'react';
+import { RouteComponentProps, withRouter } from 'react-router';
+import * as api from '../../auth-local-api';
+import { parseQuery } from '../../url';
+import { User } from '../../users';
+import { randomize } from '../../utils/strings';
+import { useList, useOperation } from '../api';
 
-declare const __API_ROOT__: string;
-
-const query = parseQuery(window.location.search || '');
-const client = new Client(__API_ROOT__);
-
-function Signin() {
+function LocalSignInView({location}: RouteComponentProps) {
     const [isAdmin, setIsAdmin] = useState(false);
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
@@ -31,6 +24,7 @@ function Signin() {
         ordering: 'name',
         direction: 'asc',
     });
+    const query = parseQuery(location.search);
 
     async function signInAs(user: User) {
         const accessTokenPayload = {
@@ -108,9 +102,4 @@ function Signin() {
     </>;
 }
 
-render(
-    <ClientProvider client={client}>
-        <Signin />
-    </ClientProvider>,
-    document.getElementById('root'),
-);
+export default withRouter(LocalSignInView);

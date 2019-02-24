@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthClient, AuthOptions } from '../auth';
 import { Client } from '../client';
 import { ClientProvider } from '../react/client';
+import LocalAuthRouter from '../react/components/LocalAuthRouter';
 
 /**
  * Launches the application with the given configuration, to the given element.
@@ -16,7 +17,9 @@ export function start(element: Element, apiRoot: string, authOptions?: AuthOptio
     const client = new Client(apiRoot, authOptions && new AuthClient(authOptions));
     hydrate(
         <ClientProvider client={client}>
-            <BrowserRouter><View /></BrowserRouter>
+            <BrowserRouter>
+                <LocalAuthRouter component={View} />
+            </BrowserRouter>
         </ClientProvider>,
         element,
     );

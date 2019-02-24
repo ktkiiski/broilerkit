@@ -23,7 +23,7 @@ import { flatMap, union } from './utils/arrays';
 import { buildObject, forEachKey, mapObject, toPairs, transformValues, values } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
-import { zip } from './zip';
+import { zip, zipAll } from './zip';
 
 import * as mime from 'mime';
 import * as path from 'path';
@@ -44,8 +44,6 @@ export interface IFileUpload {
 
 // Static assets are cached for a year
 const staticAssetsCacheDuration = 31556926;
-// HTML pages are cached for an hour
-const staticHtmlCacheDuration = 3600;
 
 export class Broiler {
 
@@ -86,12 +84,15 @@ export class Broiler {
      */
     public async deploy(): Promise<void> {
         await this.clean();
-        await this.prepareDeployment();
-        await this.deployStack();
-        // TODO: Figure out how to make the frontend independent of the stack deployment
+        await Promise.all([
+            this.compileFrontend(false),
+            this.prepareDeployment().then(() => (
+                this.deployStack()
+            )),
+        ]);
         const [output] = await Promise.all([
             this.cloudFormation.getStackOutput(),
-            this.compileFrontend(false).then(() => this.uploadFrontend()),
+            this.uploadFrontend(),
         ]);
         await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
         this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
@@ -118,14 +119,11 @@ export class Broiler {
     public async undeploy(): Promise<CloudFormation.Stack> {
         this.log(`Removing the stack ${bold(this.stackName)} from region ${bold(this.config.region)}`);
         const output = await this.cloudFormation.getStackOutput();
-        const {DeploymentManagementS3BucketName, AssetsS3BucketName, SiteS3BucketName} = output;
+        const {DeploymentManagementS3BucketName, AssetsS3BucketName} = output;
         // Empty the deployement bucket
         const iterators = [this.s3.emptyBucket(DeploymentManagementS3BucketName)];
         if (AssetsS3BucketName) {
             iterators.push(this.s3.emptyBucket(AssetsS3BucketName));
-        }
-        if (SiteS3BucketName && SiteS3BucketName !== AssetsS3BucketName) {
-            iterators.push(this.s3.emptyBucket(SiteS3BucketName));
         }
         let count = 0;
         for await (const item of mergeAsync(...iterators)) {
@@ -160,12 +158,9 @@ export class Broiler {
      */
     public async compileFrontend(analyze: boolean): Promise<WebpackStats> {
         this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.config.stage)}...`);
-        const output = this.config.auth && await this.cloudFormation.getStackOutput();
         const stats = await compile(getFrontendWebpackConfig({
             ...this.config,
             devServer: false,
-            authRoot: output ? output.UserPoolRoot : '<NO AUTH ROOT>',
-            authClientId: output ? output.UserPoolClientId : '<NO AUTH CLIENT>',
             analyze,
         }));
         this.log(stats.toString({colors: true}));
@@ -175,13 +170,11 @@ export class Broiler {
     /**
      * Compiles the backend code with Webpack to the build directory.
      */
-    public async compileBackend(analyze: boolean): Promise<WebpackStats | void> {
-        if (this.importServer()) {
-            this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.config.stage)}...`);
-            const stats = await compile(getBackendWebpackConfig({...this.config, devServer: false, analyze}));
-            this.log(stats.toString({colors: true}));
-            return stats;
-        }
+    public async compileBackend(analyze: boolean): Promise<WebpackStats> {
+        this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.config.stage)}...`);
+        const stats = await compile(getBackendWebpackConfig({...this.config, devServer: false, analyze}));
+        this.log(stats.toString({colors: true}));
+        return stats;
     }
 
     /**
@@ -415,16 +408,11 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     public async uploadFrontend(): Promise<IFileUpload[]> {
-        const asset$ = searchFiles(this.buildDir, ['!**/*.html', '!_api*.js']);
-        const page$ = searchFiles(this.buildDir, ['**/*.html']);
-        const res$ = searchFiles(path.join(__dirname, 'res'), ['**/*.html']);
+        const asset$ = searchFiles(this.buildDir, ['!**/*.html', '!_api*.js', '!_srr*.js']);
         const output = await this.cloudFormation.getStackOutput();
-        const uploadArrays = await Promise.all([
-            toArray(this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false)),
-            toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, page$, staticHtmlCacheDuration, true)),
-            toArray(this.uploadFilesToS3Bucket(output.SiteS3BucketName, res$, staticHtmlCacheDuration, true)),
-        ]);
-        return ([] as IFileUpload[]).concat(...uploadArrays);
+        return await toArray(this.uploadFilesToS3Bucket(
+            output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false,
+        ));
     }
 
     /**
@@ -439,8 +427,9 @@ export class Broiler {
         const apiRootUrl = apiRoot && new URL(apiRoot);
         const apiDomain = apiRootUrl && apiRootUrl.hostname;
         const apiFile$ = this.getCompiledApiFile();
+        const ssrFileKey$ = this.getSSRZipFileS3Key();
         const prevParams$ = auth ? this.cloudFormation.getStackParameters() : Promise.resolve(undefined);
-        const [apiFile, prevParams] = await Promise.all([apiFile$, prevParams$]);
+        const [apiFile, ssrFileKey, prevParams] = await Promise.all([apiFile$, ssrFileKey$, prevParams$]);
         // Facebook client settings
         const facebookClientId = auth && auth.facebookClientId || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
@@ -472,7 +461,7 @@ export class Broiler {
             SiteOrigin: siteRootUrl.origin,
             SiteDomainName: siteDomain,
             SiteHostedZoneName: getHostedZone(siteDomain),
-            SiteDefaultPage: '/index.html',
+            SiteRequestLambdaFunctionS3Key: ssrFileKey,
             AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
@@ -582,10 +571,39 @@ export class Broiler {
     }
 
     /**
-     * Deploys the compiled asset files from the build directory to the
+     * Deploys the compiled server-side files from the build directory to the
      * Amazon S3 buckets in the deployed stack.
      */
-    private async uploadBackend(): Promise<S3.PutObjectOutput | void> {
+    private async uploadBackend() {
+        await Promise.all([
+            this.uploadSRRFiles(),
+            this.uploadApiFiles(),
+        ]);
+    }
+    private async uploadSRRFiles() {
+        const [ssrFile, htmlFile] = await Promise.all([
+            this.getCompiledSSRFile(),
+            this.getCompiledHtmlFile(),
+        ]);
+        const zipFileData$ = zipAll([
+            {filename: 'ssr.js', data: ssrFile.contents},
+            {filename: 'index.html', data: htmlFile.contents},
+        ]);
+        const output$ = this.cloudFormation.getStackOutput();
+        const [output, zipFileData, key] = await Promise.all([
+            output$, zipFileData$, this.getSSRZipFileS3Key(),
+        ]);
+        const bucketName = output.DeploymentManagementS3BucketName;
+        this.log(`Zipped the API implementation as ${bold(key)}`);
+        return this.createS3File$({
+            Bucket: bucketName,
+            Key: key,
+            Body: zipFileData,
+            ACL: 'private',
+            ContentType: 'application/zip',
+        }, false);
+    }
+    private async uploadApiFiles() {
         const file = await this.getCompiledApiFile();
         if (!file) {
             return;
@@ -642,12 +660,11 @@ export class Broiler {
     }
 
     private async generateTemplate(): Promise<any> {
-        const server = this.importServer();
+        const apiServer = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const templateFiles = [
             'cloudformation-init.yml',
             'cloudformation-app.yml',
-            'cloudformation-spa.yml',
         ];
         const {auth, parameters} = this.config;
         if (auth) {
@@ -662,14 +679,17 @@ export class Broiler {
                 templateFiles.push('cloudformation-google-login.yml');
             }
         }
-        const template$ = readTemplates(templateFiles);
-        if (!server) {
+        const siteHash = await this.getSiteHash();
+        const template$ = readTemplates(templateFiles, {
+            SiteDeploymentId: siteHash.toUpperCase(),
+        });
+        if (!apiServer) {
             return await template$;
         }
         const templates = await Promise.all([
             template$,
-            this.generateApiTemplate(server),
-            this.generateDbTemplates(server),
+            this.generateApiTemplate(apiServer),
+            this.generateDbTemplates(apiServer),
         ]);
         if (parameters) {
             forEachKey(parameters, (paramName, paramConfig) => {
@@ -705,8 +725,8 @@ export class Broiler {
             })),
             ({operation}) => operation.route.pattern.pattern,
         );
-        const hash = await this.getApiHash();
-        if (!hash) {
+        const apiHash = await this.getApiHash();
+        if (!apiHash) {
             // No API to be deployed
             return;
         }
@@ -756,7 +776,7 @@ export class Broiler {
                 ApiMethodName: getApiMethodLogicalId(path, method),
                 ApiFunctionName: getApiLambdaFunctionLogicalId(name),
                 ApiResourceName: getApiResourceLogicalId(path),
-                ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
+                ApiDeploymentId: apiHash.toUpperCase(),
                 ApiMethod: method,
                 AuthorizationType: auth === 'none' ? '"NONE"' : '"COGNITO_USER_POOLS"',
                 AuthorizerId: JSON.stringify(auth === 'none' ? '' : {Ref: 'ApiGatewayUserPoolAuthorizer'}),
@@ -777,12 +797,12 @@ export class Broiler {
                 ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
                 ApiResourceName: getApiResourceLogicalId(path),
                 ApiResourceAllowedMethods: methods.join(','),
-                ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
+                ApiDeploymentId: apiHash.toUpperCase(),
             });
         }));
         // Read the base template for the API Gateway
         templatePromises.push(readTemplates(['cloudformation-api.yml'], {
-            ApiGatewayDeploymentName: `ApiGatewayDeployment${hash.toUpperCase()}`,
+            ApiDeploymentId: apiHash.toUpperCase(),
         }));
         // Merge everything together
         const templates = await Promise.all(templatePromises);
@@ -859,14 +879,44 @@ export class Broiler {
         return `http://${bucketDomain}/${templateFileName}`;
     }
 
+    private async getCompiledHtmlFile(): Promise<File> {
+        const files = await searchFiles(this.buildDir, ['index.*.html']);
+        if (files.length !== 1) {
+            throw new Error(`Couldn't find the compiled HTML file!`);
+        }
+        return files[0];
+    }
+
+    private async getCompiledSSRFile(): Promise<File> {
+        const files = await searchFiles(this.buildDir, ['_ssr.*.js']);
+        if (files.length !== 1) {
+            throw new Error(`Couldn't find the compiled server-site renderer bundle!`);
+        }
+        return files[0];
+    }
+
     private async getCompiledApiFile(): Promise<File | undefined> {
         if (this.importServer()) {
-            const files = await searchFiles(this.buildDir, ['_api*.js']);
+            const files = await searchFiles(this.buildDir, ['_api.*.js']);
             if (files.length !== 1) {
                 throw new Error(`Couldn't find the compiled API bundle!`);
             }
             return files[0];
         }
+    }
+
+    private async getSSRZipFileS3Key(): Promise<string> {
+        const siteHash = await this.getSiteHash();
+        return formatS3KeyName(`ssr.${siteHash}.zip`);
+    }
+
+    private async getSiteHash(): Promise<string> {
+        const [ssrFile, htmlFile] = await Promise.all([
+            this.getCompiledSSRFile(), this.getCompiledHtmlFile(),
+        ]);
+        const [, ssrFileHash] = ssrFile.basename.split('.');
+        const [, htmlFileHash] = htmlFile.basename.split('.');
+        return `${ssrFileHash}${htmlFileHash}`;
     }
 
     private async getApiHash(): Promise<string | void> {

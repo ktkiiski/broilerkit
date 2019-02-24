@@ -1,4 +1,4 @@
-import { HttpHeaders, HttpMethod, HttpResponse } from './http';
+import { HttpHeaders, HttpMethod, HttpRequest, HttpResponse } from './http';
 import { requestMiddleware } from './middleware';
 
 export type LambdaHttpResponse = HttpResponse;
@@ -62,7 +62,7 @@ export interface LambdaHttpRequest {
 
 export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void;
 
-export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequest) => {
+export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequest): Promise<HttpRequest> => {
     const {httpMethod, isBase64Encoded, requestContext} = request;
     const queryParameters = request.queryStringParameters || {};
     const headers = request.headers || {};

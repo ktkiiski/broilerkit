@@ -5,16 +5,16 @@
 <meta content="ie-edge" http-equiv="x-ua-compatible">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <meta http-equiv="Content-type" content="text/html; charset=utf-8">
-<title>Signed out successfully</title>
+<title>Signed in successfully</title>
 </head>
 <body>
 <script>
-// Check to see if this page is loaded in the popup we created
+<% /* Check to see if this page is loaded in the popup we created */ %>
 if (window.opener != null) {
     if (!window.opener.closed) {
-        window.opener.postMessage('[oauth2]:signout', window.location.origin);
+        window.opener.postMessage('[oauth2]:signin:' + window.location.hash, <%= siteRootJson %>);
     }
-    // Automatically close this window if the parent fails to do so
+    <% /* Automatically close this window if the parent fails to do so */ %>
     setTimeout(function() { window.close(); }, 500);
 }
 </script>
