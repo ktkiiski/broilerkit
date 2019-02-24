@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
+import { readStream } from './fs';
 import { HttpMethod } from './http';
 import { forEachKey } from './utils/objects';
 
@@ -28,40 +29,39 @@ interface JsonResponse extends Response {
     data: any;
 }
 
-export function request({url, query, body, ...options}: Request): Promise<Response> {
-    return new Promise((resolve, reject) => {
-        const urlObj = new URL(url);
-        if (query) {
-            forEachKey(query, (key, value) => {
-                urlObj.searchParams.set(key, value);
-            });
-        }
-        const clientRequest = https.request({
+export async function request({url, query, body: requestBody, ...options}: Request): Promise<Response> {
+    const urlObj = new URL(url);
+    if (query) {
+        forEachKey(query, (key, value) => {
+            urlObj.searchParams.set(key, value);
+        });
+    }
+    const httpLib = urlObj.protocol === 'https:' || urlObj.port === '443' ? https : http;
+    const resp = await new Promise<http.IncomingMessage>((resolve, reject) => {
+        const requestOptions = {
             protocol: urlObj.protocol,
             host: urlObj.host,
+            hostname: urlObj.hostname,
             port: urlObj.port,
             path: urlObj.pathname + urlObj.search,
             hash: urlObj.hash,
             ...options,
-        }, (resp) => {
-            // tslint:disable-next-line:no-shadowed-variable
-            let body = '';
-            resp.on('data', (chunk) => { body += chunk; });
-            resp.on('end', () => {
-                const {statusCode, headers} = resp;
-                if (statusCode && statusCode >= 200 && statusCode < 300) {
-                    resolve({statusCode, headers, body});
-                } else {
-                    reject({statusCode, headers, body});
-                }
-            });
-        });
-        clientRequest.on('error', (error) => reject(error));
-        if (body != null) {
-            clientRequest.write(body);
+        };
+        const clientRequest = httpLib.request(requestOptions, resolve);
+        clientRequest.on('error', reject);
+        if (requestBody != null) {
+            clientRequest.write(requestBody);
         }
         clientRequest.end();
     });
+    const chunks = await readStream(resp);
+    const body = chunks.join('');
+    const {statusCode, headers} = resp;
+    if (statusCode && statusCode >= 200 && statusCode < 300) {
+        return {statusCode, headers, body};
+    } else {
+        throw {statusCode, headers, body};
+    }
 }
 
 export async function requestJson({data, ...options}: JsonRequest): Promise<JsonResponse> {
