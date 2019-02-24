@@ -40,6 +40,8 @@ export class AuthClient {
     private readonly storageKey = 'auth';
     private readonly signInUri: string;
     private readonly signOutUri: string;
+    private readonly signInRedirectUri: string;
+    private readonly signOutRedirectUri: string;
     private readonly subject = new BehaviorSubject<Auth | null>(null);
 
     // tslint:disable-next-line:member-ordering
@@ -57,6 +59,8 @@ export class AuthClient {
 
     constructor(options: AuthOptions) {
         const {clientId, signInUri, signOutUri, signInRedirectUri, signOutRedirectUri} = options;
+        this.signInRedirectUri = signInRedirectUri;
+        this.signOutRedirectUri = signOutRedirectUri;
         this.signInUri = signInUri
             + '?redirect_uri=' + encodeURIComponent(signInRedirectUri)
             + '&client_id=' + encodeURIComponent(clientId)
@@ -246,7 +250,7 @@ export class AuthClient {
     private waitForSignInPostMessage(win: Window, requiredState: string): Promise<AuthTokens> {
         return new Promise<AuthTokens>((resolve, reject) => {
             const listener = (event: MessageEvent) => {
-                if (event.origin !== window.location.origin) {
+                if (this.signInRedirectUri.indexOf(`${event.origin}/`) !== 0) {
                     // Message is from unknown origin
                     return;
                 }
@@ -295,7 +299,7 @@ export class AuthClient {
     private waitForSignOutPostMessage(win: Window): Promise<void> {
         return new Promise<void>((resolve) => {
             const listener = (event: MessageEvent) => {
-                if (event.origin !== window.location.origin) {
+                if (this.signOutRedirectUri.indexOf(`${event.origin}/`) !== 0) {
                     // Message is from unknown origin
                     return;
                 }
