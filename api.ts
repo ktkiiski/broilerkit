@@ -34,7 +34,7 @@ abstract class BaseApi<T extends Operation<any, any, any>> {
 
     protected async ajax(method: HttpMethod, url: Url | string, payload?: any) {
         if (typeof url !== 'string') {
-            url = `${this.client.rootUrl}${url}`;
+            url = `${this.client.apiRoot}${url}`;
         }
         const token = await this.getToken();
         const headers: {[header: string]: string} = token ? {Authorization: `Bearer ${token}`} : {};

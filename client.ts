@@ -16,7 +16,7 @@ export class Client {
     public optimisticUpdates$ = new BehaviorSubject<Array<ResourceUpdate<any, any>>>([]);
     public optimisticRemovals$ = new BehaviorSubject<Array<ResourceRemoval<any, any>>>([]);
     constructor(
-        public readonly rootUrl: string,
+        public readonly apiRoot: string,
         public readonly authClient?: AuthClient,
     ) {}
 }
