@@ -9,7 +9,20 @@ import JSZip = require('jszip');
  * @returns a promise for the ZIP archive as a Buffer
  */
 export function zip(data: any, filename: string): Promise<Buffer> {
+    return zipAll([{data, filename}]);
+}
+
+/**
+ * Zips all the given datas (e.g. Buffers) as a ZIP archive containing
+ * the the data with their given names.
+ *
+ * @param files to compress
+ * @returns a promise for the ZIP archive as a Buffer
+ */
+export function zipAll(files: Array<{data: any, filename: string}>): Promise<Buffer> {
     const jszip = new JSZip();
-    jszip.file(filename, data);
+    for (const {data, filename} of files) {
+        jszip.file(filename, data);
+    }
     return jszip.generateAsync({type: 'nodebuffer'});
 }
