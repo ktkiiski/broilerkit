@@ -85,11 +85,14 @@ export class Broiler {
     public async deploy(): Promise<void> {
         await this.clean();
         await Promise.all([
-            this.compileFrontend(false),
-            this.prepareDeployment().then(() => (
-                this.deployStack()
+            this.initialize().then(() => (
+                this.uploadCustomResource()
             )),
+            this.compileFrontend(false),
+            this.compileBackend(false),
         ]);
+        await this.uploadBackend();
+        await this.deployStack();
         const [output] = await Promise.all([
             this.cloudFormation.getStackOutput(),
             this.uploadFrontend(),
@@ -182,7 +185,10 @@ export class Broiler {
      */
     public async preview() {
         await this.clean();
-        await this.compileBackend(false);
+        await Promise.all([
+            this.compileBackend(false),
+            this.compileFrontend(false),
+        ]);
         const templateUrl = await this.prepareStackTemplate();
         const parameters = await this.getStackParameters();
         const changeSet = await this.cloudFormation.createChangeSet(templateUrl, parameters);
@@ -537,18 +543,6 @@ export class Broiler {
         }).promise();
         this.log(`Successfully created CloudFront distribution invalidation! It should take effect shortly!`);
         return result;
-    }
-
-    /**
-     * Ensures that everything required for a deployment is uploaded to the initial stack.
-     * If the initial stack is not created, it will be created.
-     */
-    private async prepareDeployment(): Promise<void> {
-        const init$ = this.initialize();
-        const backendCompile$ = this.compileBackend(false);
-        const customResourceUpload$ = init$.then(() => this.uploadCustomResource());
-        const backendUpload$ = Promise.all([init$, backendCompile$]).then(() => this.uploadBackend());
-        await Promise.all([customResourceUpload$, backendUpload$]);
     }
 
     /**
