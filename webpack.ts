@@ -67,7 +67,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
             title,
-            filename: devServer ? 'index.html' : 'index.[contenthash].html',
+            filename: devServer ? 'index.html' : 'index.[hash].html',
             template: path.resolve(__dirname, './res/index.html'),
             chunks: ['app'],
             // Insert tags for stylesheets and scripts
