@@ -221,20 +221,12 @@ Resources:
             Ref: SiteDomainName
           ValidationDomain:
             Ref: SiteHostedZoneName
-        - Fn::If:
-          # If using separate assets and site domains...
-          - SeparateAssetsAndSiteS3Buckets
-          # ...then list them both
-          - DomainName:
-              Ref: AssetsDomainName
-            ValidationDomain:
-              Ref: AssetsHostedZoneName
-          - Ref: AWS::NoValue
+        - DomainName:
+            Ref: AssetsDomainName
+          ValidationDomain:
+            Ref: AssetsHostedZoneName
       SubjectAlternativeNames:
-        - Fn::If:
-          - SeparateAssetsAndSiteS3Buckets
-          - Ref: AssetsDomainName
-          - Ref: AWS::NoValue
+        - Ref: AssetsDomainName
 
   # The role that is used by the Lambda function execution
   LambdaExecutionIamRole:
@@ -458,7 +450,7 @@ Resources:
         Fn::Sub: "/aws/lambda/${AWS::StackName}-site-renderView"
 
   SiteRenderViewApiGatewayResource:
-    Type: 'AWS::ApiGateway::Resource',
+    Type: 'AWS::ApiGateway::Resource'
     Properties:
       ParentId:
         Fn::GetAtt: ['SiteGatewayRestApi', 'RootResourceId']
