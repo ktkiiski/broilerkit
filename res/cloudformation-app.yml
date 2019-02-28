@@ -339,7 +339,8 @@ Resources:
       RestApiId:
         Ref: SiteGatewayRestApi
     DependsOn:
-    - SiteRenderViewGETApiGatewayMethod
+    - SiteProxyPathGETApiGatewayMethod
+    - SiteRootGETApiGatewayMethod
 
   # Stage for the API gateway
   SiteGatewayStage:
@@ -449,7 +450,7 @@ Resources:
       LogGroupName:
         Fn::Sub: "/aws/lambda/${AWS::StackName}-site-renderView"
 
-  SiteRenderViewApiGatewayResource:
+  SiteProxyPathApiGatewayResource:
     Type: 'AWS::ApiGateway::Resource'
     Properties:
       ParentId:
@@ -458,13 +459,32 @@ Resources:
       RestApiId:
         Ref: SiteGatewayRestApi
 
-  # HTTP method for rendering the view
-  SiteRenderViewGETApiGatewayMethod:
+  # HTTP method for rendering the view at the root URL '/''
+  SiteRootGETApiGatewayMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       HttpMethod: GET
       ResourceId:
-        Ref: SiteRenderViewApiGatewayResource
+        Fn::GetAtt: ['SiteGatewayRestApi', 'RootResourceId']
+      RestApiId:
+        Ref: SiteGatewayRestApi
+      RequestParameters: {}
+      AuthorizationType: NONE
+      Integration:
+        # NOTE: Lambda execution endpoint is always called with POST
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SiteRenderViewLambdaFunction.Arn}/invocations"
+      MethodResponses: []
+
+  # HTTP method for rendering the view at any other than the root URL
+  SiteProxyPathGETApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId:
+        Ref: SiteProxyPathApiGatewayResource
       RestApiId:
         Ref: SiteGatewayRestApi
       RequestParameters: {}
