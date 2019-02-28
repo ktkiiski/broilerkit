@@ -408,7 +408,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     // Entry points to be bundled
     const entries: Record<string, string> = {
         // Entry point for rendering the views on server-side
-        _ssr: require.resolve(devServer ? './bootstrap/local-ssr' : './bootstrap/ssr'),
+        ssr: require.resolve(devServer ? './bootstrap/local-ssr' : './bootstrap/ssr'),
     };
     // Aliases that entry points will `require`
     const aliases: Record<string, string> = {
@@ -416,7 +416,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     };
     // If an API is defined, compile it as well
     if (serverFile) {
-        entries._api = require.resolve('./bootstrap/api');
+        entries.api = require.resolve('./bootstrap/api');
         aliases._service = path.resolve(projectRootPath, sourceDir, serverFile);
     }
 

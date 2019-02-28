@@ -408,7 +408,7 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     public async uploadFrontend(): Promise<IFileUpload[]> {
-        const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!_api*.js', '!_srr*.js']);
+        const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!api*.js', '!ssr*.js']);
         const output = await this.cloudFormation.getStackOutput();
         return await toArray(this.uploadFilesToS3Bucket(
             output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false,
@@ -855,7 +855,7 @@ export class Broiler {
     }
 
     private async getCompiledSSRFile(): Promise<File> {
-        const files = await searchFiles(this.buildDir, ['_ssr.*.js']);
+        const files = await searchFiles(this.buildDir, ['ssr.*.js']);
         if (files.length !== 1) {
             throw new Error(`Couldn't find the compiled server-site renderer bundle!`);
         }
@@ -864,7 +864,7 @@ export class Broiler {
 
     private async getCompiledApiFile(): Promise<File | undefined> {
         if (this.importServer()) {
-            const files = await searchFiles(this.buildDir, ['_api.*.js']);
+            const files = await searchFiles(this.buildDir, ['api.*.js']);
             if (files.length !== 1) {
                 throw new Error(`Couldn't find the compiled API bundle!`);
             }

@@ -120,7 +120,7 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             const statsJson = stats.toJson();
             const {assetsByChunkName} = statsJson;
             // Get compiled server-site rendering view
-            const ssrRequestHandlerFileName: string = assetsByChunkName._ssr && assetsByChunkName._ssr[0];
+            const ssrRequestHandlerFileName: string = assetsByChunkName.ssr && assetsByChunkName.ssr[0];
             const ssrRequestHandlerFilePath = path.resolve(
                 projectRootPath, buildDir, ssrRequestHandlerFileName,
             );
@@ -130,7 +130,7 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             const siteModule = require(ssrRequestHandlerFilePath);
             const siteRequestExecutor: (req: HttpRequest, htmlPage: string) => Promise<HttpResponse> = siteModule.default;
             // Get handler for the API requests (if defined)
-            const apiRequestHandlerFileName: string | undefined = assetsByChunkName._api && assetsByChunkName._api[0];
+            const apiRequestHandlerFileName: string | undefined = assetsByChunkName.api && assetsByChunkName.api[0];
             const apiRequestHandlerFilePath = apiRequestHandlerFileName && path.resolve(
                 projectRootPath, buildDir, apiRequestHandlerFileName,
             );
