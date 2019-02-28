@@ -1,5 +1,5 @@
 // tslint:disable:no-shadowed-variable
-import { CloudFormation, CloudFront, S3 } from 'aws-sdk';
+import { CloudFormation, S3 } from 'aws-sdk';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
 import { mergeAsync, toArray } from './async';
@@ -54,7 +54,6 @@ export class Broiler {
     private readonly buildDir: string;
 
     private readonly cloudFormation: AmazonCloudFormation;
-    private readonly cloudFront: CloudFront;
     private readonly cloudWatch: AmazonCloudWatch;
     private readonly route53: AmazonRoute53;
     private readonly s3: AmazonS3;
@@ -70,7 +69,6 @@ export class Broiler {
         const buildDir = this.buildDir = path.join(stageDir, 'build');
 
         this.cloudFormation = new AmazonCloudFormation(region, stackName);
-        this.cloudFront = new CloudFront({region, apiVersion: '2017-03-25'});
         this.cloudWatch = new AmazonCloudWatch(region);
         this.route53 = new AmazonRoute53(region);
         this.s3 = new AmazonS3(region);
@@ -93,11 +91,7 @@ export class Broiler {
         ]);
         await this.uploadBackend();
         await this.deployStack();
-        const [output] = await Promise.all([
-            this.cloudFormation.getStackOutput(),
-            this.uploadFrontend(),
-        ]);
-        await this.invalidateCloudFront(output.SiteCloudFrontDistributionId);
+        await this.uploadFrontend();
         this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
         await this.printAuthClientInfo();
     }
@@ -522,27 +516,6 @@ export class Broiler {
                 yield next;
             }
         }
-    }
-
-    /**
-     * Invalidates items at a CloudFront distribution.
-     * @param distributionId CloudFront distribution ID
-     * @param items Item patterns to invalidate
-     */
-    public async invalidateCloudFront(distributionId: string, items = ['/*']): Promise<CloudFront.CreateInvalidationResult> {
-        this.log(`Invalidating CloudFront distribution ${distributionId} items`);
-        const result = await this.cloudFront.createInvalidation({
-            DistributionId: distributionId,
-            InvalidationBatch: { /* required */
-                CallerReference: new Date().toISOString(),
-                Paths: {
-                    Quantity: items.length,
-                    Items: items,
-                },
-            },
-        }).promise();
-        this.log(`Successfully created CloudFront distribution invalidation! It should take effect shortly!`);
-        return result;
     }
 
     /**
