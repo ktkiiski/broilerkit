@@ -408,7 +408,7 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     public async uploadFrontend(): Promise<IFileUpload[]> {
-        const asset$ = searchFiles(this.buildDir, ['!**/*.html', '!_api*.js', '!_srr*.js']);
+        const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!_api*.js', '!_srr*.js']);
         const output = await this.cloudFormation.getStackOutput();
         return await toArray(this.uploadFilesToS3Bucket(
             output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false,
