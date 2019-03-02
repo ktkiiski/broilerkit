@@ -4,7 +4,7 @@ import { StaticRouter, StaticRouterContext } from 'react-router';
 import { AuthOptions } from './auth';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { HttpRequest, HttpResponse } from './http';
-import { MetaContext, MetaContextProvider } from './react/meta';
+import { MetaContextProvider } from './react/meta';
 import { buildQuery } from './url';
 import { mapObject } from './utils/objects';
 
@@ -16,9 +16,9 @@ export async function renderView(request: HttpRequest, pageHtml: string, View: R
         search: requestQuery ? `?${requestQuery}` : '',
     };
     const routerContext: StaticRouterContext = {};
-    const metaContext: Required<MetaContext> = {
-        titles: [],
-        styles: {},
+    const metaContext = {
+        title: undefined as string | undefined,
+        styles: {} as Record<string, () => string | null>,
         idCounter: 0,
     };
     // TODO: Dummy client with ClientProvider?
@@ -43,8 +43,7 @@ export async function renderView(request: HttpRequest, pageHtml: string, View: R
             body: '',
         };
     }
-    const title = metaContext.titles[metaContext.titles.length - 1] || '';
-    const titleTag = `<title>${escapeHtml(title)}</title>`;
+    const title = metaContext.title;
     const styleTags = mapObject(metaContext.styles, (renderCss, id) => {
         const css = renderCss();
         if (!css) {
@@ -53,8 +52,7 @@ export async function renderView(request: HttpRequest, pageHtml: string, View: R
         // TODO: Need to be escaped somehow?
         return `\n<style type="text/css" id="${escapeHtml(id)}">${css}</style>`;
     });
-    const metaTags = [titleTag, ...styleTags];
-    const metaHtml = metaTags.join('');
+    const metaHtml = styleTags.join('');
 
     const launchParams = [
         'document.getElementById("app")',
@@ -76,9 +74,11 @@ export async function renderView(request: HttpRequest, pageHtml: string, View: R
         .replace(/<\/body>/i, (end) => `${startupScript}\n${end}`)
         // Inject the view HTML to the div with the ID "app"
         .replace(/(\<div\s+id="app"\>).*?(<\/div>)/mi, (_, start, end) => `${start}${viewHtml}${end}`)
-        // Remove any existing <title> tag
-        .replace(/<title>.*?<\/title>/mi, '')
-        // Inject <title> and any <style> tags just before enclosing </head>
+        // Replace the title
+        .replace(/(<title>)(.*?)(<\/title>)/mi, (match, start, _, end) => (
+            title ? `${start}${escapeHtml(title)}${end}` : match
+        ))
+        // Inject any meta tags just before enclosing </head>
         .replace(/<\/head>/i, (end) => `${metaHtml}\n${end}`)
     ;
     // Return the HTML response

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { createContext, useContext, useEffect, useMemo } from 'react';
 
 export interface MetaContext {
-    titles?: string[];
+    title?: string;
     styles?: Record<string, () => string | null>;
     idCounter: number;
 }
@@ -19,24 +19,12 @@ export const MetaContextProvider = (props: {context: MetaContext, children?: Rea
 
 export function useTitle(title: string) {
     const metaContext = useContext(StaticContextContext);
-    const titles = metaContext.titles;
-    useEffect(() => {
-        if (typeof document !== 'undefined') {
-            document.title = title;
-        }
-        if (titles) {
-            titles.push(title);
-            return () => {
-                titles.splice(
-                    titles.lastIndexOf(title), 1,
-                );
-                const lastTitle = titles[titles.length - 1];
-                if (lastTitle != null && typeof document !== 'undefined') {
-                    document.title = lastTitle;
-                }
-            };
-        }
-    }, [title, titles]);
+    if (typeof document !== 'undefined') {
+        document.title = title;
+    }
+    if (metaContext) {
+        metaContext.title = title;
+    }
 }
 
 export function useCss(renderCss: () => string | null, deps?: any[]) {
