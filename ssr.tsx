@@ -4,7 +4,9 @@ import { StaticRouter, StaticRouterContext } from 'react-router';
 import { AuthOptions } from './auth';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { HttpRequest, HttpResponse } from './http';
+import { MetaContext, MetaContextProvider } from './react/meta';
 import { buildQuery } from './url';
+import { mapObject } from './utils/objects';
 
 export async function renderView(request: HttpRequest, pageHtml: string, View: React.ComponentType<{}>): Promise<HttpResponse> {
     const {apiRoot, environment} = request;
@@ -14,12 +16,19 @@ export async function renderView(request: HttpRequest, pageHtml: string, View: R
         search: requestQuery ? `?${requestQuery}` : '',
     };
     const routerContext: StaticRouterContext = {};
+    const metaContext: Required<MetaContext> = {
+        titles: [],
+        styles: {},
+        idCounter: 0,
+    };
     // TODO: Dummy client with ClientProvider?
-    const viewHtml = renderToString(
-        <StaticRouter location={location} context={routerContext}>
-            <View />
-        </StaticRouter>,
-    );
+    const viewHtml = renderToString((
+        <MetaContextProvider context={metaContext}>
+            <StaticRouter location={location} context={routerContext}>
+                <View />
+            </StaticRouter>
+        </MetaContextProvider>
+    ));
     if (routerContext.url) {
         // Redirect
         const statusCode = routerContext.statusCode || 302;
@@ -34,41 +43,50 @@ export async function renderView(request: HttpRequest, pageHtml: string, View: R
             body: '',
         };
     }
-    const title = ''; // TODO
-    const authOptions = environment.AuthClientId && {
-        clientId: environment.AuthClientId,
-        signInUri: environment.AuthSignInUri,
-        signOutUri: environment.AuthSignOutUri,
-        signInRedirectUri: environment.AuthSignInRedirectUri,
-        signOutRedirectUri: environment.AuthSignOutRedirectUri,
-    } || undefined;
+    const title = metaContext.titles[metaContext.titles.length - 1] || '';
+    const titleTag = `<title>${escapeHtml(title)}</title>`;
+    const styleTags = mapObject(metaContext.styles, (renderCss, id) => {
+        const css = renderCss();
+        if (!css) {
+            return '';
+        }
+        // TODO: Need to be escaped somehow?
+        return `\n<style type="text/css" id="${escapeHtml(id)}">${css}</style>`;
+    });
+    const metaTags = [titleTag, ...styleTags];
+    const metaHtml = metaTags.join('');
+
+    const launchParams = [
+        'document.getElementById("app")',
+        encodeSafeJSON(apiRoot),
+    ];
+    if (environment.AuthClientId) {
+        const authOptions: AuthOptions = {
+            clientId: environment.AuthClientId,
+            signInUri: environment.AuthSignInUri,
+            signOutUri: environment.AuthSignOutUri,
+            signInRedirectUri: environment.AuthSignInRedirectUri,
+            signOutRedirectUri: environment.AuthSignOutRedirectUri,
+        };
+        launchParams.push(encodeSafeJSON(authOptions));
+    }
+    const startupScript = `<script>app.start(${launchParams.join(',')});</script>`;
+    const body = pageHtml
+        // Inject the bootstrap script just before enclosing </body>
+        .replace(/<\/body>/i, (end) => `${startupScript}\n${end}`)
+        // Inject the view HTML to the div with the ID "app"
+        .replace(/(\<div\s+id="app"\>).*?(<\/div>)/mi, (_, start, end) => `${start}${viewHtml}${end}`)
+        // Remove any existing <title> tag
+        .replace(/<title>.*?<\/title>/mi, '')
+        // Inject <title> and any <style> tags just before enclosing </head>
+        .replace(/<\/head>/i, (end) => `${metaHtml}\n${end}`)
+    ;
     // Return the HTML response
     return {
         statusCode: routerContext.statusCode || 200,
         headers: {
             'Content-Type': 'text/html; charset=UTF-8',
         },
-        body: buildWebPage(pageHtml, viewHtml, title, apiRoot, authOptions),
+        body,
     };
-}
-
-function buildWebPage(pageHtml: string, viewHtml: string, title: string, apiRoot: string, auth?: AuthOptions): string {
-    const launchParams = [
-        'document.getElementById("app")',
-        encodeSafeJSON(apiRoot),
-    ];
-    if (auth) {
-        launchParams.push(encodeSafeJSON(auth));
-    }
-    const startupScript = `<script>app.start(${launchParams.join(',')});</script>`;
-    return pageHtml
-        // Inject the bootstrap script just before enclosing </body>
-        .replace(/<\/body>/i, () => `${startupScript}\n</body>`)
-        // Inject the view HTML to the div with the ID "app"
-        .replace(/(\<div\s+id="app"\>).*?(<\/div>)/mi, (_, start, end) => `${start}${viewHtml}${end}`)
-        // Remove any existing <title> tag
-        .replace(/<title>\.*?<\/title>/mi, '')
-        // Inject <title> tag just before enclosing </head>
-        .replace(/<\/head>/mi, () => `<title>${escapeHtml(title)}</title>\n</head>`)
-    ;
 }
