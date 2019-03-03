@@ -10,6 +10,7 @@ export const enum HttpStatus {
     // Redirections
     MovedPermanently = 301,
     Found = 302,
+    NotModified = 304,
     // Client errors
     BadRequest = 400,
     Unauthorized = 401,

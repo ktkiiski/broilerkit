@@ -83,3 +83,13 @@ export function shortenSentences(str: string, maxLength: number, replacement?: s
     );
     return result === str ? '' : result;
 }
+
+export function findAllMatches(str: string, regex: RegExp, group = 0): string[] {
+    const results: string[] = [];
+    let match: RegExpExecArray | null;
+    // tslint:disable-next-line:no-conditional-assignment
+    while (match = regex.exec(str)) {
+        results.push(match[group]);
+    }
+    return results;
+}

@@ -1,21 +1,27 @@
+import { createHash } from 'crypto';
 import { encodeSafeJSON, escapeHtml } from './html';
-import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, isReadHttpMethod, isResponse, isWriteHttpMethod, parsePayload } from './http';
+import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, parsePayload } from './http';
 import { transformKeys } from './utils/objects';
-import { capitalize, countBytes } from './utils/strings';
+import { capitalize, countBytes, findAllMatches } from './utils/strings';
 
 type Response = HttpResponse | ApiResponse<any>;
 
 export function middleware<P extends any[]>(
     handler: (request: HttpRequest, ...params: P) => Promise<Response>,
 ): (request: HttpRequest, ...params: P) => Promise<HttpResponse> {
-    const a = compatibilityMiddleware(
-        payloadParserMiddleware(
-            queryMethodSupportMiddleware(handler),
+    return compatibilityMiddleware(
+        preconditionMiddleware(
+            finalizerMiddleware(
+                apiMiddleware(
+                    errorMiddleware(
+                        payloadParserMiddleware(
+                            queryMethodSupportMiddleware(handler),
+                        ),
+                    ),
+                ),
+            ),
         ),
     );
-    const b = errorMiddleware(a);
-    const c = apiMiddleware(b);
-    return finalizerMiddleware(c);
 }
 
 export function requestMiddleware<I, O>(handleRequest: (request: I) => Promise<O>) {
@@ -115,6 +121,7 @@ export function errorMiddleware<R, P extends any[]>(handler: (request: R, ...par
 
 const finalizerMiddleware = responseMiddleware(async (response: HttpResponse, request: HttpRequest) => {
     const {statusCode, body, headers} = response;
+    const hash = createHash('md5').update(body).digest('hex');
     return {
         statusCode,
         body,
@@ -125,7 +132,35 @@ const finalizerMiddleware = responseMiddleware(async (response: HttpResponse, re
             'Access-Control-Allow-Credentials': 'true',
             // Calculate the length for the response body
             'Content-Length': String(countBytes(body)),
+            // Return the ETag
+            'ETag': `"${hash}"`,
             ...headers,
         },
     };
 });
+
+function preconditionMiddleware<P extends any[]>(handler: (request: HttpRequest, ...params: P) => Promise<HttpResponse>): (request: HttpRequest, ...params: P) => Promise<HttpResponse> {
+    async function handlePrecondition(request: HttpRequest, ...params: P): Promise<HttpResponse> {
+        const {method} = request;
+        const response = await handler(request, ...params);
+        if (method !== 'GET' && method !== 'HEAD') {
+            return response;
+        }
+        const etag = response.headers.ETag;
+        const ifNoneMatch = request.headers['If-None-Match'];
+        if (response.statusCode !== HttpStatus.OK || !etag || !ifNoneMatch) {
+            return response;
+        }
+        const requiredTags = findAllMatches(ifNoneMatch, /"[^"]*"/g);
+        if (requiredTags.indexOf(etag) < 0) {
+            return response;
+        }
+        // Respond with 304 and without the body
+        return {
+            ...response,
+            statusCode: HttpStatus.NotModified,
+            body: '',
+        };
+    }
+    return handlePrecondition;
+}

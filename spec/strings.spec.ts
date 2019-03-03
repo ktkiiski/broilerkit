@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import 'mocha';
-import { shortenSentences } from '../utils/strings';
+import { findAllMatches, shortenSentences } from '../utils/strings';
 
 describe('shorten()', () => {
     it('should not shorten string with smaller length', () => {
@@ -22,5 +22,25 @@ describe('shorten()', () => {
     });
     it('only removes the last cut sentence', () => {
         assert.equal(shortenSentences('Ekke. Ekke! Ekke? Ptang zoo boing.', 28), 'Ekke. Ekke! Ekke?');
+    });
+});
+
+describe('findAllMatches()', () => {
+    it('returns all matches of RegExp', () => {
+        assert.deepEqual(
+            findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /"[^"]*"/g),
+            [`"67ab43"`, `"54ed21"`, `"7892dd"`],
+        );
+    });
+    it('returns the given capture group values', () => {
+        assert.deepEqual(
+            findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /"([^"]*)"/g, 1),
+            [`67ab43`, `54ed21`, `7892dd`],
+        );
+    });
+    it('returns empty array if no matches', () => {
+        assert.deepEqual(
+            findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /'[^"]*'/g), [],
+        );
     });
 });
