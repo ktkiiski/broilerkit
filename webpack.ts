@@ -29,7 +29,7 @@ export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
  * https://webpack.js.org/configuration/
  */
 export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, title, siteFile, projectRootPath, stage, analyze} = config;
+    const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, title, siteFile, projectRootPath, analyze} = config;
     const {assetsRoot, siteRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
@@ -101,41 +101,13 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             // Regular expression to match the files that should be imported
             /\ben.js/,
         ),
-        /**
-         * Generate some stats for the bundles.
-         */
-        new BundleAnalyzerPlugin({
-            // Can be `server`, `static` or `disabled`.
-            // In `server` mode analyzer will start HTTP server to show bundle report.
-            // In `static` mode single HTML file with bundle report will be generated.
-            // In `disabled` mode you can use this plugin to just generate Webpack Stats JSON file by setting `generateStatsFile` to `true`.
-            analyzerMode: analyze ? 'static' : 'disabled',
-            // Host that will be used in `server` mode to start HTTP server.
-            analyzerHost: '127.0.0.1',
-            // Port that will be used in `server` mode to start HTTP server.
-            analyzerPort: 8888,
-            // Path to bundle report file that will be generated in `static` mode.
-            // Relative to bundles output directory.
-            reportFilename: `../report-${stage}.html`,
-            // Module sizes to show in report by default.
-            // Should be one of `stat`, `parsed` or `gzip`.
-            // See "Definitions" section for more information.
-            defaultSizes: 'parsed',
-            // Automatically open report in default browser
-            openAnalyzer: analyze,
-            // If `true`, Webpack Stats JSON file will be generated in bundles output directory
-            generateStatsFile: false,
-            // Name of Webpack Stats JSON file that will be generated if `generateStatsFile` is `true`.
-            // Relative to bundles output directory.
-            statsFilename: 'stats.json',
-            // Options for `stats.toJson()` method.
-            // For example you can exclude sources of your modules from stats file with `source: false` option.
-            // See more options here: https://github.com/webpack/webpack/blob/webpack-1/lib/Stats.js#L21
-            statsOptions: null,
-            // Log level. Can be 'info', 'warn', 'error' or 'silent'.
-            logLevel: 'info',
-        }),
     ];
+    if (!devServer) {
+        // Generate some stats for the bundles
+        plugins.push(getBundleAnalyzerPlugin(
+            analyze, path.resolve(stageDirPath, `report-frontend.html`),
+        ));
+    }
     // Define the entry for the app
     const entries: Record<string, string[]> = {
         app: [require.resolve(devServer ? './bootstrap/local-site' : './bootstrap/site')],
@@ -267,9 +239,11 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                         configFile: path.resolve(projectRootPath, './tsconfig.json'),
                         // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                         transpileOnly: true,
-                        // We build for web so compile for ES5 for maximum compatibility
                         compilerOptions: {
-                            target: 'es5',
+                            // Let the Webpack do the bundling with tree-shaking
+                            module: 'ES6',
+                            // We build for web so compile for ES5 for maximum compatibility
+                            target: 'ES5',
                         },
                     },
                 },
@@ -370,11 +344,13 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
     const {serverFile, siteFile, sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
+    const {analyze, stageDir} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
+    const stageDirPath = path.resolve(projectRootPath, stageDir);
 
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
@@ -405,6 +381,12 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             /\ben.js/,
         ),
     ];
+    if (!devServer) {
+        // Generate some stats for the bundles
+        plugins.push(getBundleAnalyzerPlugin(
+            analyze, path.resolve(stageDirPath, `report-backend.html`),
+        ));
+    }
     // Entry points to be bundled
     const entries: Record<string, string> = {
         // Entry point for rendering the views on server-side
@@ -471,8 +453,10 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                         configFile: path.resolve(projectRootPath, './tsconfig.json'),
                         // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                         transpileOnly: true,
-                        // The target NodeJS environment supports ES2017, so override the target for it
                         compilerOptions: {
+                            // Let the Webpack do the bundling with tree-shaking
+                            module: 'ES6',
+                            // The target NodeJS environment supports ES2017, so override the target for it
                             target: 'ES2017',
                         },
                     },
@@ -505,4 +489,38 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         // Plugins
         plugins,
     };
+}
+
+function getBundleAnalyzerPlugin(enabled: boolean, filename: string) {
+    return new BundleAnalyzerPlugin({
+        // Can be `server`, `static` or `disabled`.
+        // In `server` mode analyzer will start HTTP server to show bundle report.
+        // In `static` mode single HTML file with bundle report will be generated.
+        // In `disabled` mode you can use this plugin to just generate Webpack Stats JSON file by setting `generateStatsFile` to `true`.
+        analyzerMode: enabled ? 'static' : 'disabled',
+        // Host that will be used in `server` mode to start HTTP server.
+        analyzerHost: '127.0.0.1',
+        // Port that will be used in `server` mode to start HTTP server.
+        analyzerPort: 8888,
+        // Path to bundle report file that will be generated in `static` mode.
+        // Relative to bundles output directory.
+        reportFilename: filename,
+        // Module sizes to show in report by default.
+        // Should be one of `stat`, `parsed` or `gzip`.
+        // See "Definitions" section for more information.
+        defaultSizes: 'parsed',
+        // Automatically open report in default browser
+        openAnalyzer: enabled,
+        // If `true`, Webpack Stats JSON file will be generated in bundles output directory
+        generateStatsFile: false,
+        // Name of Webpack Stats JSON file that will be generated if `generateStatsFile` is `true`.
+        // Relative to bundles output directory.
+        statsFilename: 'stats.json',
+        // Options for `stats.toJson()` method.
+        // For example you can exclude sources of your modules from stats file with `source: false` option.
+        // See more options here: https://github.com/webpack/webpack/blob/webpack-1/lib/Stats.js#L21
+        statsOptions: null,
+        // Log level. Can be 'info', 'warn', 'error' or 'silent'.
+        logLevel: 'info',
+    });
 }

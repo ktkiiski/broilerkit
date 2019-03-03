@@ -1,4 +1,4 @@
-import JSZip = require('jszip');
+import * as JSZip from 'jszip';
 
 /**
  * Zips the given data (e.g. a Buffer) as a ZIP archive containing
