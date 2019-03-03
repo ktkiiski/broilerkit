@@ -331,6 +331,8 @@ Resources:
     Properties:
       Name:
         Fn::Sub: "${AWS::StackName}-ssr"
+      # Enable GZIP compression of the responses
+      MinimumCompressionSize: 128
 
   # Deployment of the API gateway
   SiteGatewayDeployment<SiteDeploymentId>:
