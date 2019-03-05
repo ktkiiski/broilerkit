@@ -1,7 +1,6 @@
 import { hasOwnProperty, keys } from './objects';
 
 const isArray = Array.isArray;
-const hasProp = Object.prototype.hasOwnProperty;
 
 /**
  * Compares the two given values with deep comparison
@@ -71,7 +70,7 @@ export function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean 
             return false;
         }
         for (let i = keyCount; i-- !== 0;) {
-            if (!hasProp.call(b, keyList[i])) {
+            if (!hasOwnProperty(b, keyList[i])) {
                 return false;
             }
         }
@@ -116,15 +115,10 @@ export function compare<T>(a: T, b: T, direction: 'asc' | 'desc' = 'asc') {
  * @param values The required values
  */
 export function hasProperties(obj: {[key: string]: any}, values: {[key: string]: any}): boolean {
-    for (const key in values) {
-        if (hasOwnProperty(values, key)) {
-            const value = values[key];
-            if (typeof value !== 'undefined' && !isEqual(values[key], obj[key])) {
-                return false;
-            }
-        }
-    }
-    return true;
+    return keys(values).every((key) => {
+        const value = values[key];
+        return typeof value === 'undefined' || isEqual(values[key], obj[key]);
+    });
 }
 
 export function isNully(value: any): value is null | undefined {

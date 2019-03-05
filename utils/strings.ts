@@ -93,3 +93,8 @@ export function findAllMatches(str: string, regex: RegExp, group = 0): string[] 
     }
     return results;
 }
+
+export function splitOnce(str: string, separator: string) {
+    const index = str.indexOf(separator);
+    return index < 0 ? [str] : [str.slice(0, index), str.slice(index + separator.length)];
+}

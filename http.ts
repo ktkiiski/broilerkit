@@ -1,3 +1,6 @@
+import { transformKeys } from './utils/objects';
+import { capitalize, splitOnce } from './utils/strings';
+
 /**
  * All supported HTTP status codes.
  */
@@ -262,4 +265,31 @@ export function parsePayload(request: HttpRequest): HttpRequest {
     } catch {
         throw new BadRequest(`Invalid JSON payload`);
     }
+}
+
+export function normalizeHeaders(headers: Record<string, string>) {
+    return transformKeys(headers, (header) => (
+        header.replace(/(\w+)/g, (match) => capitalize(match))
+    ));
+}
+
+export function parseHeaderDirectives(header: string): [string, Record<string, string>] {
+    const [directive, ...parts] = header.split(/\s*;\s*/g);
+    const meta: Record<string, string> = {};
+    for (const part of parts) {
+        let [key, value] = splitOnce(part, '=');
+        key = key.trim();
+        if (key) {
+            value = (value || '').trim();
+            if (/^".*"$/.test(value)) {
+                try {
+                    value = JSON.parse(value) as string;
+                } catch {
+                    value = value.slice(1, -1);
+                }
+            }
+            meta[key] = value;
+        }
+    }
+    return [directive, meta];
 }

@@ -1,8 +1,7 @@
 import { createHash } from 'crypto';
 import { encodeSafeJSON, escapeHtml } from './html';
-import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, parsePayload } from './http';
-import { transformKeys } from './utils/objects';
-import { capitalize, countBytes, findAllMatches } from './utils/strings';
+import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, normalizeHeaders, parsePayload } from './http';
+import { countBytes, findAllMatches } from './utils/strings';
 
 type Response = HttpResponse | ApiResponse<any>;
 
@@ -64,9 +63,7 @@ const compatibilityMiddleware = requestMiddleware(async (request: HttpRequest) =
     return {
         ...request,
         // Convert headers to capitalized format, e.g. `content-type` => `Content-Type`
-        headers: transformKeys(request.headers, (header) => (
-            header.replace(/(\w+)/g, (match) => capitalize(match))
-        )),
+        headers: normalizeHeaders(request.headers),
     };
 });
 
