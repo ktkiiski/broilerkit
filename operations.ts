@@ -2,11 +2,10 @@ import { CreateApi, DestroyApi, ListApi, RetrieveEndpoint, UpdateApi } from './a
 import { Bindable, Client } from './client';
 import { Endpoint } from './endpoints';
 import { nullable } from './fields';
-import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, MethodNotAllowed, SuccesfulResponse } from './http';
+import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, SuccesfulResponse } from './http';
 import { Cursor, CursorSerializer, PageResponse } from './pagination';
 import { Route, route } from './routes';
 import { FieldSerializer, nested, nestedList, OptionalOptions, OptionalOutput, Serializer } from './serializers';
-import { Url } from './url';
 import { Key, keys } from './utils/objects';
 
 export interface Operation<I, O, R> {
@@ -16,7 +15,7 @@ export interface Operation<I, O, R> {
     route: Route<any, any>;
     userIdAttribute?: string;
     responseSerializer: Serializer | null;
-    deserializeRequest(request: HttpRequest): any;
+    getPayloadSerializer(method: HttpMethod): Serializer | null;
     /**
      * This method only works as a hint to TypeScript to correctly
      * interprete operations as correct Implementable types.
@@ -47,20 +46,6 @@ abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, 
         public readonly authType: A,
         public readonly userIdAttribute: B,
     ) {}
-
-    protected deserializeRequest(request: HttpRequest): any | null {
-        const url = new Url(request.path, request.queryParameters);
-        if (!this.route.pattern.match(url)) {
-            // The pattern doesn't match this URL path
-            return null;
-        }
-        if (this.methods.indexOf(request.method) < 0) {
-            // URL matches but the method is not accepted
-            throw new MethodNotAllowed(`Method ${request.method} is not allowed`);
-        }
-        // NOTE: Raises validation error if matches but invalid
-        return this.route.match(url);
-    }
 }
 
 export class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
@@ -91,8 +76,8 @@ implements Bindable<ListApi<S, U, O, F, B>>, Operation<Cursor<S, U, O, F>, PageR
     public bind(client: Client): ListApi<S, U, O, F, B> {
         return new ListApi(this, client);
     }
-    public deserializeRequest(request: HttpRequest): Cursor<S, U, O, F> | null {
-        return super.deserializeRequest(request);
+    public getPayloadSerializer() {
+        return null;
     }
     public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
         return this;
@@ -112,8 +97,8 @@ implements Bindable<RetrieveEndpoint<S, U, B>>, Operation<Pick<S, U>, S, AuthReq
     public bind(client: Client): RetrieveEndpoint<S, U, B> {
         return new RetrieveEndpoint(this, client);
     }
-    public deserializeRequest(request: HttpRequest): Pick<S, U> | null {
-        return super.deserializeRequest(request);
+    public getPayloadSerializer() {
+        return null;
     }
     public asImplementable(): Operation<Pick<S, U>, S, AuthRequestMapping[A]> {
         return this;
@@ -139,13 +124,8 @@ implements Bindable<CreateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R,
     public bind(client: Client): CreateApi<S, U, R, O, D, B> {
         return new CreateApi(this, client);
     }
-    public deserializeRequest(request: HttpRequest): OptionalOutput<S, R, O, D> | null {
-        const urlParameters = super.deserializeRequest(request);
-        // TODO: Combine validation errors
-        return urlParameters && {
-            ...urlParameters,
-            ...this.payloadSerializer.deserialize(request.payload),
-        };
+    public getPayloadSerializer() {
+        return this.payloadSerializer;
     }
     public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
         return this;
@@ -175,17 +155,8 @@ implements Bindable<UpdateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R,
     public bind(client: Client): UpdateApi<S, U, R, O, D, B> {
         return new UpdateApi(this, client);
     }
-    public deserializeRequest(request: HttpRequest): OptionalOutput<S, R, O, D> | Pick<S, U> & Partial<Pick<S, R | O | D>> | null {
-        const payloadSerializer = request.method === 'PATCH'
-            ? this.updateSerializer
-            : this.replaceSerializer
-        ;
-        const urlParameters = super.deserializeRequest(request);
-        // TODO: Combine validation errors
-        return urlParameters && {
-            ...urlParameters,
-            ...payloadSerializer.deserialize(request.payload),
-        };
+    public getPayloadSerializer(method: HttpMethod): Serializer {
+        return method === 'PATCH' ? this.updateSerializer : this.replaceSerializer;
     }
     public asImplementable(): Operation<Pick<S, R | U | D> & Partial<Pick<S, O>>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
         return this;
@@ -202,8 +173,8 @@ implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthReques
     public bind(client: Client): DestroyApi<S, U, B> {
         return new DestroyApi(this, client);
     }
-    public deserializeRequest(request: HttpRequest): Pick<S, U> | null {
-        return super.deserializeRequest(request);
+    public getPayloadSerializer() {
+        return null;
     }
     public asImplementable(): Operation<Pick<S, U>, void, AuthRequestMapping[A]> {
         return this;

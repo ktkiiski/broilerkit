@@ -109,13 +109,6 @@ export interface HttpRequest {
      */
     region: string; // TODO: Literal typing for the region
     /**
-     * The contents of the payload body parsed from JSON
-     * to an object. It's contents are not validated at this point.
-     * If the request did not contain a payload body, then this
-     * will be undefined.
-     */
-    payload?: unknown;
-    /**
      * Environment or staging variables about the server on which
      * the request is being executed.
      */
@@ -249,22 +242,6 @@ export function acceptsContentType(request: HttpRequest, contentType: string): b
         }
     }
     return false;
-}
-
-export function parsePayload(request: HttpRequest): HttpRequest {
-    const {body} = request;
-    if (!body) {
-        return request;
-    }
-    const contentType = request.headers['Content-Type'];
-    if (contentType && contentType !== 'application/json') {
-        throw new UnsupportedMediaType(`Only 'application/json' requests are accepted`);
-    }
-    try {
-        return {...request, payload: JSON.parse(body)};
-    } catch {
-        throw new BadRequest(`Invalid JSON payload`);
-    }
 }
 
 export function normalizeHeaders(headers: Record<string, string>) {

@@ -2,7 +2,7 @@
 import { Handler, ResponseHandler } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
-import { HttpMethod, HttpRequest, HttpStatus, isResponse, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
+import { BadRequest, HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized, UnsupportedMediaType } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
@@ -33,13 +33,7 @@ class ImplementedOperation {
     public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse<any>> {
         const {tables, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
-        const models = getModels(tables, request, cache);
-        const input = operation.deserializeRequest(request);
-        if (!input) {
-            // Not matching endpoint
-            // This error code indicates to the caller that it should probably find another endpoint
-            throw new NotImplemented(`Request not processable by this endpoint`);
-        }
+        const input = parseRequest(operation, request);
         // Check the authentication
         const {auth} = request;
         const isAdmin = !!auth && auth.groups.indexOf('Administrators') < 0;
@@ -60,6 +54,7 @@ class ImplementedOperation {
             }
         }
         // Handle the request
+        const models = getModels(tables, request, cache);
         const {data, ...response} = await this.handler(input, models, request);
         if (!responseSerializer) {
             // No response data should be available
@@ -223,4 +218,46 @@ function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]
             return model || (cache[tableUri] = table.getModel(tableUri));
         },
     ) as Models<M>;
+}
+
+function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {
+    const url = new Url(request.path, request.queryParameters);
+    if (!operation.route.pattern.match(url)) {
+        // The pattern doesn't match this URL path
+        // Not matching endpoint
+        // This error code indicates to the caller that it should probably find another endpoint
+        throw new NotImplemented(`Request not processable by this endpoint`);
+    }
+    if (operation.methods.indexOf(request.method) < 0) {
+        // URL matches but the method is not accepted
+        throw new MethodNotAllowed(`Method ${request.method} is not allowed`);
+    }
+    // NOTE: Raises validation error if matches but invalid
+    const urlParameters = operation.route.match(url);
+    const payloadSerializer = operation.getPayloadSerializer(request.method);
+    if (!payloadSerializer) {
+        // No payload, just URL parameters
+        return urlParameters;
+    }
+    const {body} = request;
+    const contentType = request.headers['Content-Type'];
+    // TODO: Support multipart/form-data
+    if (contentType && contentType !== 'application/json') {
+        throw new UnsupportedMediaType(`Only 'application/json' requests are accepted`);
+    }
+    // Empty payload equals to an empty object
+    let payload: unknown = {};
+    if (body) {
+        try {
+            payload = JSON.parse(body);
+        } catch {
+            throw new BadRequest(`Invalid JSON payload`);
+        }
+    }
+    // Deserialize the payload, raising validation error if invalid
+    // TODO: Gather validation errors togeter?
+    return {
+        ...urlParameters,
+        ...payloadSerializer.deserialize(payload),
+    };
 }

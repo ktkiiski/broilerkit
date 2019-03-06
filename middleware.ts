@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { encodeSafeJSON, escapeHtml } from './html';
-import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, normalizeHeaders, parsePayload } from './http';
+import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, normalizeHeaders } from './http';
 import { countBytes, findAllMatches } from './utils/strings';
 
 type Response = HttpResponse | ApiResponse<any>;
@@ -13,9 +13,7 @@ export function middleware<P extends any[]>(
             finalizerMiddleware(
                 apiMiddleware(
                     errorMiddleware(
-                        payloadParserMiddleware(
-                            queryMethodSupportMiddleware(handler),
-                        ),
+                        queryMethodSupportMiddleware(handler),
                     ),
                 ),
             ),
@@ -40,11 +38,6 @@ export function responseMiddleware<I, O, R>(handleResponse: (response: I, reques
         }
     );
 }
-
-// TODO: Type separately raw HTTP requests and parsed ones?
-const payloadParserMiddleware = requestMiddleware(async (request: HttpRequest) => {
-    return parsePayload(request);
-});
 
 const queryMethodSupportMiddleware = requestMiddleware(async (request: HttpRequest) => {
     const httpMethod = request.method;
