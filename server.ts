@@ -2,12 +2,14 @@
 import { Handler, ResponseHandler } from './api';
 import { CognitoModel, users } from './cognito';
 import { Model, Table } from './db';
-import { BadRequest, HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized, UnsupportedMediaType } from './http';
+import { BadRequest, HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, parseHeaderDirectives, Unauthorized, UnsupportedMediaType } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
+import { parseFormData } from './multipart';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
+import { Serializer } from './serializers';
 import { Url } from './url';
-import { hasOwnProperty, spread, transformValues, values } from './utils/objects';
+import { buildObject, hasOwnProperty, spread, transformValues, values } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
@@ -221,43 +223,58 @@ function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {
-    const url = new Url(request.path, request.queryParameters);
+    const {path, queryParameters, method, body, headers} = request;
+    const url = new Url(path, queryParameters);
     if (!operation.route.pattern.match(url)) {
         // The pattern doesn't match this URL path
         // Not matching endpoint
         // This error code indicates to the caller that it should probably find another endpoint
         throw new NotImplemented(`Request not processable by this endpoint`);
     }
-    if (operation.methods.indexOf(request.method) < 0) {
+    if (operation.methods.indexOf(method) < 0) {
         // URL matches but the method is not accepted
-        throw new MethodNotAllowed(`Method ${request.method} is not allowed`);
+        throw new MethodNotAllowed(`Method ${method} is not allowed`);
     }
     // NOTE: Raises validation error if matches but invalid
     const urlParameters = operation.route.match(url);
-    const payloadSerializer = operation.getPayloadSerializer(request.method);
+    const payloadSerializer = operation.getPayloadSerializer(method);
     if (!payloadSerializer) {
         // No payload, just URL parameters
         return urlParameters;
     }
-    const {body} = request;
-    const contentType = request.headers['Content-Type'];
-    // TODO: Support multipart/form-data
-    if (contentType && contentType !== 'application/json') {
-        throw new UnsupportedMediaType(`Only 'application/json' requests are accepted`);
-    }
-    // Empty payload equals to an empty object
-    let payload: unknown = {};
-    if (body) {
-        try {
-            payload = JSON.parse(body);
-        } catch {
-            throw new BadRequest(`Invalid JSON payload`);
-        }
-    }
-    // Deserialize the payload, raising validation error if invalid
+    // Deserialize/decode the payload, raising validation error if invalid
+    const payload = parsePayload(payloadSerializer, body, headers['Content-Type']);
     // TODO: Gather validation errors togeter?
-    return {
-        ...urlParameters,
-        ...payloadSerializer.deserialize(payload),
-    };
+    return {...urlParameters, ...payload};
+}
+
+function parsePayload(serializer: Serializer, body?: string, contentTypeHeader: string = 'application/json'): any {
+    if (!body) {
+        // Empty body equals to an empty object
+        // This way body may be omitted if the endpoint takes no payload input.
+        return serializer.deserialize({});
+    }
+    const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);
+    if (contentType === 'application/json') {
+        // Deserialize JSON
+        const payload = parseJSON(body);
+        return serializer.deserialize(payload);
+
+    } else if (contentType === 'multipart/form-data') {
+        // Decode multipart/form-data
+        const formData = parseFormData(body, meta.boundary);
+        const payload = buildObject(formData, (part) => (
+            part.name ? [part.name, part.body] : undefined
+        ));
+        return serializer.decode(payload);
+    }
+    throw new UnsupportedMediaType(`Only 'application/json' requests are accepted`);
+}
+
+function parseJSON(body: string) {
+    try {
+        return JSON.parse(body);
+    } catch {
+        throw new BadRequest(`Invalid JSON payload`);
+    }
 }
