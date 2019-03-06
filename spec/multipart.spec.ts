@@ -18,7 +18,7 @@ describe('parseFormData()', () => {
                     `value2`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             [
                 { name: 'field1', body: 'value1', headers: {} },
@@ -40,7 +40,7 @@ describe('parseFormData()', () => {
                     `value2`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             [
                 { name: 'field', body: 'value1', headers: {} },
@@ -48,7 +48,7 @@ describe('parseFormData()', () => {
             ],
         );
     });
-    it('supports unquoted boundary and directives', () => {
+    it('supports unquoted directives', () => {
         assert.deepEqual(
             parseFormData(
                 joinLines(
@@ -62,7 +62,7 @@ describe('parseFormData()', () => {
                     `value2`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary=----7dd322351017c`,
+                `----7dd322351017c`,
             ),
             [
                 { name: 'field1', body: 'value1', headers: {} },
@@ -85,7 +85,7 @@ describe('parseFormData()', () => {
                     ``,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             [{
                 name: 'field',
@@ -113,7 +113,7 @@ describe('parseFormData()', () => {
                     `1234567890`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             [{
                 name: 'field',
@@ -137,7 +137,7 @@ describe('parseFormData()', () => {
                     `1234567890`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             [{
                 name: 'field',
@@ -153,7 +153,7 @@ describe('parseFormData()', () => {
         assert.deepEqual(
             parseFormData(
                 `------7dd322351017c--`,
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             [],
         );
@@ -172,7 +172,7 @@ describe('parseFormData()', () => {
                     `value2`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----ekke"`,
+                `----ekke`,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
@@ -192,7 +192,7 @@ describe('parseFormData()', () => {
                     `valid value`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
@@ -210,7 +210,7 @@ describe('parseFormData()', () => {
                     `valid value`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
@@ -228,7 +228,7 @@ describe('parseFormData()', () => {
                     `valid value`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
@@ -246,7 +246,7 @@ describe('parseFormData()', () => {
                     `{"foo": "bar"}`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
@@ -264,7 +264,7 @@ describe('parseFormData()', () => {
                     `{"foo": "bar"}`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data; boundary="----7dd322351017c"`,
+                `----7dd322351017c`,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
@@ -282,29 +282,11 @@ describe('parseFormData()', () => {
                     `value`,
                     `------7dd322351017c--`,
                 ),
-                `multipart/form-data`,
+                ``,
             ),
             (error: any) => hasProperties(error, {
                 statusCode: 400,
-                message: `Content-Type is missing the multipart boundary`,
-            }),
-        );
-    });
-    it('raises 400 with invalid content type', () => {
-        assert.throws(
-            () => parseFormData(
-                joinLines(
-                    `------7dd322351017c`,
-                    `Content-Disposition: form-data`,
-                    ``,
-                    `value`,
-                    `------7dd322351017c--`,
-                ),
-                `application/bullshit; boundary="----7dd322351017c"`,
-            ),
-            (error: any) => hasProperties(error, {
-                statusCode: 400,
-                message: `Expected Content-Type to be multipart/form-data`,
+                message: `Missing the multipart/form-data boundary`,
             }),
         );
     });

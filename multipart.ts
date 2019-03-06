@@ -29,25 +29,18 @@ interface MultipartData {
  *
  * Copyright@ 2013-2014 Wolfgang Kuehn, released under the MIT license.
 */
-export function parseFormData(body: string, contentType: string): MultipartData[] {
-    const [mimeType, meta] = parseHeaderDirectives(contentType);
-    if (mimeType !== 'multipart/form-data') {
-        throw new ValidationError('Expected Content-Type to be multipart/form-data');
+export function parseFormData(body: string, boundary: string): MultipartData[] {
+    if (!boundary) {
+        throw new ValidationError('Missing the multipart/form-data boundary');
     }
-    if (!meta.boundary) {
-        throw new ValidationError('Content-Type is missing the multipart boundary');
-    }
-
     // \r\n is part of the boundary.
-    const boundary = '\r\n--' + meta.boundary;
+    boundary = '\r\n--' + boundary;
 
     // Prepend what has been stripped by the body parsing mechanism.
     body = '\r\n' + body;
 
-    // TODO: Why wrapped with RegExp?
     const parts = body.split(boundary);
-
-    // There must be at least one match!
+    // There must be at least one match (= two parts)
     if (parts.length < 2) {
         throw new ValidationError(`Invalid multipart/form-data payload: boundary not found`);
     }
