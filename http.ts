@@ -204,6 +204,17 @@ export class NotImplemented extends ExceptionResponse {
     public readonly statusCode = HttpStatus.NotImplemented;
 }
 
+export class Redirect extends Error implements ApiResponse<null> {
+    public readonly headers = { Location: this.url };
+    public readonly data = null;
+    constructor(
+        public readonly url: string,
+        public readonly statusCode: HttpStatus.Found | HttpStatus.MovedPermanently = HttpStatus.Found,
+    ) {
+        super(`Redirect to ${url}`);
+    }
+}
+
 export function isApiResponse(response: any): response is ApiResponse<any> {
     return isResponse(response) && !('body' in response);
 }
