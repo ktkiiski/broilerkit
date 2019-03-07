@@ -1,6 +1,9 @@
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
+import { ajax } from './ajax';
 import { AuthClient } from './auth';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
+import { HttpMethod } from './http';
+import { Url } from './url';
 
 /**
  * Provides the caching and streaming functionality
@@ -19,6 +22,14 @@ export class Client {
         public readonly apiRoot: string,
         public readonly authClient?: AuthClient,
     ) {}
+
+    public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null) {
+        const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
+        return await ajax({
+            url: `${this.apiRoot}${url}`,
+            method, payload, headers,
+        });
+    }
 }
 
 export interface Bindable<T> {

@@ -2,7 +2,6 @@
 // tslint:disable:no-shadowed-variable
 import { concat, defer, merge, Observable, of } from 'rxjs';
 import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
-import { ajax } from './ajax';
 import { filterAsync, toArray } from './async';
 import { Client } from './client';
 import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
@@ -32,13 +31,9 @@ abstract class BaseApi<T extends Operation<any, any, any>> {
         protected client: Client,
     ) { }
 
-    protected async ajax(method: HttpMethod, url: Url | string, payload?: any) {
-        if (typeof url !== 'string') {
-            url = `${this.client.apiRoot}${url}`;
-        }
+    protected async request(method: HttpMethod, url: Url, payload?: any) {
         const token = await this.getToken();
-        const headers: {[header: string]: string} = token ? {Authorization: `Bearer ${token}`} : {};
-        const response = await ajax({url, method, payload, headers});
+        const response = await this.client.request(url, method, payload, token);
         const {responseSerializer} = this.operation;
         return responseSerializer ? responseSerializer.deserialize(response.data) : undefined;
     }
@@ -96,7 +91,7 @@ export class RetrieveEndpoint<S, U extends Key<S>, B extends U | undefined>
 extends BaseApi<RetrieveOperation<S, U, any, B>> {
     public get(input: Pick<S, U>): Promise<S> {
         const url = this.operation.route.compile(input);
-        return this.ajax('GET', url);
+        return this.request('GET', url);
     }
     public validateGet(input: Pick<S, U>): Pick<S, U> {
         return this.operation.route.serializer.validate(input);
@@ -125,7 +120,7 @@ extends BaseApi<RetrieveOperation<S, U, any, B>> {
             );
             resource$ = concat(
                 // Start with the retrieved state of the resource
-                this.ajax('GET', url),
+                this.request('GET', url),
                 // Then emit all the updates to the resource
                 update$,
             ).pipe(
@@ -159,7 +154,7 @@ export class ListApi<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B 
 extends BaseApi<ListOperation<S, U, O, F, any, B>> {
     public getPage(input: Cursor<S, U, O, F>): Promise<Page<S, Cursor<S, U, O, F>>> {
         const url = this.operation.route.compile(input);
-        return this.ajax('GET', url);
+        return this.request('GET', url);
     }
     public async getAll(input: Cursor<S, U, O, F>): Promise<S[]> {
         const results: S[] = [];
@@ -306,7 +301,7 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         const {resource} = this.operation.endpoint;
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
-        const item = await this.ajax(method, url, payload);
+        const item = await this.request(method, url, payload);
         const resourceIdentity = pick(item, resource.identifyBy);
         const resourceName = resource.name;
         this.client.resourceAddition$.next({
@@ -329,7 +324,7 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         const method = 'POST';
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
-        const resource$ = this.ajax(method, url, payload);
+        const resource$ = this.request(method, url, payload);
         const resourceIdentity = pick(input as any, resource.identifyBy);
         const resourceName = resource.name;
         const addition: ResourceAddition<any, any> = {
@@ -424,7 +419,7 @@ extends BaseApi<UpdateOperation<S, U, R, O, D, any, B>> {
             resource: input,
             resourceIdentity,
         };
-        const request = this.ajax(method, url, payload);
+        const request = this.request(method, url, payload);
         try {
             client.optimisticUpdates$.next([
                 ...client.optimisticUpdates$.getValue(),
@@ -464,7 +459,7 @@ extends BaseApi<DestroyOperation<S, U, any, B>> {
             resourceName,
             resourceIdentity,
         };
-        const request = this.ajax(method, url);
+        const request = this.request(method, url);
         try {
             client.optimisticRemovals$.next([
                 ...client.optimisticRemovals$.getValue(),
