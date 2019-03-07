@@ -18,9 +18,13 @@ export class Client {
     public optimisticAdditions$ = new BehaviorSubject<Array<ResourceAddition<any, any>>>([]);
     public optimisticUpdates$ = new BehaviorSubject<Array<ResourceUpdate<any, any>>>([]);
     public optimisticRemovals$ = new BehaviorSubject<Array<ResourceRemoval<any, any>>>([]);
+
+    public stateCache$ = new BehaviorSubject<Record<string, any>>({});
+
     constructor(
         public readonly apiRoot: string,
         public readonly authClient?: AuthClient,
+        public readonly renderRequests?: Set<string>,
     ) {}
 
     public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null) {
@@ -29,6 +33,20 @@ export class Client {
             url: `${this.apiRoot}${url}`,
             method, payload, headers,
         });
+    }
+
+    public cacheState(url: string, state: any) {
+        const states$ = this.stateCache$.getValue();
+        this.stateCache$.next({
+            ...states$, [url]: state,
+        });
+    }
+
+    public registerRender(url: string) {
+        const {renderRequests} = this;
+        if (renderRequests) {
+            renderRequests.add(url);
+        }
     }
 }
 

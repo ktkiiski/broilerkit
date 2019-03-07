@@ -1,7 +1,7 @@
 import { combineLatest, never, Observable, of } from 'rxjs';
 import { filter, map, take } from 'rxjs/operators';
 import { Bindable } from '../client';
-import { ListOperation, RetrieveOperation } from '../operations';
+import { ListOperation, Operation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
 import { Key, Omit } from '../utils/objects';
 import { useClient, useWithClient } from './client';
@@ -68,17 +68,31 @@ export function useOperation<T, P extends any[] = [], R = void>(op: Bindable<T>,
 const nothing$ = never();
 
 function useBoundObservable<I, T, R>(
-    op: Bindable<T>,
+    op: Bindable<T> & Operation<any, any, any>,
     input: I,
     observe: (input: I, model: T) => Observable<R>,
     extraDeps: any[] = [],
 ): R | null {
     const client = useClient();
     const fingerprint = getFingerprint(input);
+    let initialValue: R | null = null;
+    // Try to read the very immediate value from the cache
+    if (client) {
+        try {
+            const url = op.route.compile(input).toString();
+            const stateCache = client.stateCache$.getValue();
+            initialValue = stateCache[url] as R || null;
+            // Register to the client for server-side rendering
+            client.registerRender(url);
+
+        } catch {
+            // TODO: Expose errors to the hook users!
+        }
+    }
     return useObservable(
-        null,
+        initialValue,
         () => {
-            // No client (yet), no subscription
+            // No client, no subscription
             if (!client) {
                 return nothing$;
             }
