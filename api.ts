@@ -204,21 +204,21 @@ extends BaseApi<ListOperation<S, U, O, F, any, B>> {
         return this.observeIterable(input).pipe(map(observeIterable));
     }
     public observeIterable(input: Cursor<S, U, O, F>): Observable<AsyncIterable<S>> {
+        const {client} = this;
         const {operation} = this;
-        const url = operation.route.compile(input);
-        const cacheKey = url.toString();
         const {direction, ordering} = input;
         const resourceName = operation.endpoint.resource.name;
 
-        function isCollectionChange(change: ResourceChange<any, any>): boolean {
-            if (change.type === 'addition') {
-                return change.collectionUrl === url.path;
-            }
-            return change.resourceName === resourceName;
-        }
-
         return defer(() => {
-            const {client} = this;
+            const url = operation.route.compile(input);
+            const cacheKey = url.toString();
+
+            function isCollectionChange(change: ResourceChange<any, any>): boolean {
+                if (change.type === 'addition') {
+                    return change.collectionUrl === url.path;
+                }
+                return change.resourceName === resourceName;
+            }
             // Use a cached observable, if available
             const {collectionCache} = client;
             let collection$: Observable<AsyncIterable<S>> | undefined = collectionCache.get(cacheKey);

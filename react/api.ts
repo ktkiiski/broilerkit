@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { combineLatest, never, Observable, of } from 'rxjs';
-import { take } from 'rxjs/operators';
+import { filter, take } from 'rxjs/operators';
 import { IntermediateCollection } from '../api';
 import { Bindable, Client } from '../client';
 import { ListOperation, Operation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
 import { Serializer } from '../serializers';
 import { Key } from '../utils/objects';
-import { useUserId } from './auth';
 import { useClient, useWithClient } from './client';
 import { useObservable } from './rxjs';
 
@@ -15,66 +14,40 @@ export function useResource<S, U extends Key<S>>(
     op: RetrieveOperation<S, U, any, any>,
     input: Pick<S, U>,
 ): S | null {
-    const client = useClient();
-    return useBoundObservable(
-        op, input,
-        (i, model) => model.observe(i),
-        client && initializeValue(client, op, input) || null,
-    );
+    return useResourceIf(op, input);
 }
 
-export function useResourceWithAuth<S, U extends Key<S>, B extends U>(
-    op: RetrieveOperation<S, U, any, B>,
-    input: Pick<S, Exclude<U, B>>,
+export function useResourceIf<S, U extends Key<S>>(
+    op: RetrieveOperation<S, U, any, any>,
+    input: Pick<S, U> | undefined | null,
 ): S | null {
     const client = useClient();
-    return useBoundObservableWithUserId(
-        op, input,
-        (i, model) => model.observe(i as any),
-        client && initializeValue(client, op, input),
-    ) || null;
+    return useBoundObservable(
+        client, op, input,
+        (i, model) => i ? model.observe(i) : null$,
+        client && initializeValue(client, op, input) || null,
+    );
 }
 
 export function useCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
     input: Cursor<S, U, O, F>,
 ): IntermediateCollection<S> {
-    const client = useClient();
-    const initialValue = client
-        && initializeValue(client, op, input) as IntermediateCollection<S>
-        || {items: [], isComplete: false}
-    ;
-    return useBoundObservable(
-        op, input,
-        (i, model) => model.observe(i),
-        initialValue,
-    );
+    return useCollectionIf(op, input) as IntermediateCollection<S>;
 }
 
-export function useCollectionWithAuth<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B extends U>(
-    op: ListOperation<S, U, O, F, any, B>,
-    input: Cursor<S, Exclude<U, B>, O, F>,
-): IntermediateCollection<S> {
-    const client = useClient();
-    return useBoundObservableWithUserId(
-        op, input,
-        (i, model) => model.observe(i as any),
-        client && initializeValue(client, op, input) as IntermediateCollection<S>,
-    ) || {items: [], isComplete: false};
-}
-
-export function useCollectionOnce<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+export function useCollectionIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
-    input: Cursor<S, U, O, F>,
-): IntermediateCollection<S> {
+    input: Cursor<S, U, O, F> | null | undefined,
+): IntermediateCollection<S> | null {
     const client = useClient();
     const initialValue = client
         && initializeValue(client, op, input) as IntermediateCollection<S>
         || {items: [], isComplete: false}
     ;
     return useBoundObservable(
-        op, input,
-        (i, model) => model.observe(i).pipe(take(1)),
+        client, op, input,
+        (i, model) => i ? model.observe(i) : null$,
         initialValue,
     );
 }
@@ -87,20 +60,33 @@ export function useList<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>
     return useCompleteCollection(collection);
 }
 
+export function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+    op: ListOperation<S, U, O, F, any, any>,
+    input: Cursor<S, U, O, F> | null | undefined,
+): S[] | null {
+    const collection = useCollectionIf(op, input);
+    return useCompleteCollection(collection);
+}
+
 export function useListOnce<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
     input: Cursor<S, U, O, F>,
 ): S[] | null {
-    const collection = useCollectionOnce(op, input);
-    return useCompleteCollection(collection);
-}
-
-export function useListWithAuth<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B extends U>(
-    op: ListOperation<S, U, O, F, any, B>,
-    input: Cursor<S, Exclude<U, B>, O, F>,
-): S[] | null {
-    const collection = useCollectionWithAuth(op, input);
-    return useCompleteCollection(collection);
+    const client = useClient();
+    let initialValue = client && initializeValue(client, op, input) as IntermediateCollection<S>;
+    if (initialValue && !initialValue.isComplete) {
+        initialValue = null;
+    }
+    const collection = useBoundObservable(
+        client, op, input,
+        (i, model) => model.observe(i).pipe(
+            filter((col) => col.isComplete),
+            take(1),
+        ),
+        initialValue,
+    );
+    // The collection is complete if not null
+    return collection && collection.items;
 }
 
 export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
@@ -116,7 +102,7 @@ export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends 
         }
     ));
     return useBoundObservable(
-        op, inputs,
+        client, op, inputs,
         (i, model) => !i.length ? of([]) : combineLatest(
             i.map((input) => model.observe(input)),
         ),
@@ -132,15 +118,16 @@ export function useOperation<T, P extends any[] = [], R = void>(op: Bindable<T>,
 }
 
 const nothing$ = never();
+const null$ = of(null);
 
 function useBoundObservable<I, T, R>(
-    op: Bindable<T> & Operation<any, any, any>,
+    client: Client | null,
+    op: Bindable<T>,
     input: I,
     observe: (input: I, model: T) => Observable<R>,
     initialValue: R,
     extraDeps: any[] = [],
 ): R {
-    const client = useClient();
     const fingerprint = getFingerprint(input);
     return useObservable(
         initialValue,
@@ -156,31 +143,6 @@ function useBoundObservable<I, T, R>(
     );
 }
 
-function useBoundObservableWithUserId<I, T, R, B extends string>(
-    op: Bindable<T> & Operation<any, any, any> & {userIdAttribute: string},
-    input: I,
-    observe: (input: I & Record<B, string>, model: T) => Observable<R>,
-    initialValue: R,
-    extraDeps: any[] = [],
-): R | null {
-    const {userIdAttribute} = op;
-    if (!userIdAttribute) {
-        throw new Error(`User ID attribute is undefined.`);
-    }
-    const userId = useUserId();
-    return useBoundObservable(
-        op,
-        // Input with the user ID property, which might be null
-        {...input, [userIdAttribute]: userId},
-        (i, model) => (
-            // If user ID is null, then always result in null
-            i[userIdAttribute] == null ? of(null) : observe(i as I & Record<B, string>, model)
-        ),
-        initialValue,
-        [userId, ...extraDeps],
-    );
-}
-
 function getFingerprint(obj: unknown) {
     if (typeof obj === 'object' && obj) {
         return JSON.stringify(obj);
@@ -188,9 +150,9 @@ function getFingerprint(obj: unknown) {
     return obj;
 }
 
-function useCompleteCollection<T>(collection: IntermediateCollection<T>): T[] | null {
-    const [list, setList] = useState(collection.isComplete ? collection.items : null);
-    if (collection.isComplete && collection.items !== list) {
+function useCompleteCollection<T>(collection: IntermediateCollection<T> | null): T[] | null {
+    const [list, setList] = useState(collection && collection.isComplete ? collection.items : null);
+    if (collection && collection.isComplete && collection.items !== list) {
         setList(collection.items);
     }
     return list;
