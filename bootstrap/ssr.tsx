@@ -11,7 +11,12 @@ const executeLambda = lambdaMiddleware(middleware(async (req) => {
     // Load the module exporting the rendered React component
     const siteModule = require('_site');
     const view: React.ComponentType<{}> = siteModule.default;
-    return await renderView(req, pageHtml, view);
+    return await renderView(
+        req,
+        pageHtml,
+        view,
+        () => require('_service').default,
+    );
 }));
 
 /**

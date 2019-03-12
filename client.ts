@@ -3,7 +3,13 @@ import { ajax } from './ajax';
 import { AuthClient } from './auth';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { HttpMethod } from './http';
+import { Operation } from './operations';
 import { Url } from './url';
+
+export interface OperationAction<I = any> {
+    operation: Operation<I, any, any>;
+    input: I;
+}
 
 /**
  * Provides the caching and streaming functionality
@@ -23,9 +29,14 @@ export class Client {
 
     constructor(
         public readonly apiRoot: string,
-        public readonly authClient?: AuthClient,
-        public readonly renderRequests?: Set<string>,
-    ) {}
+        public readonly authClient?: AuthClient | null,
+        public readonly renderRequests?: OperationAction[],
+        stateCache?: Record<string, any>,
+    ) {
+        if (stateCache) {
+            this.stateCache$.next(stateCache);
+        }
+    }
 
     public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null) {
         const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
@@ -42,10 +53,10 @@ export class Client {
         });
     }
 
-    public registerRender(url: string) {
+    public registerRender<I>(operation: Operation<I, any, any>, input: I) {
         const {renderRequests} = this;
         if (renderRequests) {
-            renderRequests.add(url);
+            renderRequests.push({operation, input});
         }
     }
 }

@@ -396,10 +396,19 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     const aliases: Record<string, string> = {
         _site: path.resolve(projectRootPath, sourceDir, siteFile),
     };
+    // Modules excluded from the bundle
+    const externals = [
+        // No need to bundle AWS SDK for compilation, because it will be available in the Lambda node environment
+        'aws-sdk',
+    ];
     // If an API is defined, compile it as well
     if (serverFile) {
         entries.api = require.resolve('./bootstrap/api');
         aliases._service = path.resolve(projectRootPath, sourceDir, serverFile);
+    } else {
+        // API not available. Let the bundle to compile without it, but
+        // raise error if attempting to `require`
+        externals.push('_service');
     }
 
     return {
@@ -464,10 +473,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             ],
         },
 
-        externals: {
-            // No need to bundle AWS SDK for compilation, because it will be available in the Lambda node environment
-            'aws-sdk': !devServer,
-        },
+        externals,
 
         resolve: {
             // Add '.ts' and '.tsx' as resolvable extensions.

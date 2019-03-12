@@ -7,7 +7,9 @@ export default async (req: HttpRequest, pageHtml: string) => {
     // Load the module exporting the rendered React component
     const siteModule = require('_site');
     const view: React.ComponentType<{}> = siteModule.default;
-    return await renderView(req, pageHtml, () => (
-        <LocalAuthRouter component={view} />
-    ));
+    return await renderView(
+        req, pageHtml,
+        () => (<LocalAuthRouter component={view} />),
+        () => require('_service').default,
+    );
 };
