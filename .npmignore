@@ -8,5 +8,8 @@
 /.eslintrc.json
 /.eslintignore
 
+# Exclude specs
+/spec/
+
 # Ignore packed npm packages
 *.tgz
