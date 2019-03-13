@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { combineLatest, never, Observable, of } from 'rxjs';
-import { filter, take } from 'rxjs/operators';
 import { IntermediateCollection } from '../api';
 import { Auth } from '../auth';
 import { Bindable, Client } from '../client';
@@ -68,27 +67,6 @@ export function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S
 ): S[] | null {
     const collection = useCollectionIf(op, input);
     return useCompleteCollection(collection);
-}
-
-export function useListOnce<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
-    op: ListOperation<S, U, O, F, any, any>,
-    input: Cursor<S, U, O, F>,
-): S[] | null {
-    const client = useClient();
-    let initialValue = client && initializeValue(client, op, input) as IntermediateCollection<S>;
-    if (initialValue && !initialValue.isComplete) {
-        initialValue = null;
-    }
-    const collection = useBoundObservable(
-        client, op, input,
-        (i, model) => model.observe(i).pipe(
-            filter((col) => col.isComplete),
-            take(1),
-        ),
-        initialValue,
-    );
-    // The collection is complete if not null
-    return collection && collection.items;
 }
 
 export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
