@@ -227,7 +227,7 @@ export function isResponse(response: any): response is HttpResponse | ApiRespons
     return typeof statusCode === 'number'
         && !isNaN(statusCode)
         && typeof response.headers === 'object'
-        && (typeof response.body === 'string' || response.data != null)
+        && (typeof response.body === 'string' || typeof response.data !== 'undefined')
     ;
 }
 
