@@ -111,11 +111,11 @@ function render(View: React.ComponentType<{}>, client: Client, location: object)
     ));
     if (routerContext.url) {
         // Redirect
-        const statusCode = routerContext.statusCode || 302;
-        if (statusCode !== 301 && statusCode !== 302) {
-            throw new Error(`Invalid redirection status code ${statusCode}`);
+        let {statusCode} = routerContext;
+        if (statusCode !== HttpStatus.Found && statusCode !== HttpStatus.MovedPermanently) {
+            statusCode = HttpStatus.Found;
         }
-        throw new Redirect(routerContext.url, statusCode || 302);
+        throw new Redirect(routerContext.url, statusCode);
     }
     return {viewHtml, routerContext, meta};
 }
