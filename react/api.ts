@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { combineLatest, never, Observable, of } from 'rxjs';
 import { filter, take } from 'rxjs/operators';
 import { IntermediateCollection } from '../api';
+import { Auth } from '../auth';
 import { Bindable, Client } from '../client';
 import { ListOperation, Operation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
 import { Serializer } from '../serializers';
 import { Key } from '../utils/objects';
+import { useAuthClient } from './auth';
 import { useClient, useWithClient } from './client';
 import { useObservable } from './rxjs';
 
@@ -114,6 +116,17 @@ export function useOperation<T, P extends any[] = [], R = void>(op: Bindable<T>,
     return useWithClient((client, ...args: P) => {
         const model = op.bind(client);
         return exec(model, ...args);
+    });
+}
+
+export function useAuthOperation<T, P extends any[] = [], R = void>(op: Bindable<T>, exec: (model: T, auth: Auth, ...args: P) => Promise<R>): (...args: P) => Promise<R> {
+    const demandAuthentication = useAuthClient((authClient) => (
+        authClient.demandAuthentication()
+    ));
+    return useWithClient(async (client, ...args: P) => {
+        const model = op.bind(client);
+        const auth = await demandAuthentication();
+        return exec(model, auth, ...args);
     });
 }
 

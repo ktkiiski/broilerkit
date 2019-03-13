@@ -18,8 +18,6 @@ import { Key, pick, spread } from './utils/objects';
 export type Handler<I, O, D, R> = (input: I, db: D, request: R) => Promise<O>;
 export type ResponseHandler<I, O, D, R> = Handler<I, SuccesfulResponse<O>, D, R>;
 
-type UserInput<I, B> = Pick<I, Exclude<keyof I, B>>;
-
 export interface IntermediateCollection<O> {
     isComplete: boolean;
     items: O[];
@@ -36,20 +34,6 @@ abstract class BaseApi<T extends Operation<any, any, any>> {
         const response = await this.client.request(url, method, payload, token);
         const {responseSerializer} = this.operation;
         return responseSerializer ? responseSerializer.deserialize(response.data) : undefined;
-    }
-
-    protected withUserId<I, T>(query: any, fn: (input: I) => Observable<T>): Observable<T | null> {
-        const {userIdAttribute} = this.operation;
-        const {authClient} = this.client;
-        if (!authClient) {
-            throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
-        }
-        if (!userIdAttribute) {
-            throw new Error(`User ID attribute is undefined.`);
-        }
-        return authClient.observeUserId().pipe(
-            switchMap((userId) => userId ? fn({...query, [userIdAttribute]: userId}) : [null]),
-        );
     }
 
     protected extendUserId<I>(input: any): Promise<I> {
@@ -144,9 +128,6 @@ extends BaseApi<RetrieveOperation<S, U, any, B>> {
             resourceCache.set(cacheKey, resource$);
             return resource$;
         });
-    }
-    public observeWithUser(query: Pick<S, Exclude<U, B>>): Observable<S | null> {
-        return this.withUserId(query, (input: Pick<S, U>) => this.observe(input));
     }
 }
 
@@ -277,20 +258,6 @@ extends BaseApi<ListOperation<S, U, O, F, any, B>> {
             )),
         );
     }
-    public observeWithUser(input: UserInput<Cursor<S, U, O, F>, B>): Observable<IntermediateCollection<S> | null> {
-        return this.observeAllWithUser(input).pipe(
-            map((items) => items && {isComplete: true, items}),
-        );
-    }
-    public observeObservableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<Observable<S> | null> {
-        return this.withUserId(query, (input: Cursor<S, U, O, F>) => this.observeObservable(input));
-    }
-    public observeAllWithUser(query: UserInput<Cursor<S, U, O, F>, B>, filters?: Partial<S>): Observable<S[] | null> {
-        return this.withUserId(query, (input: Cursor<S, U, O, F>) => this.observeAll(input, filters));
-    }
-    public observeIterableWithUser(query: UserInput<Cursor<S, U, O, F>, B>): Observable<AsyncIterable<S> | null> {
-        return this.withUserId(query, (input: Cursor<S, U, O, F>) => this.observeIterable(input));
-    }
 }
 
 export class CreateApi<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B extends U | undefined>
@@ -312,10 +279,6 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
             resourceIdentity,
         });
         return item;
-    }
-    public async postWithUser(query: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S> {
-        const input = await this.extendUserId<OptionalInput<S, U | R, O, D>>(query);
-        return await this.post(input);
     }
     public async postOptimistically(input: OptionalInput<S, U | R, O, D> & S): Promise<S> {
         const {client, operation} = this;
@@ -356,10 +319,6 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
             );
         }
     }
-    public async postWithUserOptimistically(query: UserInput<OptionalInput<S, U | R, O, D> & S, B>): Promise<S> {
-        const input = await this.extendUserId<OptionalInput<S, U | R, O, D> & S>(query);
-        return await this.postOptimistically(input);
-    }
     public validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
         const {route, payloadSerializer} = this.operation;
         return {
@@ -374,10 +333,6 @@ extends BaseApi<UpdateOperation<S, U, R, O, D, any, B>> {
     public put(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         return this.update('PUT', input);
     }
-    public async putWithUser(query: OptionalInput<S, Exclude<U, B> | R, O, D>): Promise<S> {
-        const input = await this.extendUserId<OptionalInput<S, U | R, O, D>>(query);
-        return await this.update('PUT', input);
-    }
     public validatePut(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
         const {operation} = this;
         // TODO: Combine validation errors
@@ -388,10 +343,6 @@ extends BaseApi<UpdateOperation<S, U, R, O, D, any, B>> {
     }
     public patch(input: OptionalInput<S, U, R | O, D>): Promise<S> {
         return this.update('PATCH', input);
-    }
-    public async patchWithUser(query: OptionalInput<S, Exclude<U, B>, R | O, D>): Promise<S> {
-        const input = await this.extendUserId<OptionalInput<S, U, R | O, D>>(query);
-        return await this.update('PATCH', input);
     }
     public validatePatch(input: OptionalInput<S, U, R | O, D>): OptionalInput<S, U, R | O, D> {
         const {operation} = this;
@@ -474,9 +425,5 @@ extends BaseApi<DestroyOperation<S, U, any, B>> {
                 ),
             );
         }
-    }
-    public async deleteWithUser(query: Pick<S, Exclude<U, B>>): Promise<void> {
-        const input = await this.extendUserId<Pick<S, U>>(query);
-        return await this.delete(input);
     }
 }
