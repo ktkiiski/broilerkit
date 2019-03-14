@@ -32,7 +32,7 @@ class ImplementedOperation {
         private readonly handler: ResponseHandler<any, any, any, any>,
     ) {}
 
-    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse<any>> {
+    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse> {
         const {tables, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const input = parseRequest(operation, request);
@@ -131,7 +131,7 @@ export class ApiService {
     ) {}
 
     public execute = async (request: HttpRequest, cache?: {[uri: string]: any}) => {
-        let errorResponse: ApiResponse<any> | HttpResponse = new NotFound(`API endpoint not found.`);
+        let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
         const implementations = Array.from(this.iterateForPath(request.path));
         // Respond to an OPTIONS request

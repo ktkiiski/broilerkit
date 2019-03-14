@@ -3,7 +3,7 @@ import { encodeSafeJSON, escapeHtml } from './html';
 import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, normalizeHeaders } from './http';
 import { countBytes, findAllMatches } from './utils/strings';
 
-type Response = HttpResponse | ApiResponse<any>;
+type Response = HttpResponse | ApiResponse;
 
 export function middleware<P extends any[]>(
     handler: (request: HttpRequest, ...params: P) => Promise<Response>,

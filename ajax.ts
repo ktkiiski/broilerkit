@@ -1,4 +1,4 @@
-import { HttpHeaders, HttpMethod, HttpStatus } from './http';
+import { ApiResponse, HttpHeaders, HttpMethod, HttpResponse, HttpStatus, parseHeaders } from './http';
 
 const enum AjaxState {
     UNSENT = 0,
@@ -15,29 +15,19 @@ export interface AjaxRequest {
     headers?: HttpHeaders;
 }
 
-export interface AjaxResponse {
-    request: AjaxRequest;
-    statusCode: HttpStatus;
-    data?: any;
-}
-
-interface AjaxTextResponse {
-    request: AjaxRequest;
-    statusCode: HttpStatus;
-    body: string;
-}
-
-export async function ajax(request: AjaxRequest): Promise<AjaxResponse> {
+export async function ajax(request: AjaxRequest): Promise<ApiResponse> {
     const textResponse = await requestText(request);
-    const {statusCode, body} = textResponse;
-    const response: AjaxResponse = {statusCode, request};
+    const {statusCode, body, headers} = textResponse;
+    let response;
     if (body) {
         // Attempt to parse the response text as JSON object.
         try {
-            response.data = JSON.parse(body);
+            response = {statusCode, headers, data: JSON.parse(body)};
         } catch (error) {
-            throw new AjaxError(request, statusCode, undefined, error);
+            throw new AjaxError(request, statusCode, {}, undefined, error);
         }
+    } else {
+        response = {statusCode, headers};
     }
     if (200 <= statusCode && statusCode < 300) {
         return response;
@@ -45,8 +35,8 @@ export async function ajax(request: AjaxRequest): Promise<AjaxResponse> {
     throw new AjaxError(request, statusCode, response.data);
 }
 
-function requestText(request: AjaxRequest): Promise<AjaxTextResponse> {
-    return new Promise<AjaxTextResponse>((resolve, reject) => {
+function requestText(request: AjaxRequest): Promise<HttpResponse> {
+    return new Promise<HttpResponse>((resolve, reject) => {
         const {headers, payload, url, method} = request;
         const xhr = new XMLHttpRequest();
         function onReadyStateChange(this: XMLHttpRequest) {
@@ -58,12 +48,15 @@ function requestText(request: AjaxRequest): Promise<AjaxTextResponse> {
                 if (statusCode === 1223) {
                     statusCode = 204;
                 }
-                const body = xhr.responseText;
-                resolve({request, statusCode, body});
+                resolve({
+                    statusCode,
+                    body: xhr.responseText,
+                    headers: parseHeaders(xhr.getAllResponseHeaders()),
+                });
             }
         }
         function onError(this: XMLHttpRequestEventTarget, error: ProgressEvent) {
-            reject(new AjaxError(request, 0, undefined, error));
+            reject(new AjaxError(request, 0, {}, undefined, error));
         }
         xhr.open(method, url, true);
         // Set the request headers
@@ -88,8 +81,14 @@ function requestText(request: AjaxRequest): Promise<AjaxTextResponse> {
     });
 }
 
-export class AjaxError extends Error {
-    constructor(public readonly request: AjaxRequest, public readonly statusCode: HttpStatus | 0, public readonly data?: any, public readonly error?: Error | Event) {
+export class AjaxError extends Error implements ApiResponse {
+    constructor(
+        public readonly request: AjaxRequest,
+        public readonly statusCode: HttpStatus | 0,
+        public readonly headers: HttpHeaders,
+        public readonly data: any = null,
+        public readonly error?: Error | Event,
+    ) {
         super();
     }
 }

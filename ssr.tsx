@@ -2,7 +2,7 @@ import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
 import { AuthOptions } from './auth';
-import { Client, OperationAction } from './client';
+import { Client, DummyClient, OperationAction } from './client';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { HttpRequest, HttpResponse, HttpStatus, Redirect } from './http';
 import { errorMiddleware } from './middleware';
@@ -26,7 +26,7 @@ export async function renderView(
     };
     const renderRequests: OperationAction[] = [];
     // TODO: Dummy auth client?
-    let client = new Client(apiRoot, undefined, renderRequests);
+    let client = new DummyClient(renderRequests);
     // On the first render, we just find out which resources the view requests
     let renderResult = render(view, client, location);
     // If at least one request was made, perform it and add to cache
@@ -35,7 +35,7 @@ export async function renderView(
         // Perform the requests and populate the cache
         const cache = await executeRenderRequests(apiService, renderRequests, request);
         // Re-render, now with the cache populated in the Client
-        client = new Client(apiRoot, undefined, undefined, cache);
+        client = new DummyClient(undefined, cache);
         renderResult = render(view, client, location);
     }
     const {viewHtml, meta, routerContext} = renderResult;

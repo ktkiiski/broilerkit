@@ -1,5 +1,5 @@
 import { ValidationError } from './errors';
-import { normalizeHeaders, parseHeaderDirectives } from './http';
+import { parseHeaderDirectives, parseHeaders } from './http';
 import { pick } from './utils/objects';
 import { splitOnce } from './utils/strings';
 
@@ -53,7 +53,7 @@ export function parseFormData(body: string, boundary: string): MultipartData[] {
         if (typeof value === 'undefined') {
             throw new ValidationError(`Invalid multipart/form-data part: no content`);
         }
-        const {'Content-Disposition': contentDisposition, ...headers} = parseHeaders(headersStr.split('\r\n'));
+        const {'Content-Disposition': contentDisposition, ...headers} = parseHeaders(headersStr);
         const headerFields = parseContentDisposition(contentDisposition);
         return {
             ...headerFields,
@@ -61,17 +61,6 @@ export function parseFormData(body: string, boundary: string): MultipartData[] {
             body: value,
         };
     });
-}
-
-function parseHeaders(headerLines: string[]) {
-    const headers: Record<string, string> = {};
-    for (const headerLine of headerLines) {
-        const headerMatch = /^(.+?):\s*(.*)$/.exec(headerLine);
-        if (headerMatch) {
-            headers[headerMatch[1]] = headerMatch[2];
-        }
-    }
-    return normalizeHeaders(headers);
 }
 
 function parseContentDisposition(header: string) {

@@ -145,7 +145,7 @@ export function isWriteHttpMethod(method: string): method is 'POST' | 'PUT' | 'P
  * Unlike in HttpResponse, the data should be a response object
  * that is not yet encoded as JSON string.
  */
-export interface ApiResponse<T> {
+export interface ApiResponse<T = any> {
     readonly statusCode: HttpStatus;
     readonly data?: T;
     readonly headers: HttpHeaders;
@@ -156,7 +156,7 @@ export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
     constructor(public readonly data: T, public readonly headers: HttpHeaders = {}) {}
 }
 
-export abstract class ExceptionResponse extends Error implements ApiResponse<any> {
+export abstract class ExceptionResponse extends Error implements ApiResponse {
     public readonly abstract statusCode: HttpRedirectStatus | HttpErrorStatus;
     public readonly data: any;
     constructor(message: string, data?: object, public readonly headers: HttpHeaders = {}) {
@@ -215,11 +215,11 @@ export class Redirect extends Error implements ApiResponse<null> {
     }
 }
 
-export function isApiResponse(response: any): response is ApiResponse<any> {
+export function isApiResponse(response: any): response is ApiResponse {
     return isResponse(response) && !('body' in response);
 }
 
-export function isResponse(response: any): response is HttpResponse | ApiResponse<any> {
+export function isResponse(response: any): response is HttpResponse | ApiResponse {
     if (!response) {
         return false;
     }
@@ -231,7 +231,7 @@ export function isResponse(response: any): response is HttpResponse | ApiRespons
     ;
 }
 
-export function isErrorResponse(response: any): response is ApiResponse<any> {
+export function isErrorResponse(response: any): response is ApiResponse {
     return isApiResponse(response) && response.statusCode >= 400;
 }
 
@@ -255,7 +255,18 @@ export function acceptsContentType(request: HttpRequest, contentType: string): b
     return false;
 }
 
-export function normalizeHeaders(headers: Record<string, string>) {
+export function parseHeaders(headersString: string) {
+    const headers: Record<string, string> = {};
+    for (const headerLine of headersString.split('\r\n')) {
+        const headerMatch = /^(.+?):\s*(.*)$/.exec(headerLine);
+        if (headerMatch) {
+            headers[headerMatch[1]] = headerMatch[2];
+        }
+    }
+    return normalizeHeaders(headers);
+}
+
+export function normalizeHeaders(headers: HttpHeaders): HttpHeaders {
     return transformKeys(headers, (header) => (
         header.replace(/(\w+)/g, (match) => capitalize(match))
     ));

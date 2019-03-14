@@ -2,7 +2,7 @@ import * as React from 'react';
 import { hydrate } from 'react-dom';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthClient, AuthOptions } from '../auth';
-import { Client } from '../client';
+import { BrowserClient } from '../client';
 import { ClientProvider } from '../react/client';
 
 /**
@@ -13,7 +13,7 @@ export function start(element: Element, apiRoot: string, authOptions?: AuthOptio
     // Webpack bundler loads the configured app site module aliased as '_site'
     const siteModule = require('_site');
     const View: React.ComponentType<{}> = siteModule.default;
-    const client = new Client(apiRoot, authOptions && new AuthClient(authOptions), undefined, stateCache);
+    const client = new BrowserClient(apiRoot, authOptions && new AuthClient(authOptions), stateCache);
     hydrate(
         <ClientProvider client={client}>
             <BrowserRouter><View /></BrowserRouter>
