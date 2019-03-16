@@ -12,18 +12,6 @@ export function useClient(): Client {
     return useContext(ClientContext);
 }
 
-export function useWithClient<R, P extends any[] = []>(exec: (client: Client, ...args: P) => R, defaultValue?: R): (...args: P) => R {
-    const client = useClient();
-    return (...args: P) => {
-        if (client) {
-            return exec(client, ...args);
-        } else if (typeof defaultValue === 'undefined') {
-            throw new Error(`Client not available! Either called too early on the first render or ClientContext is missing.`);
-        }
-        return defaultValue;
-    };
-}
-
 interface ClientProviderProps {
     client: Client;
     children?: React.ReactNode;

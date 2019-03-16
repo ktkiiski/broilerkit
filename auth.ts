@@ -89,7 +89,7 @@ export class AuthClient {
      *
      * @param identityProvider Optional name of the provider to use when logging in
      */
-    public async authenticate(identityProvider?: AuthIdentityProvider): Promise<Auth> {
+    public async signIn(identityProvider?: AuthIdentityProvider): Promise<Auth> {
         const state = randomize(24);
         const signInUri = this.getSignInUri(state, identityProvider);
         const dialog = this.launchUri(signInUri);
@@ -142,7 +142,7 @@ export class AuthClient {
         if (auth) {
             return auth;
         }
-        return this.authenticate();
+        return this.signIn();
     }
 
     /**
@@ -159,7 +159,7 @@ export class AuthClient {
         if (token) {
             return token;
         }
-        const auth = await this.authenticate();
+        const auth = await this.signIn();
         return auth.accessToken;
     }
 
@@ -177,7 +177,7 @@ export class AuthClient {
         if (token) {
             return token;
         }
-        const auth = await this.authenticate();
+        const auth = await this.signIn();
         return auth.idToken;
     }
 

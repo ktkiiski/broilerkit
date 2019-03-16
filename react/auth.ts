@@ -1,41 +1,47 @@
-import { never } from 'rxjs';
 import { Auth, AuthClient } from '../auth';
-import { useClient, useWithClient } from './client';
+import { useClient } from './client';
 import { useObservable } from './rxjs';
 
-const nothing$ = never();
-
 export function useAuth(): Auth | null | undefined {
-    const client = useClient();
+    const {authClient} = useClient();
     return useObservable(
-        undefined, () => {
-            if (!client) {
-                // Client not yet available
-                return nothing$;
-            }
-            const {authClient} = client;
-            if (!authClient) {
-                throw new Error(`Authentication client not defined!`);
-            }
-            return authClient.auth$;
-        },
-        [client],
+        // TODO: Provide auth as initial value when the SSR is aware of the authentication!
+        // authClient && authClient.getAuthentication(),
+        undefined,
+        () => validateAuthClient(authClient).auth$,
+        [authClient],
     );
 }
 
 export function useUserId(): string | null | undefined {
-    const auth = useAuth();
-    return auth && auth.id;
+    const {authClient} = useClient();
+    // TODO: Provide auth as initial value when the SSR is aware of the authentication!
+    // const initAuth = authClient && authClient.getAuthentication();
+    return useObservable(
+        undefined,
+        () => validateAuthClient(authClient).userId$,
+        [authClient],
+    );
 }
 
-export function useAuthClient<R, P extends any[]>(
-    callback: (authClient: AuthClient, ...args: P) => R,
-): (...args: P) => R {
-    return useWithClient((client, ...args: P) => {
-        const authClient = client && client.authClient;
-        if (!authClient) {
-            throw new Error(`Authentication client not defined!`);
-        }
-        return callback(authClient, ...args);
-    });
+export function useRequireAuth(): () => Promise<Auth> {
+    const {authClient} = useClient();
+    return () => validateAuthClient(authClient).demandAuthentication();
+}
+
+export function useSignIn(): () => Promise<Auth> {
+    const {authClient} = useClient();
+    return () => validateAuthClient(authClient).signIn();
+}
+
+export function useSignOut(): () => Promise<null> {
+    const {authClient} = useClient();
+    return () => validateAuthClient(authClient).signOut();
+}
+
+function validateAuthClient(authClient?: AuthClient | null): AuthClient {
+    if (!authClient) {
+        throw new Error(`Authentication client not defined!`);
+    }
+    return authClient;
 }

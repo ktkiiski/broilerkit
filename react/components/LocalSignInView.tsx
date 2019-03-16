@@ -13,13 +13,14 @@ function LocalSignInView({location}: RouteComponentProps) {
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [hasAvatar, setHasAvatar] = useState(true);
-    const signUp = useOperation(api._createUser, async (op, event: React.FormEvent<HTMLFormElement>) => {
+    const createUserOperation = useOperation(api._createUser);
+    const signUp = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const avatarHash = randomize(32, '01234567890abcdef');
         const picture = hasAvatar ? `https://www.gravatar.com/avatar/${avatarHash}?d=wavatar` : null;
-        const user = await op.post({email, name, picture});
+        const user = await createUserOperation.post({email, name, picture});
         await signInAs(user);
-    });
+    };
     const users = useList(api._listUsers, {
         ordering: 'name',
         direction: 'asc',

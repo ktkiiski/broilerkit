@@ -1,14 +1,12 @@
 import { useState } from 'react';
-import { combineLatest, never, Observable, of } from 'rxjs';
+import { combineLatest, Observable, of } from 'rxjs';
 import { IntermediateCollection } from '../api';
-import { Auth } from '../auth';
 import { Bindable, Client } from '../client';
 import { ListOperation, Operation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
 import { Serializer } from '../serializers';
 import { Key } from '../utils/objects';
-import { useAuthClient } from './auth';
-import { useClient, useWithClient } from './client';
+import { useClient } from './client';
 import { useObservable } from './rxjs';
 
 export function useResource<S, U extends Key<S>>(
@@ -90,46 +88,26 @@ export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends 
     );
 }
 
-export function useOperation<T, P extends any[] = [], R = void>(op: Bindable<T>, exec: (model: T, ...args: P) => R): (...args: P) => R {
-    return useWithClient((client, ...args: P) => {
-        const model = op.bind(client);
-        return exec(model, ...args);
-    });
+export function useOperation<T>(op: Bindable<T>): T {
+    const client = useClient();
+    return op.bind(client);
 }
 
-export function useAuthOperation<T, P extends any[] = [], R = void>(op: Bindable<T>, exec: (model: T, auth: Auth, ...args: P) => Promise<R>): (...args: P) => Promise<R> {
-    const demandAuthentication = useAuthClient((authClient) => (
-        authClient.demandAuthentication()
-    ));
-    return useWithClient(async (client, ...args: P) => {
-        const model = op.bind(client);
-        const auth = await demandAuthentication();
-        return exec(model, auth, ...args);
-    });
-}
-
-const nothing$ = never();
 const null$ = of(null);
 
 function useBoundObservable<I, T, R>(
-    client: Client | null,
+    client: Client,
     op: Bindable<T>,
     input: I,
     observe: (input: I, model: T) => Observable<R>,
     initialValue: R,
     extraDeps: any[] = [],
 ): R {
+    const model = op.bind(client);
     const fingerprint = getFingerprint(input);
     return useObservable(
         initialValue,
-        () => {
-            // No client, no subscription
-            if (!client) {
-                return nothing$;
-            }
-            const model = op.bind(client);
-            return observe(input, model);
-        },
+        () => observe(input, model),
         [client, fingerprint, ...extraDeps],
     );
 }
