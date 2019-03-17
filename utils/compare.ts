@@ -9,13 +9,15 @@ const isArray = Array.isArray;
  * @param a First value to compare
  * @param b Second value to compare
  */
-export function isEqual<T, S>(a: T, b: S): boolean;
-export function isEqual(a: any, b: any): boolean {
-    return isDeepEqual(a, b);
+export function isEqual<T, S>(a: T, b: S, depth?: number): boolean;
+export function isEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY): boolean {
+    return isDeepEqual(a, b, depth);
 }
 
-export function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean {
-    if (a === b) {
+export function isDeepEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY, stack?: Array<[any, any]>): boolean {
+    if (depth <= 0) {
+        return a === b;
+    } else if (a === b) {
         return true;
     }
     if (a && b && typeof a === 'object' && typeof b === 'object') {
@@ -36,7 +38,7 @@ export function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean 
                 return false;
             }
             for (let i = length; i-- !== 0;) {
-                if (!isEqual(a[i], b[i])) {
+                if (!isDeepEqual(a[i], b[i], depth - 1, stack)) {
                     return false;
                 }
             }
@@ -78,7 +80,7 @@ export function isDeepEqual(a: any, b: any, stack?: Array<[any, any]>): boolean 
             const key = keyList[i];
             stack = stack || [];
             stack.push([a, b]);
-            if (!isDeepEqual(a[key], b[key], stack)) {
+            if (!isDeepEqual(a[key], b[key], depth - 1, stack)) {
                 return false;
             }
             stack.pop();
