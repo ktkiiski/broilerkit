@@ -21,7 +21,7 @@ function LocalSignInView({location}: RouteComponentProps) {
         const user = await createUserOperation.post({email, name, picture});
         await signInAs(user);
     };
-    const users = useList(api._listUsers, {
+    const [users] = useList(api._listUsers, {
         ordering: 'name',
         direction: 'asc',
     });

@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import 'mocha';
 import { list, number, string } from '../fields';
 import { FieldSerializer, nested } from '../serializers';
-import { isDeepEqual } from '../utils/compare';
+import { isEqual } from '../utils/compare';
 
 describe('serializer', () => {
     describe('gathers nested validation errors', () => {
@@ -46,19 +46,19 @@ describe('serializer', () => {
         it('from validate()', () => {
             assert.throws(
                 () => serializer.validate(input),
-                (error: any) => isDeepEqual(error.data, expectedErrorData),
+                (error: any) => isEqual(error.data, expectedErrorData),
             );
         });
         it('from serialize()', () => {
             assert.throws(
                 () => serializer.serialize(input),
-                (error: any) => isDeepEqual(error.data, expectedErrorData),
+                (error: any) => isEqual(error.data, expectedErrorData),
             );
         });
         it('from deserialize()', () => {
             assert.throws(
                 () => serializer.serialize(input),
-                (error: any) => isDeepEqual(error.data, expectedErrorData),
+                (error: any) => isEqual(error.data, expectedErrorData),
             );
         });
     });

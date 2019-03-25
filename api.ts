@@ -1,19 +1,13 @@
-// tslint:disable:max-classes-per-file
-// tslint:disable:no-shadowed-variable
-import { concat, defer, merge, Observable, of } from 'rxjs';
-import { combineLatest, concat as extend, distinctUntilChanged, filter, finalize, first, map, scan, shareReplay, startWith, switchMap, takeUntil } from 'rxjs/operators';
-import { filterAsync, toArray } from './async';
+import { first, map } from 'rxjs/operators';
 import { Client } from './client';
-import { applyCollectionChange, ResourceAddition, ResourceChange, ResourceRemoval, ResourceUpdate } from './collections';
+import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { HttpMethod, SuccesfulResponse, Unauthorized } from './http';
 import { shareIterator } from './iteration';
-import { observeIterable } from './observables';
 import { CreateOperation, DestroyOperation, ListOperation, Operation, RetrieveOperation, UpdateOperation } from './operations';
 import { Cursor, Page } from './pagination';
 import { OptionalInput, OptionalOutput } from './serializers';
 import { Url } from './url';
-import { hasProperties, isEqual } from './utils/compare';
-import { Key, pick, spread } from './utils/objects';
+import { Key, pick } from './utils/objects';
 
 export type Handler<I, O, D, R> = (input: I, db: D, request: R) => Promise<O>;
 export type ResponseHandler<I, O, D, R> = Handler<I, SuccesfulResponse<O>, D, R>;
@@ -80,55 +74,6 @@ extends BaseApi<RetrieveOperation<S, U, any, B>> {
     public validateGet(input: Pick<S, U>): Pick<S, U> {
         return this.operation.route.serializer.validate(input);
     }
-    public observe(input: Pick<S, U>): Observable<S> {
-        const resourceName = this.operation.endpoint.resource.name;
-        const url = this.operation.route.compile(input);
-        const cacheKey = url.toString();
-        return defer(() => {
-            // Use a cached observable, if available
-            const {resourceCache} = this.client;
-            let resource$: Observable<S> | undefined = resourceCache.get(cacheKey);
-            if (resource$) {
-                return resource$;
-            }
-            const update$ = this.client.resourceUpdate$.pipe(
-                filter((update) => update.resourceName === resourceName),
-                map((update) => update.resource as Partial<S>),
-            );
-            const removal$ = this.client.resourceRemoval$.pipe(
-                filter((removal) => removal.resourceUrl === url.path),
-            );
-            const optimisticUpdates$ = this.client.optimisticUpdates$.pipe(
-                map((updates) => updates.filter((update) => update.resourceName === resourceName)),
-                distinctUntilChanged(isEqual),
-            );
-            resource$ = concat(
-                // Start with the retrieved state of the resource
-                this.request('GET', url),
-                // Then emit all the updates to the resource
-                update$,
-            ).pipe(
-                // Combine all the changes with the latest state to the resource.
-                scan<Partial<S>, S>((res, update) => spread(res, update), {} as S),
-                // Apply any optimistic updates
-                combineLatest(optimisticUpdates$, (res, updates) => (
-                    updates.reduce((res, update) => spread(res, update.resource), res)
-                )),
-                // Complete when the resource is removed
-                takeUntil(removal$),
-                // When this Observable is unsubscribed, then remove from the cache.
-                finalize(() => {
-                    if (resourceCache.get(cacheKey) === resource$) {
-                        resourceCache.delete(cacheKey);
-                    }
-                }),
-                // Emit the latest state for all the new subscribers.
-                shareReplay(1),
-            );
-            resourceCache.set(cacheKey, resource$);
-            return resource$;
-        });
-    }
 }
 
 export class ListApi<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B extends U | undefined>
@@ -166,98 +111,6 @@ extends BaseApi<ListOperation<S, U, O, F, any, B>> {
     public validateGet(input: Cursor<S, U, O, F>): Cursor<S, U, O, F> {
         return this.operation.route.serializer.validate(input);
     }
-    public observe(input: Cursor<S, U, O, F>): Observable<IntermediateCollection<S>> {
-        return this.observeObservable(input).pipe(
-            switchMap((item$) => (
-                item$.pipe(
-                    scan((items: S[], item: S) => [...items, item], []),
-                    startWith([] as S[]),
-                    map((items) => ({items})),
-                    extend(of({isComplete: true})),
-                    scan<Partial<IntermediateCollection<S>>, IntermediateCollection<S>>((collection, change) => (
-                        {...collection, ...change}), {isComplete: false, items: []},
-                    ),
-                )
-            )),
-        );
-    }
-    public observeObservable(input: Cursor<S, U, O, F>): Observable<Observable<S>> {
-        return this.observeIterable(input).pipe(map(observeIterable));
-    }
-    public observeIterable(input: Cursor<S, U, O, F>): Observable<AsyncIterable<S>> {
-        const {client} = this;
-        const {operation} = this;
-        const {direction, ordering} = input;
-        const resourceName = operation.endpoint.resource.name;
-
-        return defer(() => {
-            const url = operation.route.compile(input);
-            const cacheKey = url.toString();
-
-            function isCollectionChange(change: ResourceChange<any, any>): boolean {
-                if (change.type === 'addition') {
-                    return change.collectionUrl === url.path;
-                }
-                return change.resourceName === resourceName;
-            }
-            // Use a cached observable, if available
-            const {collectionCache} = client;
-            let collection$: Observable<AsyncIterable<S>> | undefined = collectionCache.get(cacheKey);
-            if (collection$) {
-                return collection$;
-            }
-            const iterable = this.getIterable(input);
-            const addition$ = client.resourceAddition$;
-            const update$ = client.resourceUpdate$;
-            const removal$ = client.resourceRemoval$;
-            const change$ = merge(addition$, update$, removal$).pipe(
-                filter(isCollectionChange),
-            );
-            const filterOptimisticChanges = map((changes: Array<ResourceChange<any, any>>) => changes.filter(isCollectionChange));
-            const optimisticAdditions$ = client.optimisticAdditions$.pipe(filterOptimisticChanges);
-            const optimisticRemovals$ = client.optimisticRemovals$.pipe(filterOptimisticChanges);
-            const optimisticUpdates$ = client.optimisticUpdates$.pipe(filterOptimisticChanges);
-            const optimisticChanges$ = optimisticAdditions$.pipe(
-                combineLatest(
-                    optimisticRemovals$, optimisticUpdates$,
-                    (additions, removals, updates) => [...additions, ...removals, ...updates],
-                ),
-                distinctUntilChanged(isEqual),
-            );
-            collection$ = change$.pipe(
-                // Combine all the changes with the latest state to the resource.
-                scan<ResourceChange<S, keyof S>, AsyncIterable<S>>(
-                    (collection, change) => applyCollectionChange(collection, change, ordering, direction),
-                    iterable,
-                ),
-                // Always start with the initial state
-                startWith(iterable),
-                // Apply optimistic changes
-                combineLatest(optimisticChanges$, (collection, changes) => (
-                    changes.reduce((result, change) => (
-                        applyCollectionChange(result, change, ordering, direction)
-                    ), collection)
-                )),
-                // When this Observable is unsubscribed, then remove from the cache.
-                finalize(() => {
-                    if (collectionCache.get(cacheKey) === collection$) {
-                        collectionCache.delete(cacheKey);
-                    }
-                }),
-                // Emit the latest state for all the new subscribers.
-                shareReplay(1),
-            );
-            collectionCache.set(cacheKey, collection$);
-            return collection$;
-        });
-    }
-    public observeAll(input: Cursor<S, U, O, F>, filters?: Partial<S>): Observable<S[]> {
-        return this.observeIterable(input).pipe(
-            switchMap((iterable) => toArray(
-                !filters ? iterable : filterAsync(iterable, (item) => hasProperties(item, filters)),
-            )),
-        );
-    }
 }
 
 export class CreateApi<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B extends U | undefined>
@@ -271,7 +124,7 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         const item = await this.request(method, url, payload);
         const resourceIdentity = pick(item, resource.identifyBy);
         const resourceName = resource.name;
-        this.client.resourceAddition$.next({
+        this.client.commitChange({
             type: 'addition',
             collectionUrl: url.path,
             resourceName,
@@ -290,33 +143,26 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         const resource$ = this.request(method, url, payload);
         const resourceIdentity = pick(input as any, resource.identifyBy);
         const resourceName = resource.name;
-        const addition: ResourceAddition<any, any> = {
+        const addition: ResourceAddition<S, any> = {
             type: 'addition',
             collectionUrl: url.path,
             resource: input,
             resourceName,
             resourceIdentity,
         };
+        const unregisterOptimisticAddition = client.registerOptimisticChange(addition);
         try {
-            client.optimisticAdditions$.next([
-                ...client.optimisticAdditions$.getValue(),
-                addition,
-            ]);
-            const resource = await resource$;
-            client.resourceAddition$.next({
+            const responseResource = await resource$;
+            client.commitChange({
                 type: 'addition',
                 collectionUrl: url.path,
-                resource,
+                resource: responseResource,
                 resourceName,
                 resourceIdentity,
             });
-            return resource;
+            return responseResource;
         } finally {
-            client.optimisticAdditions$.next(
-                client.optimisticAdditions$.getValue().filter(
-                    (x) => x !== addition,
-                ),
-            );
+            unregisterOptimisticAddition();
         }
     }
     public validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
@@ -364,32 +210,25 @@ extends BaseApi<UpdateOperation<S, U, R, O, D, any, B>> {
         const idAttributes = resource.identifyBy as Array<keyof any>;
         const resourceIdentity = pick(input, idAttributes);
         const resourceName = resource.name;
-        const update: ResourceUpdate<any, any> = {
+        const update: ResourceUpdate<S, U> = {
             type: 'update',
             resourceName,
             resource: input,
             resourceIdentity,
         };
         const request = this.request(method, url, payload);
+        const unregisterOptimisticUpdate = client.registerOptimisticChange(update);
         try {
-            client.optimisticUpdates$.next([
-                ...client.optimisticUpdates$.getValue(),
-                update,
-            ]);
-            const resource = await request;
-            client.resourceUpdate$.next({
+            const responseResource = await request;
+            client.commitChange({
                 type: 'update',
                 resourceName,
-                resource,
+                resource: responseResource,
                 resourceIdentity,
             });
-            return resource;
+            return responseResource;
         } finally {
-            client.optimisticUpdates$.next(
-                client.optimisticUpdates$.getValue().filter(
-                    (x) => x !== update,
-                ),
-            );
+            unregisterOptimisticUpdate();
         }
     }
 }
@@ -402,28 +241,22 @@ extends BaseApi<DestroyOperation<S, U, any, B>> {
         const method = 'DELETE';
         const url = operation.route.compile(query);
         const idAttributes = resource.identifyBy as U[];
-        const resourceIdentity = pick(query, idAttributes);
+        // TODO: Is this necessary? Use `query` instead?
+        const resourceIdentity = pick(query, idAttributes) as Pick<S, U>;
         const resourceName = resource.name;
-        const removal: ResourceRemoval<any, any> = {
+        const removal: ResourceRemoval<S, U> = {
             type: 'removal',
             resourceUrl: url.path,
             resourceName,
             resourceIdentity,
         };
         const request = this.request(method, url);
+        const unregisterOptimisticRemoval = client.registerOptimisticChange(removal);
         try {
-            client.optimisticRemovals$.next([
-                ...client.optimisticRemovals$.getValue(),
-                removal,
-            ]);
             await request;
-            client.resourceRemoval$.next(removal);
+            client.commitChange(removal);
         } finally {
-            client.optimisticRemovals$.next(
-                client.optimisticRemovals$.getValue().filter(
-                    (x) => x !== removal,
-                ),
-            );
+            unregisterOptimisticRemoval();
         }
     }
 }

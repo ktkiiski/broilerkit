@@ -14,14 +14,34 @@ export function isEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY): boole
     return isDeepEqual(a, b, depth);
 }
 
-export function isDeepEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY, stack?: Array<[any, any]>): boolean {
-    if (depth <= 0) {
-        return a === b;
-    } else if (a === b) {
+function isDeepEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY, stack?: Array<[any, any]>): boolean {
+    if (a === b) {
         return true;
     }
     if (a && b && typeof a === 'object' && typeof b === 'object') {
-        // First check if we are already comparing these objects in the stack
+        // Compare dates
+        const dateA = a instanceof Date;
+        const dateB = b instanceof Date;
+        if (dateA !== dateB) {
+            return false;
+        }
+        if (dateA && dateB) {
+            return a.getTime() === b.getTime();
+        }
+        // Compare RegExps
+        const regexpA = a instanceof RegExp;
+        const regexpB = b instanceof RegExp;
+        if (regexpA !== regexpB) {
+            return false;
+        }
+        if (regexpA && regexpB) {
+            return a.toString() === b.toString();
+        }
+        // Check recursively if depth > 0
+        if (depth <= 0) {
+            return false;
+        }
+        // Check if we are already comparing these objects in the stack
         if (stack) {
             for (const [x, y] of stack) {
                 if (x === a && y === b) {
@@ -29,9 +49,9 @@ export function isDeepEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY, st
                 }
             }
         }
+        // Compare arrays
         const arrA = isArray(a);
         const arrB = isArray(b);
-
         if (arrA && arrB) {
             const length = a.length;
             if (length !== b.length) {
@@ -44,27 +64,10 @@ export function isDeepEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY, st
             }
             return true;
         }
-
         if (arrA !== arrB) {
             return false;
         }
-        const dateA = a instanceof Date;
-        const dateB = b instanceof Date;
-        if (dateA !== dateB) {
-            return false;
-        }
-        if (dateA && dateB) {
-            return a.getTime() === b.getTime();
-        }
-
-        const regexpA = a instanceof RegExp;
-        const regexpB = b instanceof RegExp;
-        if (regexpA !== regexpB) {
-            return false;
-        }
-        if (regexpA && regexpB) {
-            return a.toString() === b.toString();
-        }
+        // Compare objects
         const keyList = keys(a);
         const keyCount = keyList.length;
 
@@ -87,6 +90,7 @@ export function isDeepEqual(a: any, b: any, depth = Number.POSITIVE_INFINITY, st
         }
         return true;
     }
+    // If both NaN, then return true, otherwise not equal
     return a !== a && b !== b;
 }
 
@@ -116,10 +120,10 @@ export function compare<T>(a: T, b: T, direction: 'asc' | 'desc' = 'asc') {
  * @param obj Object whose properties are checked
  * @param values The required values
  */
-export function hasProperties(obj: {[key: string]: any}, values: {[key: string]: any}): boolean {
+export function hasProperties(obj: {[key: string]: any}, values: {[key: string]: any}, depth = Number.POSITIVE_INFINITY): boolean {
     return keys(values).every((key) => {
         const value = values[key];
-        return typeof value === 'undefined' || isEqual(values[key], obj[key]);
+        return typeof value === 'undefined' || isEqual(values[key], obj[key], depth);
     });
 }
 

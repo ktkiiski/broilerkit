@@ -1,6 +1,8 @@
 import * as React from 'react';
+import authLocalServer from '../auth-local-server';
 import { HttpRequest } from '../http';
 import LocalAuthRouter from '../react/components/LocalAuthRouter';
+import { ApiService } from '../server';
 import { renderView } from '../ssr';
 
 export default async (req: HttpRequest, pageHtml: string) => {
@@ -10,6 +12,9 @@ export default async (req: HttpRequest, pageHtml: string) => {
     return await renderView(
         req, pageHtml,
         () => (<LocalAuthRouter component={view} />),
-        () => require('_service').default,
+        () => {
+            const apiService: ApiService = require('_service').default;
+            return apiService.extend(authLocalServer);
+        },
     );
 };

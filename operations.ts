@@ -3,7 +3,7 @@ import { Bindable, Client } from './client';
 import { Endpoint } from './endpoints';
 import { nullable } from './fields';
 import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, SuccesfulResponse } from './http';
-import { Cursor, CursorSerializer, PageResponse } from './pagination';
+import { Cursor, CursorSerializer, Page, PageResponse } from './pagination';
 import { Route, route } from './routes';
 import { FieldSerializer, nested, nestedList, OptionalOptions, OptionalOutput, Serializer } from './serializers';
 import { Key, keys } from './utils/objects';
@@ -60,7 +60,7 @@ implements Bindable<ListApi<S, U, O, F, B>>, Operation<Cursor<S, U, O, F>, PageR
         this.filteringKeys,
     );
     public readonly route = route(this.endpoint.pattern, this.urlSerializer);
-    public readonly responseSerializer = new FieldSerializer({
+    public readonly responseSerializer: Serializer<Page<S, Cursor<S, U, O, F>>> = new FieldSerializer({
         next: nullable(nested(this.urlSerializer)),
         results: nestedList(this.endpoint.resource),
     });

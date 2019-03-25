@@ -1,141 +1,158 @@
-import { combineLatest, Observable, of } from 'rxjs';
-import { distinctUntilChanged, filter, map } from 'rxjs/operators';
-import { IntermediateCollection } from '../api';
+import { useEffect, useState } from 'react';
 import { Bindable, Client } from '../client';
-import { ListOperation, Operation, RetrieveOperation } from '../operations';
+import { HttpStatus, isErrorResponse } from '../http';
+import { ListOperation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
-import { Serializer } from '../serializers';
-import { hasProperties, isEqual } from '../utils/compare';
+import { hasProperties, isEqual, isNotNully } from '../utils/compare';
 import { Key } from '../utils/objects';
 import { useClient } from './client';
-import { useObservable } from './rxjs';
+
+// TODO: Excplicit error type!
+type Resource<T> = [T | null, any, boolean];
+
+// TODO: More explicit typing for the error
+type List<S> = [S[] | null, any | null, boolean];
+
+interface Collection<T> {
+    resources: T[];
+    count: number;
+    isLoading: boolean;
+    isComplete: boolean;
+    // TODO: Excplicit error type!
+    error: any | null;
+}
 
 export function useResource<S, U extends Key<S>>(
     op: RetrieveOperation<S, U, any, any>,
     input: Pick<S, U>,
-): S | null {
-    return useResourceIf(op, input);
-}
-
-export function useResourceIf<S, U extends Key<S>>(
-    op: RetrieveOperation<S, U, any, any>,
-    input: Pick<S, U> | undefined | null,
-): S | null {
+): Resource<S> {
     const client = useClient();
-    return useBoundObservable(
-        client, op, input,
-        (i, model) => i ? model.observe(i) : null$,
-        initializeValue(client, op, input) || null,
+    const [state, setState] = useState(
+        client.inquiryResource(op, input),
     );
+    const {error} = state;
+    const isValid = !isValidationError(error);
+    useEffect(() => {
+        if (input && isValid) {
+            return client.subscribeResourceChanges(op, input, (newState) => {
+                if (!isEqual(state, newState, 2)) {
+                    setState(newState);
+                }
+            });
+        }
+    }, [client, op, getFingerprint(input), isValid]);
+    return [state.resource, state.error, state.isLoading];
 }
 
 export function useCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
+    minCount: number,
     input: Cursor<S, U, O, F>,
-): IntermediateCollection<S> {
-    return useCollectionIf(op, input) as IntermediateCollection<S>;
+    filters?: Partial<S> | null,
+): Collection<S> {
+    return useCollectionIf(op, minCount, input, filters);
 }
 
-export function useCollectionIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+// TODO: Unnecessary? Just offet useCollection and simplify implementation!
+function useCollectionIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
+    minCount: number,
     input: Cursor<S, U, O, F> | null | undefined,
-): IntermediateCollection<S> | null {
+    filters?: Partial<S> | null,
+): Collection<S> {
     const client = useClient();
-    const initialValue = client
-        && initializeValue(client, op, input) as IntermediateCollection<S>
-        || {items: [], isComplete: false}
-    ;
-    return useBoundObservable(
-        client, op, input,
-        (i, model) => i ? model.observe(i) : null$,
-        initialValue,
+    const [state, setState] = useState(
+        inquiryCollection(client, op, input, filters),
     );
+    useEffect(() => {
+        if (input) {
+            return client.subscribeCollectionChanges(
+                op, input, minCount,
+                (newState) => {
+                    const filteredState = applyCollectionFilters(newState, filters);
+                    if (!isEqual(state, filteredState, 2)) {
+                        setState(filteredState);
+                    }
+                },
+            );
+        }
+    }, [client, op, getFingerprint(input), getFingerprint(filters), minCount]);
+    return state;
 }
 
 export function useList<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
     input: Cursor<S, U, O, F>,
     filters?: Partial<S> | null,
-): S[] | null {
+): List<S> {
     return useListIf(op, input, filters);
 }
 
-export function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+// TODO: Unnecessary? Just offet useList and simplify implementation!
+function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     op: ListOperation<S, U, O, F, any, any>,
     input: Cursor<S, U, O, F> | null | undefined,
     filters?: Partial<S> | null,
-): S[] | null {
+): List<S> {
     const client = useClient();
-    const initialValue = initializeValue(client, op, input, filters) as IntermediateCollection<S>;
-    return useBoundObservable(
-        client, op, input,
-        (i, model) => !i ? null$ : model.observe(i).pipe(
-            filter((collection) => collection.isComplete),
-            filters
-                ? map((collection) => collection.items.filter(
-                    (item) => hasProperties(item, filters),
-                ))
-                : map((collection) => collection.items)
-            ,
-            distinctUntilChanged((a, b) => isEqual(a, b, 1)),
-        ),
-        initialValue && initialValue.items,
-        [getFingerprint(filters)],
+    const [state, setState] = useState(
+        listifyCollection(inquiryCollection(client, op, input, filters)),
     );
+    useEffect(() => {
+        if (input) {
+            return client.subscribeCollectionChanges(
+                op, input, Number.POSITIVE_INFINITY,
+                (newState) => {
+                    const newListState = listifyCollection(
+                        newState.isComplete ? applyCollectionFilters(newState, filters) : newState,
+                    );
+                    if (!isEqual(state, newListState, 2)) {
+                        setState(newListState);
+                    }
+                },
+            );
+        }
+    }, [client, op, getFingerprint(input), getFingerprint(filters)]);
+    return state;
 }
 
-export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, I extends Array<Cursor<S, U, O, F>> = Array<Cursor<S, U, O, F>>>(
     op: ListOperation<S, U, O, F, any, any>,
-    inputs: Array<Cursor<S, U, O, F>>,
+    inputs: I,
     filters?: Partial<S> | null,
-): Array<IntermediateCollection<S>> {
+): {[P in keyof I]: Collection<S>} {
     const client = useClient();
-    // Try to read the very immediate value from the cache
-    const initialValue = inputs.map((input) => (
-        initializeValue(client, op, input, filters) as IntermediateCollection<S> || {
-            items: [],
-            isComplete: false,
-        }
-    ));
-    return useBoundObservable(
-        client, op, inputs,
-        (i, model) => !i.length ? of([]) : combineLatest(
-            i.map((input) => model.observe(input).pipe(
-                map((collection) => !filters ? collection : {
-                    ...collection,
-                    items: collection.items.filter(
-                        (item) => hasProperties(item, filters),
-                    ),
-                }),
-                distinctUntilChanged((a, b) => isEqual(a, b, 1)),
-            )),
-        ),
-        initialValue,
+    const [states, setState] = useState(
+        inputs.map((input) => inquiryCollection(client, op, input, filters)),
     );
+    useEffect(() => {
+        const resultStates: Array<Collection<S> | null> = inputs.map(() => null);
+        if (!inputs.length) {
+            setState([]);
+        }
+        const subscriptions = inputs.map((input, i) => client.subscribeCollectionChanges(
+            op, input, Number.POSITIVE_INFINITY, (newCollection) => {
+                const filteredCollection = applyCollectionFilters(newCollection, filters);
+                if (!isEqual(resultStates[i], filteredCollection, 2)) {
+                    resultStates[i] = filteredCollection;
+                    if (resultStates.every(isNotNully)) {
+                        setState((resultStates as Array<Collection<S>>).slice());
+                    }
+                }
+            },
+        ));
+        return () => {
+            subscriptions.forEach((unsubscribe) => unsubscribe());
+        };
+    }, [
+        client, op, getFingerprint(inputs), getFingerprint(filters),
+    ]);
+    return states as {[P in keyof I]: Collection<S>};
 }
 
 export function useOperation<T>(op: Bindable<T>): T {
     const client = useClient();
     return op.bind(client);
-}
-
-const null$ = of(null);
-
-function useBoundObservable<I, T, R>(
-    client: Client,
-    op: Bindable<T>,
-    input: I,
-    observe: (input: I, model: T) => Observable<R>,
-    initialValue: R,
-    extraDeps: any[] = [],
-): R {
-    const model = op.bind(client);
-    const fingerprint = getFingerprint(input);
-    return useObservable(
-        initialValue,
-        () => observe(input, model),
-        [client, fingerprint, ...extraDeps],
-    );
 }
 
 function getFingerprint(obj: unknown) {
@@ -145,31 +162,43 @@ function getFingerprint(obj: unknown) {
     return obj;
 }
 
-function initializeValue(client: Client, op: Operation<any, any, any>, input: any, filters?: any) {
+function inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+    client: Client,
+    op: ListOperation<S, U, O, F, any, any>,
+    input: Cursor<S, U, O, F> | null | undefined,
+    filters: Partial<S> | null | undefined,
+): Collection<S> {
     if (!input) {
-        return null;
-    }
-    const serializer = op.responseSerializer as Serializer;
-    // Register to the client for server-side rendering
-    client.registerRender(op, input);
-    try {
-        // Read from cache
-        const url = op.route.compile(input).toString();
-        const stateCache = client.stateCache$.getValue();
-        const serializedValue = stateCache[url];
-        const deserializedValue = serializer.deserialize(serializedValue);
-        if (op.type !== 'list') {
-            return deserializedValue;
-        }
-        // For lists the result is a page. Convert to an intermediate collection
-        const items = deserializedValue.results as any[];
         return {
-            // Apply the client-side filters
-            items: filters ? items.filter((item) => hasProperties(item, filters)) : items,
-            isComplete: !deserializedValue.next,
+            resources: [],
+            isLoading: true,
+            isComplete: false,
+            error: null,
+            count: 0,
         };
-    } catch {
-        // TODO: Expose errors to the hook users!
-        return null;
     }
+    return applyCollectionFilters(
+        client.inquiryCollection(op, input), filters,
+    );
+}
+
+function applyCollectionFilters<S, C extends Collection<S>>(collection: C, filters: Partial<S> | null | undefined): C {
+    return !filters ? collection : {
+        ...collection,
+        resources: collection.resources.filter(
+            (resource) => hasProperties(resource, filters),
+        ),
+    };
+}
+
+function listifyCollection<S>(collection: Collection<S>): List<S> {
+    return [
+        collection.isComplete ? collection.resources : null,
+        collection.error,
+        collection.isLoading,
+    ];
+}
+
+function isValidationError(error: unknown) {
+    return !!error && isErrorResponse(error) && error.statusCode === HttpStatus.BadRequest;
 }
