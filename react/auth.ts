@@ -1,27 +1,35 @@
+import { useEffect, useState } from 'react';
 import { Auth, AuthClient } from '../auth';
+import { isEqual } from '../utils/compare';
 import { useClient } from './client';
-import { useObservable } from './rxjs';
 
 export function useAuth(): Auth | null | undefined {
     const {authClient} = useClient();
-    return useObservable(
-        // TODO: Provide auth as initial value when the SSR is aware of the authentication!
-        // authClient && authClient.getAuthentication(),
-        undefined,
-        () => validateAuthClient(authClient).auth$,
-        [authClient],
-    );
+    // TODO: Provide auth as initial value when the SSR is aware of the authentication!
+    const [auth, setAuth] = useState(undefined as Auth | null | undefined);
+    useEffect(() => {
+        return validateAuthClient(authClient).subscribeAuthentication((newAuth) => {
+            if (!isEqual(newAuth, auth, 1)) {
+                setAuth(newAuth);
+            }
+        });
+    }, [authClient]);
+    return auth;
 }
 
 export function useUserId(): string | null | undefined {
     const {authClient} = useClient();
     // TODO: Provide auth as initial value when the SSR is aware of the authentication!
-    // const initAuth = authClient && authClient.getAuthentication();
-    return useObservable(
-        undefined,
-        () => validateAuthClient(authClient).userId$,
-        [authClient],
-    );
+    const [userId, setUserId] = useState(undefined as string | null | undefined);
+    useEffect(() => {
+        return validateAuthClient(authClient).subscribeAuthentication((auth) => {
+            const newUserId = auth && auth.id;
+            if (!isEqual(newUserId, userId, 1)) {
+                setUserId(newUserId);
+            }
+        });
+    }, [authClient]);
+    return userId;
 }
 
 export function useRequireAuth(): () => Promise<Auth> {

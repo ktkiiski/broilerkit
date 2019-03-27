@@ -1,10 +1,6 @@
-// tslint:disable:no-shadowed-variable
-import { BehaviorSubject, Observable } from 'rxjs';
-import { distinctUntilChanged, map } from 'rxjs/operators';
 import { parseJwt } from './jwt';
 import { sessionStorage } from './storage';
 import { parseQuery } from './url';
-import { isEqual } from './utils/compare';
 import { pick } from './utils/objects';
 import { randomize, stripPrefix } from './utils/strings';
 import { waitForClose } from './window';
@@ -42,20 +38,9 @@ export class AuthClient {
     private readonly signOutUri: string;
     private readonly signInRedirectUri: string;
     private readonly signOutRedirectUri: string;
-    private readonly subject = new BehaviorSubject<Auth | null>(null);
+    private auth?: Auth | null;
 
-    // tslint:disable-next-line:member-ordering
-    public auth$: Observable<Auth | null> = this.subject.asObservable();
-    // tslint:disable-next-line:member-ordering
-    public user$: Observable<AuthUser | null> = this.subject.pipe(
-        map((user) => user && pick(user, ['id', 'name', 'email', 'picture'])),
-        distinctUntilChanged<AuthUser | null>(isEqual),
-    );
-    // tslint:disable-next-line:member-ordering
-    public userId$: Observable<string | null> = this.subject.pipe(
-        map((auth) => auth && auth.id),
-        distinctUntilChanged(),
-    );
+    private authListeners: Array<(auth: Auth | null) => void> = [];
 
     constructor(options: AuthOptions) {
         const {clientId, signInUri, signOutUri, signInRedirectUri, signOutRedirectUri} = options;
@@ -186,7 +171,7 @@ export class AuthClient {
      * has not expired yet. Otherwise returns null.
      */
     public getAccessToken(now = new Date()): string | null {
-        const auth = this.subject.getValue();
+        const {auth} = this;
         return auth && now < auth.expiresAt && auth.accessToken || null;
     }
 
@@ -195,43 +180,74 @@ export class AuthClient {
      * has not expired yet. Otherwise returns null.
      */
     public getIdToken(now = new Date()): string | null {
-        const auth = this.subject.getValue();
+        const {auth} = this;
         return auth && now < auth.expiresAt && auth.idToken || null;
+    }
+
+    /**
+     * Returns the currently authenticated user, null if not logged in,
+     * or undefined if unknown.
+     *
+     * The returned value can be:
+     * - `null` if the user is not signed in
+     * - `undefined` if the authentication status is not yet known
+     * - an object if the user is signed in, with the following attributes:
+     *      - `id`: an unique ID of the user
+     *      - `name`: the name of the user
+     *      - `email`: email of the user
+     *      - `picture`: URL of the profile picture of the user
+     */
+    public getUser() {
+        const {auth} = this;
+        // TODO: Create the user object when setting the auth for immutability
+        return auth && pick(auth, ['id', 'name', 'email', 'picture']);
     }
 
     /**
      * Returns the current authentication state if the user is authenticated.
      * The access token may or may not be expired. If not signed in, returns null.
-     */
-    public getAuthentication(): Auth | null {
-        return this.subject.getValue();
-    }
-
-    /**
-     * Returns an Observable for the currently authenticated user.
-     * The given callback (or subscriber) will be called with the current authentication
-     * state immediately, and then whenever the state changes.
      *
-     * The state can be:
+     * The returned value can be:
      * - `null` if the user is not signed in
+     * - `undefined` if the authentication status is not yet known
      * - an object if the user is signed in, with the following attributes:
      *      - `id`: an unique ID of the user
      *      - `name`: the name of the user
      *      - `email`: email of the user
+     *      - `picture`: URL of the profile picture of the user
      *      - `accessToken`: the latest access token (which may or may not be expired)
-     *
-     * This returns a subscription for cancelling.
-     *
-     * Use this to:
-     * - Render and switch between "Sign in" and "Sign out" button in the UI
-     * - Render the user's name or email in the UI
      */
-    public observe(): Observable<Auth | null> {
-        return this.auth$;
+    public getAuthentication(): Auth | null | undefined {
+        return this.auth;
     }
 
-    public observeUserId(): Observable<string | null> {
-        return this.userId$;
+    /**
+     * Subscribes to the authentication, calling the callback whenever
+     * the authentication changes.
+     */
+    public subscribeAuthentication(fn: (auth: Auth | null | undefined) => void): () => void {
+        const {authListeners} = this;
+        // Wrap as a async function to avoid rising errors through
+        async function listener(auth: Auth | null | undefined) {
+            await (fn(auth) as any);
+        }
+        listener(this.getAuthentication());
+        authListeners.push(listener);
+        return () => {
+            const listeners = authListeners.slice();
+            const index = listeners.indexOf(listener);
+            if (index >= 0) {
+                listeners.splice(index, 1);
+            }
+            this.authListeners = listeners;
+        };
+    }
+
+    private setAuthentication(auth: Auth | null) {
+        this.auth = auth;
+        for (const listener of this.authListeners) {
+            listener(this.auth);
+        }
     }
 
     private launchUri(uri: string): Window {
@@ -330,7 +346,7 @@ export class AuthClient {
     private setTokens(tokens: AuthTokens | null): Auth | null {
         const auth = tokens && parseAuth(tokens);
         sessionStorage.setItem(this.storageKey, tokens);
-        this.subject.next(auth);
+        this.setAuthentication(auth);
         return auth;
     }
 }

@@ -1,7 +1,6 @@
-import { first, map } from 'rxjs/operators';
 import { Client } from './client';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
-import { HttpMethod, SuccesfulResponse, Unauthorized } from './http';
+import { HttpMethod, SuccesfulResponse } from './http';
 import { shareIterator } from './iteration';
 import { CreateOperation, DestroyOperation, ListOperation, Operation, RetrieveOperation, UpdateOperation } from './operations';
 import { Cursor, Page } from './pagination';
@@ -28,26 +27,6 @@ abstract class BaseApi<T extends Operation<any, any, any>> {
         const response = await this.client.request(url, method, payload, token);
         const {responseSerializer} = this.operation;
         return responseSerializer ? responseSerializer.deserialize(response.data) : undefined;
-    }
-
-    protected extendUserId<I>(input: any): Promise<I> {
-        const {userIdAttribute} = this.operation;
-        const {authClient} = this.client;
-        if (!authClient) {
-            throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
-        }
-        if (!userIdAttribute) {
-            throw new Error(`User ID attribute is undefined.`);
-        }
-        return authClient.userId$.pipe(
-            first(),
-            map((value) => {
-                if (!value) {
-                    throw new Unauthorized(`Not authenticated`);
-                }
-                return {...input, [userIdAttribute]: value} as I;
-            }),
-        ).toPromise();
     }
 
     private async getToken(): Promise<string | null> {
