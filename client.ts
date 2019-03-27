@@ -88,12 +88,13 @@ abstract class BaseClient implements Client {
         if (!url) {
             return doNothing;
         }
-        // Ensure that the resource is being loaded
-        this.loadResource(url, op);
-        return addToMapping(this.resourceListeners, url.toString(), {
+        const unsubscribe = addToMapping(this.resourceListeners, url.toString(), {
             callback,
             resourceName: op.endpoint.resource.name,
         });
+        // Ensure that the resource is being loaded
+        this.loadResource(url, op);
+        return unsubscribe;
     }
 
     public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState {
@@ -108,13 +109,15 @@ abstract class BaseClient implements Client {
         if (!url) {
             return doNothing;
         }
-        // Ensure that the collection is being loaded
-        this.loadCollection(url, op, input);
-        return addToMapping(this.collectionListeners, url.toString(), {
+        const unsubscribe = addToMapping(this.collectionListeners, url.toString(), {
             callback,
             minCount,
             resourceName: op.endpoint.resource.name,
         });
+        // Ensure that the collection is being loaded.
+        // This needs to be after registering the listener.
+        this.loadCollection(url, op, input);
+        return unsubscribe;
     }
 
     public registerOptimisticChange(change: ResourceChange<any, any>): () => void {
