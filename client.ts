@@ -39,6 +39,7 @@ export interface ResourceState<T = any> {
     resource: T | null;
     error: any | null; // TODO: More specific error type!
     isLoading: boolean;
+    isLoaded: boolean;
 }
 
 export interface CollectionState<S = any> {
@@ -46,6 +47,7 @@ export interface CollectionState<S = any> {
     error: any | null; // TODO: More specific error type!
     isLoading: boolean;
     isComplete: boolean;
+    isLoaded: boolean;
     count: number;
     ordering: keyof S;
     direction: 'asc' | 'desc';
@@ -267,6 +269,7 @@ abstract class BaseClient implements Client {
             return [url, state || {
                 resource: null,
                 isLoading: false,
+                isLoaded: false,
                 error: null,
             }];
         } catch (error) {
@@ -276,6 +279,7 @@ abstract class BaseClient implements Client {
             return [null, {
                 resource: null,
                 isLoading: false,
+                isLoaded: false,
                 error,
             }];
         }
@@ -289,6 +293,7 @@ abstract class BaseClient implements Client {
                 resources: [],
                 isLoading: false,
                 isComplete: false,
+                isLoaded: false,
                 error: null,
                 count: 0,
                 ordering: input.ordering,
@@ -302,6 +307,7 @@ abstract class BaseClient implements Client {
                 resources: [],
                 isLoading: false,
                 isComplete: false,
+                isLoaded: false,
                 error,
                 count: 0,
                 ordering: input.ordering,
@@ -344,7 +350,7 @@ abstract class BaseClient implements Client {
         const resourcesByUrl = this.resourceCache[resourceName];
         const resourceUrl = url.toString();
         const currentState = resourcesByUrl && resourcesByUrl[resourceUrl] as ResourceState<S> | undefined;
-        if (currentState && (currentState.isLoading || currentState.resource)) {
+        if (currentState && (currentState.isLoading || currentState.isLoaded)) {
             // Already loading or loaded
             return;
         }
@@ -352,6 +358,7 @@ abstract class BaseClient implements Client {
         let state: ResourceState<S> = {
             error: null,
             resource: null, // Don't reset previous properties
+            isLoaded: false,
             ...currentState,
             isLoading: true,
         };
@@ -360,7 +367,7 @@ abstract class BaseClient implements Client {
             const token = await this.getToken(op);
             const response = await this.request(url, 'GET', null, token);
             const resource = op.responseSerializer.deserialize(response.data);
-            state = { ...state, error: null, resource };
+            state = { ...state, error: null, isLoaded: true, resource };
             this.setResourceState(resourceName, resourceUrl, state);
         } catch (error) {
             // Set the error to the state
@@ -378,7 +385,7 @@ abstract class BaseClient implements Client {
         const collectionsByUrl = this.collectionCache[resourceName] || {};
         const collectionUrl = url.toString();
         const currentState = collectionsByUrl[collectionUrl] as CollectionState<S> | undefined;
-        if (currentState && (currentState.isLoading || currentState.isComplete)) {
+        if (currentState && (currentState.isLoading || currentState.isLoaded)) {
             // Already loading or loaded
             return;
         }
@@ -386,6 +393,7 @@ abstract class BaseClient implements Client {
         let loadedResources: S[] = [];
         let state: CollectionState<S> = {
             error: null,
+            isLoaded: false,
             ...currentState,
             resources: loadedResources,
             count: loadedResources.length,
@@ -415,6 +423,7 @@ abstract class BaseClient implements Client {
                     error: null,
                     resources: loadedResources,
                     count: loadedResources.length,
+                    isLoaded: true,
                     isComplete: !next,
                 };
                 this.setCollectionState(resourceName, collectionUrl, state);

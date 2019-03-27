@@ -135,7 +135,12 @@ async function executeRetrievals(apiService: ApiService, retrievals: Retrieval[]
             const {operation} = retrieval;
             const resourceName = operation.endpoint.resource.name;
             const [resource, error] = await executeRenderRequest(apiService, url, request, operation.responseSerializer);
-            const state: ResourceState = { resource, error, isLoading: false };
+            const state: ResourceState = {
+                resource,
+                error,
+                isLoading: false,
+                isLoaded: false, // Causes to reload once initialized
+            };
             cache[resourceName] = Object.assign(cache[resourceName] || {}, {[urlStr]: state});
         }),
     );
@@ -154,6 +159,7 @@ async function executeListings(apiService: ApiService, listings: Listing[], requ
                 resources: page ? page.results : [],
                 count: page ? page.results.length : 0,
                 isLoading: false,
+                isLoaded: false, // Causes to reload once initialized
                 isComplete: !!page && !page.next,
                 error,
                 ordering: listing.input.ordering,
