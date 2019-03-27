@@ -73,7 +73,7 @@ yargs
             .boolean('init')
             .describe('init', 'Just create the stack (no deployment)')
         ,
-        handler: (argv: CommandOptions & {init: boolean}) => {
+        handler: (argv: any) => {
             const broiler = getBroiler(argv);
             if (argv.init) {
                 broiler.initialize().then(null, onError);
@@ -100,7 +100,7 @@ yargs
             .number('n')
             .describe('n', 'Number of log entries to print')
         ,
-        handler: (argv: CommandOptions & {f: boolean, since: string, n: number}) => {
+        handler: (argv: any) => {
             const broiler = getBroiler(argv);
             broiler.printLogs({
                 follow: argv.f,
@@ -125,7 +125,7 @@ yargs
             .boolean('template')
             .describe('template', 'Preview the CloudFormation stack template')
         ,
-        handler: (argv: CommandOptions & {template: boolean}) => {
+        handler: (argv: any) => {
             const broiler = getBroiler(argv);
             if (argv.template) {
                 broiler.printTemplate().then(null, onError);
@@ -170,7 +170,7 @@ yargs
                     .boolean('pretty')
                     .describe('pretty', 'Print formatted JSON')
                 ,
-                handler: (argv: CommandOptions & {table: string, pretty: boolean}) => {
+                handler: (argv: any) => {
                     const broiler = getBroiler(argv);
                     broiler.printTableRows(argv.table, argv.pretty).then(null, onError);
                 },
@@ -187,7 +187,7 @@ yargs
                         type: 'string',
                     })
                 ,
-                handler: (argv: CommandOptions & {table: string, file: string}) => {
+                handler: (argv: any) => {
                     const broiler = getBroiler(argv);
                     broiler.uploadTableRows(argv.table, argv.file).then(null, onError);
                 },
