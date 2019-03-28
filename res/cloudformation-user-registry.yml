@@ -183,6 +183,8 @@ Resources:
   SiteGatewayStage:
     Properties:
       Variables:
+        DatabaseTableUsersURI:
+          Fn::GetAtt: UserPool.Arn
         AuthSignInUri:
           Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
         AuthSignOutUri:

@@ -677,6 +677,15 @@ export class Broiler {
                                 },
                             },
                         },
+                        SiteGatewayStage: {
+                            Properties: {
+                                Variables: {
+                                    [paramName]: {
+                                        Ref: `X${paramName}`,
+                                    },
+                                },
+                            },
+                        },
                     },
                 });
             });
@@ -794,6 +803,15 @@ export class Broiler {
                     },
                     // Make the domain name available for Lambda functions as a stage variable
                     ApiGatewayStage: {
+                        Properties: {
+                            Variables: {
+                                [tableUriVar]: {
+                                    'Fn::Sub': tableUriSub,
+                                },
+                            },
+                        },
+                    },
+                    SiteGatewayStage: {
                         Properties: {
                             Variables: {
                                 [tableUriVar]: {
