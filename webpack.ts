@@ -415,6 +415,12 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
 
+        optimization: {
+            // For better tracebacks, do not minify server-side code,
+            // even in production.
+            minimize: false,
+        },
+
         // Build for running in node environment, instead of web browser
         target: 'node',
 
