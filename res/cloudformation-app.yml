@@ -506,3 +506,7 @@ Outputs:
   AssetsCloudFrontDistributionId:
     Value:
       Ref: AssetsCloudFrontDistribution
+  SiteRenderViewLambdaFunctionLogGroupName:
+    Description: "Log group name of SSR requests"
+    Value:
+      Ref: SiteRenderViewLambdaFunctionLogGroup
