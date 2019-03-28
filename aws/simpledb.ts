@@ -1,13 +1,18 @@
 import { SimpleDB } from 'aws-sdk';
 import { buildObject } from '../utils/objects';
 
-export interface ItemAttributes {
+interface ItemAttributes {
     [key: string]: string;
 }
 
-export interface Item {
+interface Item {
     name: string;
     attributes: ItemAttributes;
+}
+
+interface ItemChunk {
+    items: Item[];
+    isComplete: boolean;
 }
 
 export class AmazonSimpleDB {
@@ -24,17 +29,18 @@ export class AmazonSimpleDB {
         return buildObject(result.Attributes || [], ({Name, Value}) => [Name, Value]) as T;
     }
 
-    public async *select(query: string, consistent: boolean): AsyncIterableIterator<Item[]> {
+    public async *select(query: string, consistent: boolean): AsyncIterableIterator<ItemChunk> {
         let params: SimpleDB.SelectRequest = {
             SelectExpression: query,
             ConsistentRead: consistent,
         };
         while (true) {
             const {Items = [], NextToken} = await this.simpleDB.select(params).promise();
-            yield Items.map((item) => ({
+            const items = Items.map((item) => ({
                 name: item.Name,
                 attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
             }));
+            yield { items, isComplete: !NextToken };
             if (!NextToken) {
                 break;
             }
