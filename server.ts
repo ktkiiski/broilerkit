@@ -213,9 +213,13 @@ export class ApiService {
 
 function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]: any} = {}): Models<M> {
     return transformValues(
-        spread(db, {users}) as any,
-        (table: Table<any>) => {
-            const tableUri = request.environment[`DatabaseTable${upperFirst(table.name)}URI`];
+        {...db, users},
+        (table) => {
+            const environmentKey = `DatabaseTable${upperFirst(table.name)}URI`;
+            const tableUri = request.environment[environmentKey] as string | undefined;
+            if (!tableUri) {
+                throw new Error(`Environment does not define URI for the table "${table.name}"`);
+            }
             const model = cache[tableUri];
             return model || (cache[tableUri] = table.getModel(tableUri));
         },
