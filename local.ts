@@ -207,7 +207,12 @@ function createServer<P extends any[]>(handler: (request: http.IncomingMessage, 
     return http.createServer(async (httpRequest, httpResponse) => {
         try {
             const response = await handler(httpRequest, ...args);
-            const textColor = httpRequest.method === 'OPTIONS' ? chalk.dim : (x: string) => x;
+            const contentType = response.headers['Content-Type'];
+            const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
+            const textColor = isHtml ? chalk.cyan :
+                httpRequest.method === 'OPTIONS' ? chalk.dim :
+                (x: string) => x // no color
+            ;
             // tslint:disable-next-line:no-console
             console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
             httpResponse.writeHead(response.statusCode, response.headers);
