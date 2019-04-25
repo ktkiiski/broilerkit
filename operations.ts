@@ -1,4 +1,4 @@
-import { CreateApi, DestroyApi, ListApi, RetrieveEndpoint, UpdateApi } from './api';
+import { CreateApi, DestroyApi, UpdateApi } from './api';
 import { Bindable, Client } from './client';
 import { Endpoint } from './endpoints';
 import { nullable } from './fields';
@@ -50,7 +50,7 @@ abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, 
 
 export class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
 extends BaseOperation<S, U, A, B>
-implements Bindable<ListApi<S, U, O, F, B>>, Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
+implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
     public readonly type: 'list' = 'list';
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly urlSerializer = new CursorSerializer(
@@ -73,9 +73,6 @@ implements Bindable<ListApi<S, U, O, F, B>>, Operation<Cursor<S, U, O, F>, PageR
     ) {
         super(endpoint, authType, userIdAttribute);
     }
-    public bind(client: Client): ListApi<S, U, O, F, B> {
-        return new ListApi(this, client);
-    }
     public getPayloadSerializer() {
         return null;
     }
@@ -86,7 +83,7 @@ implements Bindable<ListApi<S, U, O, F, B>>, Operation<Cursor<S, U, O, F>, PageR
 
 export class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
 extends BaseOperation<S, U, A, B>
-implements Bindable<RetrieveEndpoint<S, U, B>>, Operation<Pick<S, U>, S, AuthRequestMapping[A]> {
+implements Operation<Pick<S, U>, S, AuthRequestMapping[A]> {
     public readonly type: 'retrieve' = 'retrieve';
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly route = route(
@@ -94,9 +91,6 @@ implements Bindable<RetrieveEndpoint<S, U, B>>, Operation<Pick<S, U>, S, AuthReq
         this.endpoint.resource.pick(this.endpoint.pattern.pathKeywords),
     );
     public readonly responseSerializer = this.endpoint.resource;
-    public bind(client: Client): RetrieveEndpoint<S, U, B> {
-        return new RetrieveEndpoint(this, client);
-    }
     public getPayloadSerializer() {
         return null;
     }

@@ -1,9 +1,7 @@
 import { Client } from './client';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { HttpMethod, SuccesfulResponse } from './http';
-import { shareIterator } from './iteration';
-import { CreateOperation, DestroyOperation, ListOperation, Operation, RetrieveOperation, UpdateOperation } from './operations';
-import { Cursor, Page } from './pagination';
+import { CreateOperation, DestroyOperation, Operation, UpdateOperation } from './operations';
 import { OptionalInput, OptionalOutput } from './serializers';
 import { Url } from './url';
 import { Key, pick } from './utils/objects';
@@ -41,54 +39,6 @@ abstract class BaseApi<T extends Operation<any, any, any>> {
         }
         // Authentication required but no auth client defined
         throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
-    }
-}
-
-export class RetrieveEndpoint<S, U extends Key<S>, B extends U | undefined>
-extends BaseApi<RetrieveOperation<S, U, any, B>> {
-    public get(input: Pick<S, U>): Promise<S> {
-        const url = this.operation.route.compile(input);
-        return this.request('GET', url);
-    }
-    public validateGet(input: Pick<S, U>): Pick<S, U> {
-        return this.operation.route.serializer.validate(input);
-    }
-}
-
-export class ListApi<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, B extends U | undefined>
-extends BaseApi<ListOperation<S, U, O, F, any, B>> {
-    public getPage(input: Cursor<S, U, O, F>): Promise<Page<S, Cursor<S, U, O, F>>> {
-        const url = this.operation.route.compile(input);
-        return this.request('GET', url);
-    }
-    public async getAll(input: Cursor<S, U, O, F>): Promise<S[]> {
-        const results: S[] = [];
-        for await (const pageResults of this.iteratePages(input)) {
-            results.push(...pageResults);
-        }
-        return results;
-    }
-    public getIterable(input: Cursor<S, U, O, F>): AsyncIterable<S> {
-        return shareIterator(this.iterate(input));
-    }
-    public async *iterate(input: Cursor<S, U, O, F>) {
-        for await (const items of this.iteratePages(input)) {
-            yield *items;
-        }
-    }
-    public async *iteratePages(input: Cursor<S, U, O, F>) {
-        let page = await this.getPage(input);
-        while (true) {
-            yield page.results;
-            if (page.next) {
-                page = await this.getPage(page.next);
-            } else {
-                break;
-            }
-        }
-    }
-    public validateGet(input: Cursor<S, U, O, F>): Cursor<S, U, O, F> {
-        return this.operation.route.serializer.validate(input);
     }
 }
 
