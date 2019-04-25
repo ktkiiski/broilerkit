@@ -63,6 +63,7 @@
     "eslint-loader": "^2.0.0",
     "fast-sass-loader": "^1.4.7",
     "file-loader": "^2.0.0",
+    "firebase": "^5.10.1",
     "fork-ts-checker-webpack-plugin": "^0.5.1",
     "html-webpack-plugin": "^3.2.0",
     "image-webpack-loader": "^4.6.0",
