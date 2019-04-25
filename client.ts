@@ -2,7 +2,7 @@ import { ajax } from './ajax';
 import { AuthClient } from './auth';
 import { ResourceChange } from './collections';
 import { ApiResponse, HttpMethod, isErrorResponse, NotImplemented } from './http';
-import { ListOperation, Operation, RetrieveOperation } from './operations';
+import { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import { Cursor } from './pagination';
 import { Url } from './url';
 import { getOrderedIndex } from './utils/arrays';
@@ -180,9 +180,8 @@ abstract class BaseClient implements Client {
 
     public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
 
-    private async getToken(operation: Operation<any, any, any>): Promise<string | null> {
+    private async getToken(authType: AuthenticationType): Promise<string | null> {
         const {authClient} = this;
-        const {authType} = operation;
         if (authType === 'none') {
             // No authentication required, but return the token if available
             return authClient && authClient.getIdToken() || null;
@@ -364,7 +363,7 @@ abstract class BaseClient implements Client {
         };
         this.setResourceState(resourceName, resourceUrl, state);
         try {
-            const token = await this.getToken(op);
+            const token = await this.getToken(op.authType);
             const response = await this.request(url, 'GET', null, token);
             const resource = op.responseSerializer.deserialize(response.data);
             state = { ...state, error: null, isLoaded: true, resource };
@@ -412,7 +411,7 @@ abstract class BaseClient implements Client {
                     // No one is interested (any more)
                     break;
                 }
-                const token = await this.getToken(op);
+                const token = await this.getToken(op.authType);
                 const response = await this.request(nextUrl, 'GET', null, token);
                 const {next, results} = op.responseSerializer.deserialize(response.data);
                 // Add loaded results to the resources
