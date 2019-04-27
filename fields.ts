@@ -1,3 +1,4 @@
+import { firestore } from 'firebase';
 import { KeyErrorData, ValidationError } from './errors';
 import { isErrorResponse } from './http';
 import { padEnd, padStart } from './utils/strings';
@@ -339,6 +340,35 @@ class DateField implements Field<Date, string> {
     }
 }
 
+class TimestampField implements Field<firestore.Timestamp, number> {
+    private dateTimeField = new DateTimeField();
+
+    public validate(value: firestore.Timestamp) {
+        return firestore.Timestamp.fromMillis(value.toMillis());
+    }
+    public serialize(value: firestore.Timestamp): number {
+        return value.toMillis();
+    }
+    public deserialize(value: unknown) {
+        if (typeof value !== 'number') {
+            throw new ValidationError(`Timestamp must be a number of milliseconds`);
+        }
+        return firestore.Timestamp.fromMillis(value);
+    }
+    public encode(value: firestore.Timestamp): string {
+        return this.dateTimeField.encode(value.toDate());
+    }
+    public decode(value: string) {
+        return firestore.Timestamp.fromDate(this.dateTimeField.decode(value));
+    }
+    public encodeSortable(value: firestore.Timestamp): string {
+        return this.dateTimeField.encodeSortable(value.toDate());
+    }
+    public decodeSortable(value: string) {
+        return firestore.Timestamp.fromDate(this.dateTimeField.decodeSortable(value));
+    }
+}
+
 class RegexpField extends TextField {
     constructor(
         private readonly regexp: RegExp,
@@ -557,6 +587,10 @@ export function datetime(): Field<Date, string> {
 
 export function date(): Field<Date, string> {
     return new DateField();
+}
+
+export function timestamp(): Field<firestore.Timestamp, number> {
+    return new TimestampField();
 }
 
 export function uuid(version?: 1 | 4 | 5): Field<string> {
