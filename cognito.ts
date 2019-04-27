@@ -7,7 +7,7 @@ import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
 import { mapCached } from './utils/arrays';
-import { Omit, spread } from './utils/objects';
+import { Omit } from './utils/objects';
 
 export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
@@ -124,7 +124,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
 
     public create(attrs: UserCreateAttributes<S>): Promise<S> {
         const now = new Date();
-        return this.nedb.create(spread(attrs, {updatedAt: now, createdAt: now}) as any);
+        return this.nedb.create({...attrs, updatedAt: now, createdAt: now} as any);
     }
 
     // tslint:disable-next-line:variable-name
@@ -133,7 +133,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
-        const update = spread(changes, {updatedAt: new Date()});
+        const update = {...changes, updatedAt: new Date()};
         return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>, notFoundError);
     }
 

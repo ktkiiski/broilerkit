@@ -152,19 +152,6 @@ export function omit<T, K extends Key<T>>(obj: T, props: K[]): Omit<T, K> {
     return __rest(obj, props as string[]);
 }
 
-/**
- * Returns an object whose all attributes are assigned from the given objects.
- */
-export function spread(): {};
-export function spread<A>(obj1: A): A;
-export function spread<A, B>(obj1: A, obj2: B): A & B;
-export function spread<A, B, C>(obj1: A, obj2: B, obj3: C): A & B & C;
-export function spread<A, B, C, D>(obj1: A, obj2: B, obj3: C, obj4: D): A & B & C & D;
-export function spread<T>(obj1: T, ...obj2: T[]): T;
-export function spread(...args: any[]): any {
-    return __assign({}, ...args);
-}
-
 export function hasOwnStringProperty<T>(obj: T, propName: string | number | symbol): propName is Key<T> {
     return typeof propName === 'string' && hasOwnProperty(obj, propName);
 }

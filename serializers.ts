@@ -2,7 +2,7 @@ import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
 import { isErrorResponse } from './http';
 import { difference } from './utils/arrays';
-import { forEachKey, Key, keys, omit, Omit, pick, Require, spread } from './utils/objects';
+import { forEachKey, Key, keys, omit, Omit, pick, Require } from './utils/objects';
 
 export type Fields<T> = {
     [P in keyof T]: Field<T[P], any>;
@@ -126,7 +126,7 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Extendab
         return new DefaultsSerializer(defaults, this.fields);
     }
     public extend<E>(fields: Fields<E>): FieldSerializer<T & E> {
-        return new FieldSerializer(spread(this.fields, fields) as Fields<T & E>);
+        return new FieldSerializer({...this.fields, ...fields} as Fields<T & E>);
     }
 }
 

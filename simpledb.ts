@@ -6,7 +6,7 @@ import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { hasProperties } from './utils/compare';
-import { forEachKey, Key, keys, mapObject, omit, pick, spread } from './utils/objects';
+import { forEachKey, Key, keys, mapObject, omit, pick } from './utils/objects';
 
 interface Chunk<T> {
     items: T[];
@@ -124,7 +124,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             }
             throw error;
         }
-        return spread(existingItem, changes) as S;
+        return {...existingItem, ...changes} as S;
     }
 
     public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C, notFoundError?: Error): Promise<C> {
@@ -216,7 +216,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             if (cursor) {
                 return {
                     results: cursor.results,
-                    next: spread(query, {since: cursor.since}),
+                    next: {...query, since: cursor.since},
                 };
             }
         }

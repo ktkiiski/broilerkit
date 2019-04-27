@@ -1,5 +1,5 @@
 import { Fields, FieldSerializer, Serializer } from './serializers';
-import { Key, pick, spread } from './utils/objects';
+import { Key, pick } from './utils/objects';
 
 export class Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> {
     /**
@@ -20,7 +20,7 @@ export class Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extend
         return new Resource(this.name, pick(this.fields, [...attrs, ...this.identifyBy]) as Fields<Pick<T, K | PK>>, this.identifyBy, versionBy as V extends K ? V : undefined);
     }
     public expand<E>(fields: Fields<E>): Resource<T & E, PK, V> {
-        return new Resource(this.name, spread(this.fields, fields) as Fields<T & E>, this.identifyBy, this.versionBy);
+        return new Resource(this.name, {...this.fields, ...fields} as Fields<T & E>, this.identifyBy, this.versionBy);
     }
 }
 

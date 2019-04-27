@@ -6,7 +6,7 @@ import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
-import { forEachKey, Key, omit, pick, spread } from './utils/objects';
+import { forEachKey, Key, omit, pick } from './utils/objects';
 
 const PRIMARY_KEY_FIELD = '_pk';
 
@@ -142,7 +142,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
             if (cursor) {
                 return {
                     results: cursor.results,
-                    next: spread(query, {since: cursor.since}),
+                    next: {...query, since: cursor.since},
                 };
             }
         }

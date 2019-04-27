@@ -1,5 +1,5 @@
 import { readFile } from './fs';
-import { forEachKey, spread } from './utils/objects';
+import { forEachKey } from './utils/objects';
 
 import * as path from 'path';
 import * as YAML from 'yamljs';
@@ -26,7 +26,7 @@ export function mergeTemplates(template1: any, template2: any): any {
     }
     // Any two objects are merged recursively
     if (isObject(template1) && isObject(template2)) {
-        const result = spread(template1);
+        const result = {...template1};
         forEachKey(template2, (key, value) => {
             result[key] = mergeTemplates(result[key], value);
         });

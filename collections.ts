@@ -1,6 +1,5 @@
 import { filterAsync, mapAsync, mergeSortedAsync, toAsync } from './async';
 import { shareIterator } from './iteration';
-import { spread } from './utils/objects';
 
 export interface ResourceAddition<T, K extends keyof T> {
     type: 'addition';
@@ -47,7 +46,7 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
         // Apply the changes to an item whose ID matches
         return shareIterator(mapAsync(collection, (item): T => {
             if (matchesIdentity(resourceIdentity, item)) {
-                return spread(item, change.resource);
+                return {...item, ...change.resource};
             }
             return item;
         }));

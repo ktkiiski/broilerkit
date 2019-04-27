@@ -1,6 +1,6 @@
 import { CognitoIdentityServiceProvider } from 'aws-sdk';
 import { NotFound } from '../http';
-import { mapObject, spread } from '../utils/objects';
+import { mapObject } from '../utils/objects';
 import { retrievePages } from './utils';
 
 export interface CognitoUser {
@@ -41,7 +41,7 @@ export class AmazonCognitoIdentity<S = {}> {
             }
             throw error;
         }
-        return spread(user, attrs);
+        return {...user, attrs};
     }
 
     public async deleteUserById(id: string, notFoundError?: Error): Promise<void> {

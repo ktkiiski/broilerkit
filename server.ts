@@ -9,7 +9,7 @@ import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Serializer } from './serializers';
 import { Url } from './url';
-import { buildObject, hasOwnProperty, spread, transformValues, values } from './utils/objects';
+import { buildObject, hasOwnProperty, transformValues, values } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
@@ -188,7 +188,7 @@ export class ApiService {
     }
 
     public getTable(tableName: string): Table<Model<any, any, any, any, any>> | undefined {
-        const tableMapping = spread(this.dbTables, {users});
+        const tableMapping = {...this.dbTables, users};
         const tables = values(tableMapping);
         return tables.find((table) => table.name === tableName);
     }
