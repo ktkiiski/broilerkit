@@ -1,10 +1,26 @@
-import {__assign, __rest} from 'tslib';
+import {__rest} from 'tslib';
 
 export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K & string>>;
 export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<T>;
 export type Require<T, K extends keyof T> = Pick<T, K> & Partial<T>;
 export type Nullable<T> = {[P in keyof T]: T[P] | null};
 export type Key<T> = keyof T & string;
+
+/**
+ * Union of keys of an object that are assignable an undefined value.
+ */
+export type OptionalKeyOf<T> = {[P in keyof T]: undefined extends T[P] ? (T[P] extends undefined ? never : P) : never}[keyof T];
+
+/**
+ * Union of keys of an object that are not assignable an undefined value.
+ */
+export type RequiredKeyOf<T> = {[P in keyof T]: undefined extends T[P] ? never : P}[keyof T];
+
+/**
+ * Modifies the given type so that any keys that accept undefined values are optional
+ * and can be omitted.
+ */
+export type OptionalUndefined<T> = Pick<T, RequiredKeyOf<T>> & Partial<Pick<T, OptionalKeyOf<T>>>;
 
 /**
  * Iterates through each own enumerable property of the given

@@ -53,6 +53,11 @@ export function stripPrefix(str: string, prefix: string): string | null {
 
 const indentRegexp = /^/gm;
 
+/**
+ * Indents each line on the given string by the provided number of spaces.
+ * @param str string whose lines to indent
+ * @param indentation the number of spaces to add
+ */
 export function indent(str: string, indentation: number): string {
     return str.replace(indentRegexp, repeat(' ', indentation));
 }

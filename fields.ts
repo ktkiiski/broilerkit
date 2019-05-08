@@ -13,6 +13,7 @@ export interface Field<I, E = I> {
     decode(value: string): I;
     encodeSortable(value: I): string;
     decodeSortable(value: string): I;
+    getRuleConditions(reference: string): string[];
 }
 
 class TextField implements Field<string> {
@@ -43,11 +44,20 @@ class TextField implements Field<string> {
     public decodeSortable(value: string): string {
         return this.decode(value);
     }
+    public getRuleConditions(reference: string): string[] {
+        return [`${reference} is string`];
+    }
 }
 
 class TrimmedTextField extends TextField implements Field<NonEmptyString> {
     public validate(value: string): string {
         return super.validate(value).trim();
+    }
+    public getRuleConditions(reference: string): string[] {
+        return [
+            ...super.getRuleConditions(reference),
+            `${reference}.trim() == ${reference}`,
+        ];
     }
 }
 
@@ -58,6 +68,12 @@ class StringField extends TrimmedTextField {
             throw new ValidationError(`Value may not be blank`);
         }
         return value;
+    }
+    public getRuleConditions(reference: string): string[] {
+        return [
+            ...super.getRuleConditions(reference),
+            `${reference}.size() > 0`,
+        ];
     }
 }
 
@@ -89,6 +105,16 @@ class ChoiceField<K extends string> extends TextField implements Field<K> {
     }
     public decodeSortable(value: string): K {
         return this.decode(value);
+    }
+    public getRuleConditions(reference: string): string[] {
+        const optionConditions = this.options
+            .map((value) => JSON.stringify(value))
+            .map((value) => `${reference} == ${value}`)
+        ;
+        return [
+            ...super.getRuleConditions(reference),
+            `(${optionConditions.join(' || ')})`,
+        ];
     }
 }
 
@@ -157,6 +183,21 @@ class NumberField implements Field<number> {
         const float = new Float64Array(Uint16Array.from(byteArr).buffer)[0];
         return this.validate(sign === '-' ? -float : float);
     }
+    public getRuleConditions(reference: string): string[] {
+        const {min, max} = this.options;
+        const conditions = [
+            `${reference} is number`,
+            `!math.isInfinite(${reference})`,
+            `!math.isNaN(${reference})`,
+        ];
+        if (min != null) {
+            conditions.push(`${reference} >= ${JSON.stringify(min)}`);
+        }
+        if (max != null) {
+            conditions.push(`${reference} <= ${JSON.stringify(max)}`);
+        }
+        return conditions;
+    }
 }
 
 const MAX_INTEGER = Number.MAX_SAFE_INTEGER;
@@ -199,6 +240,14 @@ class IntegerField extends NumberField implements Field<number> {
     public decode(value: string): number {
         return this.deserialize(value);
     }
+    public getRuleConditions(reference: string): string[] {
+        return [
+            ...super.getRuleConditions(reference),
+            `${reference} == math.floor(${reference})`,
+            `${reference} <= ${JSON.stringify(MAX_INTEGER)}`,
+            `${reference} >= ${JSON.stringify(MIN_INTEGER)}`,
+        ];
+    }
 }
 
 class ConstantField<K extends number> extends IntegerField {
@@ -229,6 +278,16 @@ class ConstantField<K extends number> extends IntegerField {
     }
     public decodeSortable(value: string): K {
         return super.decodeSortable(value) as K;
+    }
+    public getRuleConditions(reference: string): string[] {
+        const optionConditions = this.choices
+            .map((value) => JSON.stringify(value))
+            .map((value) => `${reference} == ${value}`)
+        ;
+        return [
+            ...super.getRuleConditions(reference),
+            `(${optionConditions.join(' || ')})`,
+        ];
     }
 }
 
@@ -261,6 +320,9 @@ class BooleanField implements Field<boolean> {
     }
     public decodeSortable(value: string): boolean {
         return this.decode(value);
+    }
+    public getRuleConditions(reference: string): string[] {
+        return [`${reference} is bool`];
     }
 }
 
@@ -296,6 +358,9 @@ class DateTimeField implements Field<Date, string> {
     }
     public decodeSortable(value: string): Date {
         return this.decode(value);
+    }
+    public getRuleConditions(_: string): string[] {
+        throw new Error(`DateTime field does not support rules`);
     }
 }
 
@@ -338,6 +403,9 @@ class DateField implements Field<Date, string> {
     public decodeSortable(value: string): Date {
         return this.decode(value);
     }
+    public getRuleConditions(_: string): string[] {
+        throw new Error(`Date field does not support rules`);
+    }
 }
 
 class TimestampField implements Field<firestore.Timestamp, number> {
@@ -367,6 +435,9 @@ class TimestampField implements Field<firestore.Timestamp, number> {
     public decodeSortable(value: string) {
         return firestore.Timestamp.fromDate(this.dateTimeField.decodeSortable(value));
     }
+    public getRuleConditions(reference: string): string[] {
+        return [`${reference} is timestamp`];
+    }
 }
 
 class RegexpField extends TextField {
@@ -381,6 +452,13 @@ class RegexpField extends TextField {
             return strValue;
         }
         throw new ValidationError(this.errorMessage);
+    }
+    public getRuleConditions(reference: string): string[] {
+        const regexpString = this.regexp.toString().slice(1, -1);
+        return [
+            ...super.getRuleConditions(reference),
+            `reference.matches(${JSON.stringify(regexpString)})`,
+        ];
     }
 }
 
@@ -413,6 +491,12 @@ class DecimalField extends RegexpField {
             return this.validate(value);
         }
         return super.deserialize(value);
+    }
+    public getRuleConditions(reference: string): string[] {
+        return [
+            ...super.getRuleConditions(reference),
+            `${reference}.split('.')[1].size() == ${JSON.stringify(this.decimals)}`,
+        ];
     }
 }
 
@@ -489,6 +573,10 @@ class NullableField<I, O> implements Field<I | null, O | null> {
     public decodeSortable(value: string): I | null {
         return !isNullable(value) && this.field.decodeSortable(value) || null;
     }
+    public getRuleConditions(reference: string): string[] {
+        const conditions = this.field.getRuleConditions(reference);
+        return [`${reference} == null || (${conditions.join(' && ')})`];
+    }
 }
 
 class ListField<I, O> implements Field<I[], O[]> {
@@ -518,6 +606,9 @@ class ListField<I, O> implements Field<I[], O[]> {
     public decodeSortable(value: string): I[] {
         const items = value.split('&');
         return this.mapWith(items, (item) => this.field.decodeSortable(decodeURIComponent(item)));
+    }
+    public getRuleConditions(_: string): string[] {
+        throw new Error(`List field does not support rules`);
     }
     private mapWith<X, Y>(items: X[], iteratee: (item: X, index: number) => Y): Y[] {
         const errors: Array<KeyErrorData<number>> = [];

@@ -230,6 +230,9 @@ class NestedSerializerField<I> implements Field<I, Serialization> {
     public decodeSortable(_: any): never {
         throw new Error('Nested resource field does not support sortable decoding.');
     }
+    public getRuleConditions(): never {
+        throw new Error('Nested resource field does not support rule conditions.');
+    }
 }
 
 export function nested<I>(res: Serializer<I, any>): Field<I, Encoding> {

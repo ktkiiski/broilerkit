@@ -1,55 +1,27 @@
+import { UserInfo } from 'firebase';
 import { useEffect, useState } from 'react';
-import { Auth, AuthClient } from '../auth';
-import { isEqual } from '../utils/compare';
-import { useClient } from './client';
+import { useFirebaseAuth } from './firebase';
 
-export function useAuth(): Auth | null | undefined {
-    const {authClient} = useClient();
+export function useAuth(): UserInfo | null | undefined {
+    const authClient = useFirebaseAuth();
     // TODO: Provide auth as initial value when the SSR is aware of the authentication!
-    const [auth, setAuth] = useState(undefined as Auth | null | undefined);
-    useEffect(() => {
-        return validateAuthClient(authClient).subscribeAuthentication((newAuth) => {
-            if (!isEqual(newAuth, auth, 1)) {
-                setAuth(newAuth);
-            }
-        });
-    }, [authClient]);
-    return auth;
+    const [authState, setAuthState] = useState(undefined as UserInfo | null | undefined);
+    useEffect(() => (
+      authClient.onAuthStateChanged((user) => {
+        setAuthState(user);
+      })
+    ), [authClient]);
+    return authState;
 }
 
 export function useUserId(): string | null | undefined {
-    const {authClient} = useClient();
+    const auth = useFirebaseAuth();
     // TODO: Provide auth as initial value when the SSR is aware of the authentication!
     const [userId, setUserId] = useState(undefined as string | null | undefined);
-    useEffect(() => {
-        return validateAuthClient(authClient).subscribeAuthentication((auth) => {
-            const newUserId = auth && auth.id;
-            if (!isEqual(newUserId, userId, 1)) {
-                setUserId(newUserId);
-            }
-        });
-    }, [authClient]);
+    useEffect(() => (
+        auth.onAuthStateChanged((user) => {
+          setUserId(user && user.uid);
+        })
+      ), [auth]);
     return userId;
-}
-
-export function useRequireAuth(): () => Promise<Auth> {
-    const {authClient} = useClient();
-    return () => validateAuthClient(authClient).demandAuthentication();
-}
-
-export function useSignIn(): () => Promise<Auth> {
-    const {authClient} = useClient();
-    return () => validateAuthClient(authClient).signIn();
-}
-
-export function useSignOut(): () => Promise<null> {
-    const {authClient} = useClient();
-    return () => validateAuthClient(authClient).signOut();
-}
-
-function validateAuthClient(authClient?: AuthClient | null): AuthClient {
-    if (!authClient) {
-        throw new Error(`Authentication client not defined!`);
-    }
-    return authClient;
 }
