@@ -81,7 +81,7 @@
     "ts-node": "^7.0.1",
     "tslib": "^1.9.3",
     "tslint": "^5.11.0",
-    "typescript": "^3.3.3",
+    "typescript": "^3.4.5",
     "ulid": "^2.3.0",
     "url-loader": "^1.0.1",
     "vinyl-fs": "^3.0.3",
