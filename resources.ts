@@ -15,7 +15,7 @@ export class Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extend
         public readonly versionBy: V) {
         super(fields);
     }
-    public expose<K extends Exclude<Key<T> & Key<Fields<T>>, PK>>(attrs: K[]): Resource<Pick<T, K | PK>, PK, V extends K ? V : undefined> {
+    public subset<K extends Exclude<Key<T> & Key<Fields<T>>, PK>>(attrs: K[]): Resource<Pick<T, K | PK>, PK, V extends K ? V : undefined> {
         const versionBy = attrs.indexOf(this.versionBy as any) >= 0 ? this.versionBy : undefined;
         return new Resource(this.name, pick(this.fields, [...attrs, ...this.identifyBy]) as Fields<Pick<T, K | PK>>, this.identifyBy, versionBy as V extends K ? V : undefined);
     }
