@@ -6,7 +6,8 @@ import { Serializer } from './serializers';
 import { SimpleDbModel } from './simpledb';
 import { Key, Require } from './utils/objects';
 
-export type Query<T> = OrderedQuery<T, Key<T>> & Partial<T> | OrderedQuery<T, Key<T>>;
+export type Filters<T> = {[P in keyof T]: T | T[]};
+export type Query<T> = OrderedQuery<T, Key<T>> & Partial<Filters<T>> | OrderedQuery<T, Key<T>>;
 
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;

@@ -6,7 +6,7 @@ import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { hasProperties } from './utils/compare';
-import { forEachKey, Key, keys, mapObject, omit, pick } from './utils/objects';
+import { Key, keys, mapObject, omit, pick } from './utils/objects';
 
 interface Chunk<T> {
     items: T[];
@@ -258,19 +258,35 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
     private async *scanChunks(query: Query<S> = this.defaultScanQuery): AsyncIterableIterator<Chunk<S>> {
         const { decoder } = this;
         const { fields } = this.serializer;
-        const { ordering, direction, since } = query;
-        const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
+        const { ordering, direction, since, ...filterAttrs } = query;
         const domain = this.domainName;
         const filters = [
             `${escapeQueryIdentifier(ordering)} is not null`,
         ];
-        forEachKey(filterAttrs, (key: any, value: any) => {
-            const field = (fields as any)[key];
-            const encodedValue = field.encodeSortable(value);
-            filters.push(
-                `${escapeQueryIdentifier(key)} = ${escapeQueryParam(encodedValue)}`,
-            );
-        });
+        for (const key in filterAttrs) {
+            if (filterAttrs.hasOwnProperty(key)) {
+                const value = (filterAttrs as any)[key];
+                const field = fields[key as keyof S];
+                if (Array.isArray(value)) {
+                    // Use IN operator
+                    if (!value.length) {
+                        // If an empty list, then there is no way this query would
+                        // result in any rows, so terminate now.
+                        yield { items: [], isComplete: true };
+                        return;
+                    }
+                    const encodedValues = value.map((item) => field.encodeSortable(item));
+                    filters.push(
+                        `${escapeQueryIdentifier(key)} in (${encodedValues.join(',')})`,
+                    );
+                } else {
+                    const encodedValue = field.encodeSortable(value);
+                    filters.push(
+                        `${escapeQueryIdentifier(key)} = ${escapeQueryParam(encodedValue)}`,
+                    );
+                }
+            }
+        }
         if (since !== undefined) {
             const field = fields[ordering];
             const encodedValue = field.encodeSortable(since);

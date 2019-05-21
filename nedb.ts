@@ -6,7 +6,7 @@ import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
-import { forEachKey, Key, omit, pick } from './utils/objects';
+import { Key, pick } from './utils/objects';
 
 const PRIMARY_KEY_FIELD = '_pk';
 
@@ -119,13 +119,27 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
         const { decoder } = this;
         const { fields } = this.serializer;
-        const { ordering, direction, since } = query;
-        const filterAttrs = omit(query as {[key: string]: any}, ['ordering', 'direction', 'since']) as Partial<S>;
+        const { ordering, direction, since, ...filterAttrs } = query;
         const filter: {[key: string]: any} = {};
-        forEachKey(filterAttrs, (key: any, value: any) => {
-            const field = (fields as any)[key];
-            filter[key] = field.serialize(value);
-        });
+        for (const key in filterAttrs) {
+            if (filterAttrs.hasOwnProperty(key)) {
+                const value = (filterAttrs as any)[key];
+                const field = fields[key as keyof S];
+                if (Array.isArray(value)) {
+                    // Use IN operator
+                    if (!value.length) {
+                        // If an empty list, then there is no way this query would
+                        // result in any rows, so terminate now.
+                        return { results: [], next: null };
+                    }
+                    filter[key] = {
+                        $in: value.map((item) => field.serialize(item)),
+                    };
+                } else {
+                    filter[key] = field.serialize(value);
+                }
+            }
+        }
         if (since !== undefined) {
             const field = fields[ordering];
             filter[ordering] = {
