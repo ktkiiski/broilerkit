@@ -95,25 +95,36 @@ function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     filters?: Partial<S> | null,
 ): List<S> {
     const client = useClient();
-    const [state, setState] = useState(
-        listifyCollection(inquiryCollection(client, op, input, filters)),
-    );
+    const initialCollection = inquiryCollection(client, op, input, filters);
+    const [resources, setResources] = useState(initialCollection.resources);
+    const [error, setError] = useState(initialCollection.error);
+    const [isLoading, setIsLoading] = useState(initialCollection.isLoading);
     useEffect(() => {
+        let latestResources = resources;
+        let latestError = error;
+        let latestIsLoading = error;
         if (input) {
             return client.subscribeCollectionChanges(
                 op, input, Number.POSITIVE_INFINITY,
                 (newState) => {
-                    const newListState = listifyCollection(
-                        newState.isComplete ? applyCollectionFilters(newState, filters) : newState,
-                    );
-                    if (!isEqual(state, newListState, 2)) {
-                        setState(newListState);
+                    const state = applyCollectionFilters(newState, filters);
+                    if (state.isComplete && !isEqual(latestResources, state.resources, 1)) {
+                        latestResources = state.resources;
+                        setResources(latestResources);
+                    }
+                    if (state.error !== latestError) {
+                        latestError = state.error;
+                        setError(latestError);
+                    }
+                    if (state.isLoading !== latestIsLoading) {
+                        latestIsLoading = state.isLoading;
+                        setIsLoading(latestIsLoading);
                     }
                 },
             );
         }
     }, [client, op, getFingerprint(input), getFingerprint(filters)]);
-    return state;
+    return [resources, error, isLoading];
 }
 
 export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, I extends Array<Cursor<S, U, O, F>> = Array<Cursor<S, U, O, F>>>(
@@ -189,14 +200,6 @@ function applyCollectionFilters<S, C extends Collection<S>>(collection: C, filte
             (resource) => hasProperties(resource, filters),
         ),
     };
-}
-
-function listifyCollection<S>(collection: Collection<S>): List<S> {
-    return [
-        collection.isComplete ? collection.resources : null,
-        collection.error,
-        collection.isLoading,
-    ];
 }
 
 function isValidationError(error: unknown) {
