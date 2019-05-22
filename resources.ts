@@ -1,7 +1,15 @@
+import { UnionToIntersection } from './react/client';
 import { Fields, FieldSerializer, Serializer } from './serializers';
-import { Key, pick } from './utils/objects';
+import { buildObject, Key, keys, pick, toPairs, transformValues } from './utils/objects';
 
-export class Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> {
+export interface Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> {
+    readonly name: string;
+    readonly identifyBy: PK[];
+    readonly versionBy: V;
+    expand<E>(fields: Fields<E>): Resource<T & E, PK, V>;
+}
+
+class FieldResource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> implements Resource<T, PK, V> {
     /**
      * @param name The identifying name of this type of resource.
      * @param fields Attribute names with their field definitions of the resource.
@@ -15,12 +23,12 @@ export class Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extend
         public readonly versionBy: V) {
         super(fields);
     }
-    public subset<K extends Exclude<Key<T> & Key<Fields<T>>, PK>>(attrs: K[]): Resource<Pick<T, K | PK>, PK, V extends K ? V : undefined> {
+    public subset<K extends Exclude<Key<T> & Key<Fields<T>>, PK>>(attrs: K[]): FieldResource<Pick<T, K | PK>, PK, V extends K ? V : undefined> {
         const versionBy = attrs.indexOf(this.versionBy as any) >= 0 ? this.versionBy : undefined;
-        return new Resource(this.name, pick(this.fields, [...attrs, ...this.identifyBy]) as Fields<Pick<T, K | PK>>, this.identifyBy, versionBy as V extends K ? V : undefined);
+        return new FieldResource(this.name, pick(this.fields, [...attrs, ...this.identifyBy]) as Fields<Pick<T, K | PK>>, this.identifyBy, versionBy as V extends K ? V : undefined);
     }
-    public expand<E>(fields: Fields<E>): Resource<T & E, PK, V> {
-        return new Resource(this.name, {...this.fields, ...fields} as Fields<T & E>, this.identifyBy, this.versionBy);
+    public expand<E>(fields: Fields<E>): FieldResource<T & E, PK, V> {
+        return new FieldResource(this.name, {...this.fields, ...fields} as Fields<T & E>, this.identifyBy, this.versionBy);
     }
 }
 
@@ -33,6 +41,75 @@ interface ResourceOptions<T, PK extends Key<T>, V extends Key<T> | undefined> {
     versionBy?: V;
 }
 
-export function resource<T, PK extends Key<T>, V extends Key<T> | undefined = undefined>(options: ResourceOptions<T, PK, V>): Resource<T, PK, V> {
-    return new Resource(options.name, options.fields, options.identifyBy, options.versionBy as V);
+export function resource<T, PK extends Key<T>, V extends Key<T> | undefined = undefined>(options: ResourceOptions<T, PK, V>): FieldResource<T, PK, V> {
+    return new FieldResource(options.name, options.fields, options.identifyBy, options.versionBy as V);
+}
+
+type FilteredKeys<T, Condition> = { [P in keyof T]: T[P] extends Condition ? P : never }[keyof T];
+
+interface RelationOptions<T, PK extends Key<T>, R extends Record<PK, any>, F> {
+    resource: Resource<T, PK, any>;
+    relation: R;
+    fields: F;
+}
+
+interface Relation<T, R, F> {
+    resource: Resource<T, any, any>;
+    fieldMapping: {[P in keyof R | keyof F]: Key<T>};
+    relationMapping: {[P in keyof R]: Key<T>};
+    filterMapping: {[P in keyof F]: Key<T>};
+}
+
+export type JunctionIdentity<R> = UnionToIntersection<R[number & keyof R]>;
+export type Junction<R, F> = JunctionIdentity<R> & UnionToIntersection<F[number & keyof F]>;
+
+export function relation<T, PK extends Key<T>, RK extends string, R extends Record<PK, RK>, FK extends Exclude<Key<T>, PK>, EK extends string, F extends {[P in FK]?: EK}>(
+    // tslint:disable-next-line:no-shadowed-variable
+    {resource, relation, fields}: RelationOptions<T, PK, R, F>,
+): Relation<T, {[P in R[keyof R]]: T[FilteredKeys<R, P> & keyof T] }, {[P in Exclude<F[keyof F], undefined>]: T[FilteredKeys<F, P> & keyof T] }> {
+    const filterMapping: Record<any, any> = buildObject(
+        toPairs(fields), ([srcKey, key]) => [key as string, srcKey as string],
+    );
+    const relationMapping: Record<any, any> = buildObject(
+        toPairs(relation), ([srcKey, key]) => [key as string, srcKey as string],
+    );
+    const fieldMapping = {...filterMapping, ...relationMapping};
+    return {resource, filterMapping, relationMapping, fieldMapping};
+}
+
+export class JunctionResource<T, R, F> extends FieldResource<Junction<R, F>, Key<JunctionIdentity<R>>, undefined> {
+    constructor(
+        public readonly relations: JunctionOptions<T, R, F>,
+        name: string,
+        fields: Fields<Junction<R, F>>,
+        identifyBy: Array<Key<JunctionIdentity<R>>>,
+    ) {
+        super(name, fields, identifyBy, undefined);
+    }
+}
+
+type JunctionOptions<T, R, F> = {[P in keyof T]: Relation<T[P], any, any>} & {[P in keyof R]: Relation<any, R[P], any>} & {[P in keyof F]: Relation<any, any, F[P]>};
+
+export function junction<T extends any[], R extends any[], F extends any[]>(
+    ...options: JunctionOptions<T, R, F>
+) {
+    const resultFields = {} as Fields<Junction<R, F>>;
+    const identifyBy: string[] = [];
+    for (const option of options) {
+        const fields = transformValues(option.fieldMapping, (key) => (
+            option.resource.fields[key]
+        ));
+        Object.assign(resultFields, fields);
+        keys(option.relationMapping).forEach((relationAttr) => {
+            if (identifyBy.indexOf(relationAttr) < 0) {
+                identifyBy.push(relationAttr);
+            }
+        });
+    }
+    return new JunctionResource<T, R, F>(
+        options,
+        options.map((rel) => rel.resource.name).join('+'),
+        resultFields,
+        identifyBy as Array<Key<JunctionIdentity<R>>>,
+    );
 }
