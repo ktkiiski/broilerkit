@@ -155,6 +155,7 @@ async function executeListings(apiService: ApiService, listings: Listing[], requ
             const {operation} = listing;
             const resourceName = operation.endpoint.resource.name;
             const [page, error] = await executeRenderRequest(apiService, url, request, operation.responseSerializer);
+            const { ordering, direction, since, ...filters } = listing.input;
             const state: CollectionState = {
                 resources: page ? page.results : [],
                 count: page ? page.results.length : 0,
@@ -162,8 +163,9 @@ async function executeListings(apiService: ApiService, listings: Listing[], requ
                 isLoaded: false, // Causes to reload once initialized
                 isComplete: !!page && !page.next,
                 error,
-                ordering: listing.input.ordering,
-                direction: listing.input.direction,
+                ordering,
+                direction,
+                filters,
             };
             cache[resourceName] = Object.assign(cache[resourceName] || {}, {[urlStr]: state});
         }),

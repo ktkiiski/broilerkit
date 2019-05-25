@@ -29,7 +29,7 @@ export interface Client {
     request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
     inquiryResource<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): ResourceState<S>;
     subscribeResourceChanges<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>, callback: (state: ResourceState<S>) => void): () => void;
-    inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState;
+    inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S>;
     subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>, minCount: number, listener: (collection: CollectionState) => void): () => void;
     registerOptimisticChange(change: ResourceChange<any, any>): () => void;
     commitChange(change: ResourceChange<any, any>): void;
@@ -43,6 +43,7 @@ export interface ResourceState<T = any> {
 }
 
 export interface CollectionState<S = any> {
+    filters: Partial<S>;
     resources: S[];
     error: any | null; // TODO: More specific error type!
     isLoading: boolean;
@@ -99,7 +100,7 @@ abstract class BaseClient implements Client {
         return unsubscribe;
     }
 
-    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState {
+    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S> {
         return this.initCollectionState(op, input)[1];
     }
 
@@ -283,7 +284,8 @@ abstract class BaseClient implements Client {
             }];
         }
     }
-    private initCollectionState<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): [Url | null, CollectionState] {
+    private initCollectionState<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): [Url | null, CollectionState<S>] {
+        const { ordering, direction, since, ...filters } = input;
         const resourceName = op.endpoint.resource.name;
         try {
             const url = op.route.compile(input);
@@ -295,8 +297,9 @@ abstract class BaseClient implements Client {
                 isLoaded: false,
                 error: null,
                 count: 0,
-                ordering: input.ordering,
-                direction: input.direction,
+                ordering,
+                direction,
+                filters: filters as any,
             }];
         } catch (error) {
             if (!isErrorResponse(error)) {
@@ -309,8 +312,9 @@ abstract class BaseClient implements Client {
                 isLoaded: false,
                 error,
                 count: 0,
-                ordering: input.ordering,
-                direction: input.direction,
+                ordering,
+                direction,
+                filters: filters as any,
             }];
         }
     }
@@ -380,6 +384,7 @@ abstract class BaseClient implements Client {
     }
 
     private async loadCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(url: Url, op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>) {
+        const { direction, ordering, since, ...filters } = input;
         const resourceName = op.endpoint.resource.name;
         const collectionsByUrl = this.collectionCache[resourceName] || {};
         const collectionUrl = url.toString();
@@ -398,8 +403,9 @@ abstract class BaseClient implements Client {
             count: loadedResources.length,
             isComplete: false,
             isLoading: true,
-            ordering: input.ordering,
-            direction: input.direction,
+            ordering,
+            direction,
+            filters: filters as any,
         };
         this.setCollectionState(resourceName, collectionUrl, state);
         try {
@@ -526,6 +532,11 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
             return { ...state, resources };
         }
     } else if (change.type === 'addition') {
+        // If the item does not match the filters, then do not alter the collection
+        if (!hasProperties(change.resource, state.filters)) {
+            // Resource does not belong to this collection
+            return state;
+        }
         // Ensure that the item won't show up from the original collection
         const resources = without(state.resources, isChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
@@ -541,11 +552,18 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         }
     } else if (change.type === 'update') {
         // Apply the update to the matching resource
-        const resources = imap(state.resources, (resource) => {
+        const resources = iMapFilter(state.resources, (resource) => {
             if (isChangedResource(resource)) {
-                return { ...resource, ...change.resource };
+                const updatedState = { ...resource, ...change.resource };
+                if (hasProperties(updatedState, state.filters)) {
+                    return updatedState;
+                }
+                // Resource no more matches the filters!
+                // Return nothing -> filter out.
+            } else {
+                // Unmodified resource
+                return resource;
             }
-            return resource;
         });
         if (state.resources !== resources) {
             return { ...state, resources };
@@ -564,15 +582,20 @@ function without<T>(array: T[], cb: (value: T) => boolean) {
     return array;
 }
 
-function imap<T>(array: T[], cb: (value: T) => T): T[] {
+function iMapFilter<T>(array: T[], cb: (value: T) => T | void): T[] {
     let counter = 0;
-    const result = array.map((value) => {
+    const result: T[] = [];
+    for (const value of array) {
         const newValue = cb(value);
-        if (newValue !== value) {
+        if (typeof newValue === 'undefined') {
             counter ++;
+        } else {
+            result.push(newValue);
+            if (newValue !== value) {
+                counter ++;
+            }
         }
-        return newValue;
-    });
+    }
     return counter > 0 ? result : array;
 }
 
