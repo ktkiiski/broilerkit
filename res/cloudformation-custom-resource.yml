@@ -133,7 +133,7 @@ Resources:
               }).end(JSON.stringify(responseBody));
             },
           };
-      Runtime: nodejs8.10
+      Runtime: nodejs10.x
       Timeout: !Ref LambdaTimeout
   CustomResourceLogGroup:
     Type: AWS::Logs::LogGroup

@@ -244,7 +244,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                             module: 'ES6',
                             // When not running in local development server with debugging we
                             // build for web so compile for ES5 for maximum compatibility
-                            target: devServer && debug ? 'ES2017' : 'ES5',
+                            target: devServer && debug ? 'ES2018' : 'ES5',
+                            downlevelIteration: !(devServer && debug),
                         },
                     },
                 },
@@ -432,7 +433,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             // Output files are placed to this folder
             path: buildDirPath,
             // The file name template for the entry chunks
-            filename: '[name].[hash].js',
+            filename: devServer ? '[name].js' : '[name].[hash].js',
             // The URL to the output directory resolved relative to the HTML page
             publicPath: `${assetsRoot}/`,
             // Export so for use in a Lambda function
@@ -472,8 +473,8 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                         compilerOptions: {
                             // Let the Webpack do the bundling with tree-shaking
                             module: 'ES6',
-                            // The target NodeJS environment supports ES2017, so override the target for it
-                            target: 'ES2017',
+                            // The target NodeJS environment supports ES2018, so override the target for it
+                            target: 'ES2018',
                         },
                     },
                 },

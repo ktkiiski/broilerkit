@@ -1,7 +1,6 @@
 {
     "compilerOptions": {
         "alwaysStrict": true,
-        "downlevelIteration": true,
         "forceConsistentCasingInFileNames": true,
         "importHelpers": true,
         "lib": [

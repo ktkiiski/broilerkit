@@ -9,9 +9,6 @@ import { escapeForShell } from './exec';
 // Allow executing TypeScript (.ts) files
 import * as tsNode from 'ts-node';
 
-// Polyfill Symbol.asyncIterator
-(Symbol as any).asyncIterator = (Symbol as any).asyncIterator || Symbol.for('Symbol.asyncIterator');
-
 const onError = (error: Error) => {
     process.exitCode = 1;
     // tslint:disable-next-line:no-console
