@@ -41,7 +41,6 @@
     "./cmd.js"
   ],
   "dependencies": {
-    "@types/del": "^4.0.0",
     "@types/jsonwebtoken": "^8.3.0",
     "@types/jszip": "3.1.6",
     "@types/mime": "^2.0.1",
@@ -58,7 +57,6 @@
     "chalk": "^2.4.2",
     "core-js": "^2.6.0",
     "css-loader": "^2.0.0",
-    "del": "^4.1.1",
     "eslint": "^5.10.0",
     "eslint-loader": "^2.0.0",
     "fast-sass-loader": "^1.4.7",

@@ -623,7 +623,7 @@ export class Broiler {
     }
 
     private clean(): Promise<string[]> {
-        return clean(this.buildDir);
+        return toArray(clean(this.buildDir));
     }
 
     private async generateTemplate(): Promise<any> {
