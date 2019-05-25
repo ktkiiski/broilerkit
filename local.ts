@@ -118,7 +118,8 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             console.log(stats.toString('minimal'));
 
             const statsJson = stats.toJson();
-            const {assetsByChunkName} = statsJson;
+            // NOTE: Webpack type definition is wrong there! Need to force re-cast!
+            const assetsByChunkName: Record<string, string[]> = statsJson.assetsByChunkName as any;
             // Get compiled server-site rendering view
             const ssrRequestHandlerFileName: string = assetsByChunkName.ssr && assetsByChunkName.ssr[0];
             const ssrRequestHandlerFilePath = path.resolve(
