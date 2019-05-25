@@ -3,4 +3,4 @@ import 'core-js-pure/features/symbol/async-iterator.js';
 /**
  * Export the native Symbol, if available, or otherwise the polyfill implementation.
  */
-export const Symbol: SymbolConstructor = require('core-js-pure/features/symbol').default;
+export const Symbol: SymbolConstructor = require('core-js-pure/features/symbol');
