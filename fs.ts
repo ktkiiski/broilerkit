@@ -73,6 +73,23 @@ export function readStream(stream: NodeJS.ReadableStream): Promise<any[]> {
     });
 }
 
+export function writeAsyncIterable(filename: string, iterable: AsyncIterable<string>): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+        const writable = fs.createWriteStream(filename);
+        try {
+            writable.on('error', (error) => reject(error));
+            writable.on('finish', () => resolve());
+            for await (const chunk of iterable) {
+                writable.write(chunk);
+            }
+        } catch (error) {
+            reject(error);
+        } finally {
+            writable.end();
+        }
+    });
+}
+
 export async function readJSONFile(filename: string, defaultValue?: any): Promise<any> {
     try {
         const json = await readFile(filename);

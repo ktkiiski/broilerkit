@@ -2,7 +2,7 @@
 import { CloudFormation, S3 } from 'aws-sdk';
 import { URL } from 'url';
 import { Stats as WebpackStats } from 'webpack';
-import { mergeAsync, toArray } from './async';
+import { mapAsync, mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonRoute53 } from './aws/route53';
@@ -11,7 +11,7 @@ import { formatS3KeyName } from './aws/utils';
 import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
-import { fileExists, readFile, readJSONFile, readLines, searchFiles, writeJSONFile } from './fs';
+import { ensureDirectoryExists, fileExists, readFile, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
 import { HttpMethod } from './http';
 import { AppStageConfig } from './index';
 import { getDbFilePath, serveBackEnd, serveFrontEnd } from './local';
@@ -328,13 +328,89 @@ export class Broiler {
             try {
                 const serializedItem = JSON.parse(line);
                 const item = model.serializer.deserialize(serializedItem);
-                model.write(item);
+                await model.write(item);
                 this.log(`Line ${index} ${green('✔︎')}`);
             } catch (err) {
                 this.log(`Line ${index} ${red('×')}`);
                 this.logError(err.stack);
             }
         }
+    }
+
+    public async backupDatabase(dirPath?: string | null) {
+        const basePath = dirPath || generateBackupDirPath(this.config.stageDir);
+        const models = await this.getTableModels();
+        this.log(`Backing up ${models.length} database tables…`);
+        await ensureDirectoryExists(basePath);
+        const results = await Promise.all(models.map(async ({model, name}) => {
+            this.log(`${dim('Backing up')} ${name}`);
+            try {
+                const filePath = path.resolve(basePath, `${name}.jsonl`);
+                const { serializer } = model;
+                await writeAsyncIterable(filePath, mapAsync(model.scan(), (rows) => {
+                    const jsonRows = rows.map((record) => {
+                        const serializedItem = serializer.serialize(record);
+                        return JSON.stringify(serializedItem) + '\n';
+                    });
+                    return jsonRows.join('');
+                }));
+                this.log(`${name} ${green('✔︎')}`);
+                return null;
+            } catch (error) {
+                this.log(`${name} ${red('×')}`);
+                return error;
+            }
+        }));
+        const error = results.find((error) => error != null);
+        if (error) {
+            throw error;
+        }
+        this.log(`Successfully backed up ${models.length} database tables to:\n${basePath}`);
+    }
+
+    public async restoreDatabase(dirPath: string, overwrite: boolean = false) {
+        const models = await this.getTableModels();
+        this.log(`Restoring ${models.length} database tables…`);
+        const results = await Promise.all(models.map(async ({model, name}) => {
+            this.log(`${dim('Restoring')} ${name}`);
+            try {
+                const filePath = path.resolve(dirPath, `${name}.jsonl`);
+                const { serializer } = model;
+                let index = 0;
+                for await (const line of readLines(filePath)) {
+                    index ++;
+                    try {
+                        const serializedItem = JSON.parse(line);
+                        const item = serializer.deserialize(serializedItem);
+                        if (overwrite) {
+                            await model.write(item);
+                        } else {
+                            const alreadyExists = new Error('Row already exists');
+                            try {
+                                await model.create(item, alreadyExists);
+                            } catch (error) {
+                                if (error !== alreadyExists) {
+                                    throw error;
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        this.log(`${name}: line ${index} ${red('×')}`);
+                        this.logError(err.stack);
+                    }
+                }
+                this.log(`${name} ${green('✔︎')}`);
+                return null;
+            } catch (error) {
+                this.log(`${name} ${red('×')}`);
+                return error;
+            }
+        }));
+        const error = results.find((error) => error != null);
+        if (error) {
+            throw error;
+        }
+        this.log(`Successfully restored ${results.length} database tables!`);
     }
 
     /**
@@ -1044,6 +1120,18 @@ export class Broiler {
         }
         return table.getModel(tableUri);
     }
+
+    private async getTableModels() {
+        const service = this.importServer();
+        if (!service) {
+            throw new Error(`No tables defined for the app.`);
+        }
+        const { dbTables } = service;
+        return Promise.all(Object.values(dbTables).map(async (table) => ({
+            name: table.name,
+            model: await this.getTableModel(table.name),
+        })));
+    }
 }
 
 function getHostedZone(domain: string) {
@@ -1108,4 +1196,9 @@ function formatStatus(status: string): string {
     } else {
         return cyan(status);
     }
+}
+
+function generateBackupDirPath(stageDir: string): string {
+    const timestamp = new Date().toISOString();
+    return path.resolve(stageDir, './backups', timestamp.replace(/[:.-]/g, ''));
 }
