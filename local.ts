@@ -30,7 +30,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     const serverPort = parseInt(assetsRootUrl.port, 10);
     const enableHttps = assetsProtocol === 'https:';
     const config = getFrontendWebpackConfig({
-        ...options, debug: true, devServer: true, analyze: false,
+        ...options, debug: options.debug, devServer: true, analyze: false,
     });
     const devServerOptions: WebpackDevServer.Configuration = {
         inline: true,

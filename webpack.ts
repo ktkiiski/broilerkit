@@ -62,7 +62,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         // Extract stylesheets to separate files in production
         new MiniCssExtractPlugin({
             disable: devServer,
-            filename: devServer && debug ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
+            filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
         }),
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
@@ -147,7 +147,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 // Your source logo
                 logo: path.resolve(sourceDirPath, iconFile),
                 // The prefix for all image files (might be a folder or a name)
-                prefix: devServer && debug ? `${assetsFilePrefix}icons/` : `${assetsFilePrefix}icons/[hash]/`,
+                prefix: devServer ? `${assetsFilePrefix}icons/` : `${assetsFilePrefix}icons/[hash]/`,
                 // Emit all stats of the generated icons
                 emitStats: true,
                 // Generate a cache file with control hashes and
@@ -170,11 +170,11 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                  */
                 icons: {
                     // Create Android homescreen icon. `boolean` or `{ offset, background, shadow }`
-                    android: !debug,
+                    android: !devServer && !debug,
                     // Create Apple touch icons. `boolean` or `{ offset, background }`
-                    appleIcon: !debug,
+                    appleIcon: !devServer && !debug,
                     // Create Apple startup images. `boolean` or `{ offset, background }`
-                    appleStartup: !debug,
+                    appleStartup: !devServer && !debug,
                     // Create Opera Coast icon with offset 25%. `boolean` or `{ offset, background }`
                     coast: false,
                     // Create regular favicons. `boolean`
@@ -182,7 +182,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                     // Create Firefox OS icons. `boolean` or `{ offset, background }`
                     firefox: false,
                     // Create Windows 8 tile icons. `boolean` or `{ background }`
-                    windows: !debug,
+                    windows: !devServer && !debug,
                     // Create Yandex browser icon. `boolean` or `{ background }`
                     yandex: false,
                 },
@@ -199,7 +199,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             // Output files are placed to this folder
             path: buildDirPath,
             // The file name template for the entry chunks
-            filename: devServer && debug ? `${assetsFilePrefix}[name].js` : `${assetsFilePrefix}[name].[chunkhash].js`,
+            filename: devServer ? `${assetsFilePrefix}[name].js` : `${assetsFilePrefix}[name].[chunkhash].js`,
             // The URL to the output directory resolved relative to the HTML page
             // This will be the origin, not including the path, because that will be used as a subdirectory for files.
             publicPath: `${assetsOrigin}/`,
@@ -242,8 +242,9 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                         compilerOptions: {
                             // Let the Webpack do the bundling with tree-shaking
                             module: 'ES6',
-                            // We build for web so compile for ES5 for maximum compatibility
-                            target: 'ES5',
+                            // When not running in local development server with debugging we
+                            // build for web so compile for ES5 for maximum compatibility
+                            target: devServer && debug ? 'ES2017' : 'ES5',
                         },
                     },
                 },
@@ -258,8 +259,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                             loader: 'css-loader',
                             options: {
                                 // For production, compress the CSS
-                                minimize: !debug,
-                                sourceMap: debug,
+                                minimize: !devServer && !debug,
+                                sourceMap: devServer || debug,
                                 url: true,
                                 import: true,
                             },
