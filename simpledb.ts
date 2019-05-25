@@ -275,9 +275,11 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
                         yield { items: [], isComplete: true };
                         return;
                     }
-                    const encodedValues = value.map((item) => field.encodeSortable(item));
+                    const escapedValues = value.map((item) => escapeQueryParam(
+                        field.encodeSortable(item),
+                    ));
                     filters.push(
-                        `${escapeQueryIdentifier(key)} in (${encodedValues.join(',')})`,
+                        `${escapeQueryIdentifier(key)} in (${escapedValues.join(',')})`,
                     );
                 } else {
                     const encodedValue = field.encodeSortable(value);
