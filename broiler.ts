@@ -20,7 +20,7 @@ import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { difference, differenceBy, order, sort } from './utils/arrays';
 import { flatMap, union } from './utils/arrays';
-import { buildObject, forEachKey, mapObject, toPairs, transformValues, values } from './utils/objects';
+import { buildObject, forEachKey, mapObject, toPairs, transformValues } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zip, zipAll } from './zip';
@@ -283,7 +283,7 @@ export class Broiler {
             this.log(`No database tables. Your app does not define a backend.`);
             return;
         }
-        const sortedTables = order(values(server.dbTables), 'name', 'asc');
+        const sortedTables = order(server.tables, 'name', 'asc');
         if (!sortedTables.length) {
             this.log(`Your app does not define any database tables.`);
             return;
@@ -862,7 +862,7 @@ export class Broiler {
     }
 
     private async generateDbTemplates(service: ApiService): Promise<any> {
-        const sortedTables = order(values(service.dbTables), 'name', 'asc');
+        const sortedTables = order(service.tables, 'name', 'asc');
         return sortedTables.map((table) => {
             const logicalId = `DatabaseTable${upperFirst(table.name)}`;
             const tableUriVar = `${logicalId}URI`;
@@ -1089,8 +1089,8 @@ export class Broiler {
     private importServer(): ApiService | null {
         const { serverFile, projectRootPath, sourceDir } = this.config;
         if (serverFile) {
-            const api = require(path.resolve(projectRootPath, sourceDir, serverFile));
-            return api.default;
+            const serverModule = require(path.resolve(projectRootPath, sourceDir, serverFile));
+            return new ApiService(serverModule.default);
         }
         return null;
     }
@@ -1126,8 +1126,8 @@ export class Broiler {
         if (!service) {
             throw new Error(`No tables defined for the app.`);
         }
-        const { dbTables } = service;
-        return Promise.all(Object.values(dbTables).map(async (table) => ({
+        const { tables } = service;
+        return Promise.all(tables.map(async (table) => ({
             name: table.name,
             model: await this.getTableModel(table.name),
         })));

@@ -1,6 +1,7 @@
 import { readFile } from '../fs';
 import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
 import { middleware } from '../middleware';
+import { ApiService } from '../server';
 import { renderView } from '../ssr';
 
 // When deployed, load the HTML base file immediately, which is expected to be located as a sibling index.html file
@@ -15,7 +16,7 @@ const executeLambda = lambdaMiddleware(middleware(async (req) => {
         req,
         pageHtml,
         view,
-        () => require('_service').default,
+        () => new ApiService(require('_service').default),
     );
 }));
 

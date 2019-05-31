@@ -3,7 +3,7 @@ import { middleware } from '../middleware';
 import { ApiService } from '../server';
 
 const serviceModule = require('_service');
-const service: ApiService = serviceModule.default;
+const service = new ApiService(serviceModule.default);
 
 const executeLambda = lambdaMiddleware(middleware(
     (req) => service.execute(req),

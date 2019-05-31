@@ -6,7 +6,7 @@ import { readStream } from './fs';
 import { HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
 import { middleware, requestMiddleware } from './middleware';
 import { ApiService } from './server';
-import { forEachKey, transformValues } from './utils/objects';
+import { transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
@@ -140,10 +140,11 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
                 // Ensure that module will be re-loaded
                 delete require.cache[apiRequestHandlerFilePath];
                 const serviceModule = require(apiRequestHandlerFilePath);
-                apiHandler = serviceModule.default;
-                if (!apiHandler || typeof apiHandler.execute !== 'function') {
+                try {
+                    apiHandler = new ApiService(serviceModule.default);
+                } catch {
                     // tslint:disable-next-line:no-console
-                    console.error(red(`The module ${options.serverFile} must export an APIService instance as a default export!`));
+                    console.error(red(`The module ${options.serverFile} must export API endpoint implementations as a default export!`));
                     continue;
                 }
                 // If user registry is enabled then add APIs for local sign in functionality
@@ -234,10 +235,10 @@ function getRequestEnvironment(directoryPath: string, service?: ApiService): {[k
         DatabaseTableUsersURI: `file://${getDbFilePath(directoryPath, 'Users')}`,
     };
     if (service) {
-        forEachKey(service.dbTables, (_, table) => {
+        for (const table of service.tables)  {
             const filePath = `file://${getDbFilePath(directoryPath, table.name)}`;
             environment[`DatabaseTable${upperFirst(table.name)}URI`] = filePath;
-        });
+        }
     }
     return environment;
 }

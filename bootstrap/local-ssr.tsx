@@ -13,7 +13,7 @@ export default async (req: HttpRequest, pageHtml: string) => {
         req, pageHtml,
         () => (<LocalAuthRouter component={view} />),
         () => {
-            const apiService: ApiService = require('_service').default;
+            const apiService = new ApiService(require('_service').default);
             return apiService.extend(authLocalServer);
         },
     );

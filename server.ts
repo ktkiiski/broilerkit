@@ -9,7 +9,7 @@ import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Serializer } from './serializers';
 import { Url } from './url';
-import { buildObject, hasOwnProperty, transformValues, values } from './utils/objects';
+import { buildObject, hasOwnProperty, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
@@ -28,7 +28,7 @@ type OperationImplementors<I, O, D, R> = {
 class ImplementedOperation {
     constructor(
         public readonly operation: Operation<any, any, AuthenticationType>,
-        private readonly tables: Tables<any>,
+        public readonly tables: Tables<any>,
         private readonly handler: ResponseHandler<any, any, any, any>,
     ) {}
 
@@ -125,10 +125,19 @@ export function implementAll<I, O, R, D>(
 
 export class ApiService {
 
+    public readonly tables: Array<Table<Model<any, any, any, any, any>>>;
+
     constructor(
         public readonly implementations: Record<string, ImplementedOperation>,
-        public readonly dbTables: Tables<{[name: string]: Model<any, any, any, any, any>}>,
-    ) {}
+    ) {
+        const tablesByName: Record<string, Table<Model<any, any, any, any, any>>> = {};
+        Object.values(implementations).forEach((implementation) => {
+            Object.values(implementation.tables).forEach((table) => {
+                tablesByName[table.name] = table;
+            });
+        });
+        this.tables = Object.values(tablesByName);
+    }
 
     public execute = async (request: HttpRequest, cache?: {[uri: string]: any}) => {
         let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
@@ -180,17 +189,12 @@ export class ApiService {
         return errorResponse;
     }
 
-    public extend(implementations: Record<string, ImplementedOperation>, dbTables?: Tables<{[name: string]: Model<any, any, any, any, any>}>) {
-        return new ApiService(
-            {...this.implementations, ...implementations},
-            {...this.dbTables, ...dbTables},
-        );
+    public extend(implementations: Record<string, ImplementedOperation>) {
+        return new ApiService({...this.implementations, ...implementations});
     }
 
     public getTable(tableName: string): Table<Model<any, any, any, any, any>> | undefined {
-        const tableMapping = {...this.dbTables, users};
-        const tables = values(tableMapping);
-        return tables.find((table) => table.name === tableName);
+        return this.tables.find((table) => table.name === tableName);
     }
 
     private *iterateForPath(path: string) {
