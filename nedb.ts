@@ -187,9 +187,9 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
             this.db.findOne(query, promiseCallback(resolve, reject));
         });
     }
-    private findItems(query: {[key: string]: any}, ordering: string, direction: 'asc' | 'desc', maxCount: number) {
+    private findItems(query: {[key: string]: unknown}, ordering: string, direction: 'asc' | 'desc', maxCount: number) {
         return new Promise<Serialization[]>((resolve, reject) => {
-            this.db.find(query)
+            this.db.find<Serialization>(query)
                 .sort({[ordering]: direction === 'asc' ? 1 : -1})
                 .limit(maxCount)
                 .exec(promiseCallback(resolve, reject))

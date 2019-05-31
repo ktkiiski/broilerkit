@@ -7,7 +7,6 @@ import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
 import { mapCached } from './utils/arrays';
-import { Omit } from './utils/objects';
 
 export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;

@@ -1,5 +1,6 @@
 import { filterAsync, mapAsync, mergeSortedAsync, toAsync } from './async';
 import { shareIterator } from './iteration';
+import { hasOwnProperty } from './utils/objects';
 
 export interface ResourceAddition<T, K extends keyof T> {
     type: 'addition';
@@ -55,7 +56,7 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
 
 function matchesIdentity<T>(identity: T, item: T) {
     for (const key in identity) {
-        if (identity.hasOwnProperty(key)) {
+        if (hasOwnProperty(identity, key)) {
             const value = identity[key];
             if (value !== item[key]) {
                 return false;

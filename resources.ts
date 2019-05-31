@@ -67,10 +67,10 @@ export function relation<T, PK extends Key<T>, RK extends string, R extends Reco
     // tslint:disable-next-line:no-shadowed-variable
     {resource, relation, fields}: RelationOptions<T, PK, R, F>,
 ): Relation<T, {[P in R[keyof R]]: T[FilteredKeys<R, P> & keyof T] }, {[P in Exclude<F[keyof F], undefined>]: T[FilteredKeys<F, P> & keyof T] }> {
-    const filterMapping: Record<any, any> = buildObject(
+    const filterMapping: any = buildObject(
         toPairs(fields), ([srcKey, key]) => [key as string, srcKey as string],
     );
-    const relationMapping: Record<any, any> = buildObject(
+    const relationMapping: any = buildObject(
         toPairs(relation), ([srcKey, key]) => [key as string, srcKey as string],
     );
     const fieldMapping = {...filterMapping, ...relationMapping};

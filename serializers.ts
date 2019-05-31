@@ -2,7 +2,7 @@ import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
 import { isErrorResponse } from './http';
 import { difference } from './utils/arrays';
-import { forEachKey, Key, keys, omit, Omit, pick, Require } from './utils/objects';
+import { forEachKey, Key, keys, omit, pick, Require } from './utils/objects';
 
 export type Fields<T> = {
     [P in keyof T]: Field<T[P], any>;

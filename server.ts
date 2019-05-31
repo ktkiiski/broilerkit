@@ -1,6 +1,6 @@
 // tslint:disable:member-ordering
 import { Handler, ResponseHandler } from './api';
-import { CognitoModel, users } from './cognito';
+import { CognitoModel } from './cognito';
 import { Model, Table } from './db';
 import { BadRequest, HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, parseHeaderDirectives, Unauthorized, UnsupportedMediaType } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
@@ -216,18 +216,15 @@ export class ApiService {
 }
 
 function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]: any} = {}): Models<M> {
-    return transformValues(
-        {...db, users},
-        (table) => {
-            const environmentKey = `DatabaseTable${upperFirst(table.name)}URI`;
-            const tableUri = request.environment[environmentKey] as string | undefined;
-            if (!tableUri) {
-                throw new Error(`Environment does not define URI for the table "${table.name}"`);
-            }
-            const model = cache[tableUri];
-            return model || (cache[tableUri] = table.getModel(tableUri));
-        },
-    ) as Models<M>;
+    return transformValues(db, (table) => {
+        const environmentKey = `DatabaseTable${upperFirst(table.name)}URI`;
+        const tableUri = request.environment[environmentKey] as string | undefined;
+        if (!tableUri) {
+            throw new Error(`Environment does not define URI for the table "${table.name}"`);
+        }
+        const model = cache[tableUri];
+        return model || (cache[tableUri] = table.getModel(tableUri));
+    }) as Models<M>;
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {

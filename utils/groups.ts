@@ -5,7 +5,7 @@ export function groupBy<K extends string, T>(values: T[], selector: (item: T) =>
         const acc = results[key] = results[key] || [] as T[];
         acc.push(value);
     }
-    return results;
+    return results as {[key in K]: T[]};
 }
 
 export function groupByAsMap<K extends string, T>(values: T[], selector: (item: T) => K): Map<K, T[]> {
