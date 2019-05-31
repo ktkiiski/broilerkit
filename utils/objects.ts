@@ -106,16 +106,6 @@ export function keys<T>(obj: T): Array<Key<T>> {
     return keyArray;
 }
 
-/**
- * Returns the values of each of the string key of the given object as an array.
- * @param obj Object whose values are returned
- */
-export function values<T>(obj: T): Array<T[Key<T>]> {
-    const valueArray: Array<T[Key<T>]> = [];
-    forEachKey(obj, (_, value) => valueArray.push(value));
-    return valueArray;
-}
-
 export type KeyValuePair<T> = {[P in Key<T>]: [P, T[P]]}[Key<T>];
 
 /**
