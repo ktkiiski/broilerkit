@@ -140,9 +140,8 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
                 // Ensure that module will be re-loaded
                 delete require.cache[apiRequestHandlerFilePath];
                 const serviceModule = require(apiRequestHandlerFilePath);
-                try {
-                    apiHandler = new ApiService(serviceModule.default);
-                } catch {
+                apiHandler = serviceModule.default;
+                if (!apiHandler || typeof apiHandler.execute !== 'function') {
                     // tslint:disable-next-line:no-console
                     console.error(red(`The module ${options.serverFile} must export API endpoint implementations as a default export!`));
                     continue;

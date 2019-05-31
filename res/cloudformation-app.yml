@@ -1,16 +1,16 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Stack for the deployed application
 Parameters:
-  # Root URL for the website HTML files
+  # Root URL for the website
   SiteRoot:
     Type: String
-  # Origin for the website HTML files
+  # Origin for the website
   SiteOrigin:
     Type: String
-  # Domain for the website HTML files
+  # Domain for the website
   SiteDomainName:
     Type: String
-  # Hosted zone name of the domain for the website HTML files
+  # Hosted zone name of the domain for the website
   SiteHostedZoneName:
     Type: String
   # The key of the ZIP file in the deployment S3 bucket
