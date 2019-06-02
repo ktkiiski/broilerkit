@@ -65,7 +65,7 @@ export class Broiler {
     constructor(config: AppStageConfig) {
         const {name, stage, projectRootPath, region} = config;
         const stackName = this.stackName = `${name}-${stage}`;
-        const stageDir = path.join(projectRootPath, '.broiler', stage || 'local');
+        const stageDir = path.join(projectRootPath, '.broiler', stage);
         const buildDir = this.buildDir = path.join(stageDir, 'build');
 
         this.cloudFormation = new AmazonCloudFormation(region, stackName);
@@ -288,8 +288,8 @@ export class Broiler {
             this.log(`Your app does not define any database tables.`);
             return;
         }
-        const { stage, stageDir } = this.config;
-        if (stage === 'local') {
+        const { stageDir, region } = this.config;
+        if (region === 'local') {
             // Print local tables
             for (const table of sortedTables) {
                 const tableFilePath = getDbFilePath(stageDir, table.name);
@@ -1096,7 +1096,7 @@ export class Broiler {
     }
 
     private async getTableModel(tableName: string) {
-        const { stage, stageDir } = this.config;
+        const { region, stageDir } = this.config;
         const service = this.importServer();
         if (!service) {
             throw new Error(`No tables defined for the app.`);
@@ -1106,7 +1106,7 @@ export class Broiler {
             throw new Error(`Table ${tableName} not found.`);
         }
         let tableUri: string;
-        if (stage === 'local') {
+        if (region === 'local') {
             const tableFilePath = getDbFilePath(stageDir, tableName);
             tableUri = `file://${tableFilePath}`;
         } else {

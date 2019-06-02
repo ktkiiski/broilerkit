@@ -1,6 +1,13 @@
 import { RegionCode } from './regions';
 
+export type DeploymentRegionCode = RegionCode | 'local';
+
 export interface StageConfig {
+    /**
+     * To which Amazon region the web app will be hosted.
+     * Use region `local` when developing locally.
+     */
+    region: DeploymentRegionCode;
     /**
      * The base URL where all the indefinitely-cached static assets are hosted.
      * This must contain the protocol, hostname and optionally any port. The root URL
@@ -73,10 +80,6 @@ export interface AppConfig {
      * The component should be the default export of this file.
      */
     siteFile: string;
-    /**
-     * To which Amazon region the web app will be hosted.
-     */
-    region: RegionCode;
     /**
      * Configuration for each different stage that is used by this app.
      */
