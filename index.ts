@@ -1,3 +1,5 @@
+import { RegionCode } from './regions';
+
 export interface StageConfig {
     /**
      * The base URL where all the indefinitely-cached static assets are hosted.
@@ -73,9 +75,8 @@ export interface AppConfig {
     siteFile: string;
     /**
      * To which Amazon region the web app will be hosted.
-     * Currently, only 'us-east-1' is supported!
      */
-    region: 'us-east-1';
+    region: RegionCode;
     /**
      * Configuration for each different stage that is used by this app.
      */
