@@ -8,7 +8,7 @@ import { parseFormData } from './multipart';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Serializer } from './serializers';
-import { Url } from './url';
+import { Url, UrlPattern } from './url';
 import { buildObject, hasOwnProperty, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
@@ -25,15 +25,54 @@ type Implementables<I, O, R> = (
 type OperationImplementors<I, O, D, R> = {
     [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], D, R[P]>;
 };
-class ImplementedOperation {
+
+interface Controller {
+    /**
+     * All HTTP methods accepted by this endpoint.
+     */
+    methods: HttpMethod[];
+    /**
+     * URL path pattern that matches this endpoint.
+     */
+    pattern: UrlPattern;
+    /**
+     * Whether or not this controller requires authenticated user.
+     */
+    requiresAuth: boolean;
+    /**
+     * Array of database tables required by this controller.
+     */
+    tables: Array<Table<any>>;
+    /**
+     * Respond to the given request with either an API response
+     * or a raw HTTP response. The handler should THROW (not return)
+     * - 501 HTTP error to indicate that the URL is not for this controller
+     * - 405 HTTP error if the request method was one of the `methods`
+     */
+    execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse | HttpResponse>;
+}
+
+class ImplementedOperation implements Controller {
+
+    public readonly methods: HttpMethod[];
+    public readonly pattern: UrlPattern;
+    public readonly tables: Array<Table<any>>;
+    public readonly requiresAuth: boolean;
+
     constructor(
         public readonly operation: Operation<any, any, AuthenticationType>,
-        public readonly tables: Tables<any>,
+        public readonly tablesByName: Tables<any>,
         private readonly handler: ResponseHandler<any, any, any, any>,
-    ) {}
+    ) {
+        const {methods, route, authType} = operation;
+        this.methods = methods;
+        this.pattern = route.pattern;
+        this.tables = Object.values(tablesByName);
+        this.requiresAuth = authType !== 'none';
+    }
 
     public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse> {
-        const {tables, operation} = this;
+        const {tablesByName, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const input = parseRequest(operation, request);
         // Check the authentication
@@ -56,7 +95,7 @@ class ImplementedOperation {
             }
         }
         // Handle the request
-        const models = getModels(tables, request, cache);
+        const models = getModels(tablesByName, request, cache);
         const {data, ...response} = await this.handler(input, models, request);
         if (!responseSerializer) {
             // No response data should be available
@@ -72,7 +111,7 @@ export function implement<I, O, R, D>(
     operation: Operation<I, O, R>,
     db: Tables<D>,
     implementation: Handler<I, O, D, R>,
-): ImplementedOperation {
+): Controller {
     switch (operation.type) {
         case 'list':
         return new ImplementedOperation(
@@ -115,10 +154,10 @@ export function implementAll<I, O, R, D>(
 ) {
     function using(
         implementors: OperationImplementors<I, O, D, R>,
-    ): Record<keyof I & keyof O & keyof R, ImplementedOperation> {
+    ): Record<keyof I & keyof O & keyof R, Controller> {
         return transformValues(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => (
             implement(operation, db, implementors[key as keyof I & keyof O & keyof R])
-        )) as Record<keyof I & keyof O & keyof R, ImplementedOperation>;
+        )) as Record<keyof I & keyof O & keyof R, Controller>;
     }
     return {using};
 }
@@ -128,10 +167,10 @@ export class ApiService {
     public readonly tables: Array<Table<Model<any, any, any, any, any>>>;
 
     constructor(
-        public readonly implementations: Record<string, ImplementedOperation>,
+        public readonly controllers: Record<string, Controller>,
     ) {
         const tablesByName: Record<string, Table<Model<any, any, any, any, any>>> = {};
-        Object.values(implementations).forEach((implementation) => {
+        Object.values(controllers).forEach((implementation) => {
             Object.values(implementation.tables).forEach((table) => {
                 tablesByName[table.name] = table;
             });
@@ -142,13 +181,13 @@ export class ApiService {
     public execute = async (request: HttpRequest, cache?: {[uri: string]: any}) => {
         let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
-        const implementations = Array.from(this.iterateForPath(request.path));
+        const controllers = Array.from(this.iterateForPath(request.path));
         // Respond to an OPTIONS request
         if (request.method === 'OPTIONS') {
             // Get the combined methods of all matching operations
             const methods: HttpMethod[] = [];
-            for (const implementation of implementations) {
-                methods.push(...implementation.operation.methods);
+            for (const controller of controllers) {
+                methods.push(...controller.methods);
             }
             // If no methods found, then this is a unknown URL
             // This should not be possible with API gateway, but possible with the local server
@@ -163,7 +202,7 @@ export class ApiService {
             } as HttpResponse;
         }
         // Otherwise find the first implementation that processes the response
-        for (const implementation of implementations) {
+        for (const implementation of controllers) {
             try {
                 // Return response directly returned by the implementation
                 return await implementation.execute(request, cache);
@@ -189,8 +228,8 @@ export class ApiService {
         return errorResponse;
     }
 
-    public extend(implementations: Record<string, ImplementedOperation>) {
-        return new ApiService({...this.implementations, ...implementations});
+    public extend(controllers: Record<string, Controller>) {
+        return new ApiService({...this.controllers, ...controllers});
     }
 
     public getTable(tableName: string): Table<Model<any, any, any, any, any>> | undefined {
@@ -199,15 +238,14 @@ export class ApiService {
 
     private *iterateForPath(path: string) {
         const url = new Url(path);
-        const {implementations} = this;
-        for (const endpointName in implementations) {
-            if (hasOwnProperty(implementations, endpointName)) {
-                const implementation = implementations[endpointName];
-                if (implementation) {
-                    const {route} = implementation.operation;
+        const {controllers: controllers} = this;
+        for (const endpointName in controllers) {
+            if (hasOwnProperty(controllers, endpointName)) {
+                const controller = controllers[endpointName];
+                if (controller) {
                     // NOTE: We just make a simple match against the path!
-                    if (route.pattern.match(url)) {
-                        yield implementation;
+                    if (controller.pattern.match(url)) {
+                        yield controller;
                     }
                 }
             }

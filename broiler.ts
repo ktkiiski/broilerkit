@@ -770,12 +770,15 @@ export class Broiler {
     }
 
     private async generateApiTemplate(server: ApiService): Promise<any> {
-        const operations = sort(
-            mapObject(server && server.implementations || {}, ({operation}, name) => ({
-                operation, name,
-                path: operation.route.pattern.pattern.replace(/^\/|\/$/g, '').split('/'),
+        const controllers = sort(
+            mapObject(server && server.controllers || {}, (controller, name) => ({
+                name,
+                methods: controller.methods,
+                pattern: controller.pattern,
+                requiresAuth: controller.requiresAuth,
+                path: controller.pattern.pattern.replace(/^\/|\/$/g, '').split('/'),
             })),
-            ({operation}) => operation.route.pattern.pattern,
+            ({pattern}) => pattern.pattern,
         );
         const apiHash = await this.getApiHash();
         if (!apiHash) {
@@ -785,12 +788,12 @@ export class Broiler {
         // Collect all the template promises to an array
         const templatePromises: Array<Promise<any>> = [];
         // Build templates for API Lambda functions
-        templatePromises.push(...operations.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
+        templatePromises.push(...controllers.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
             ApiFunctionName: getApiLambdaFunctionLogicalId(name),
             apiFunctionName: name,
         })));
         // Build templates for every API Gateway Resource
-        const nestedApiResources = flatMap(operations, ({path}) => path.map((_, index) => path.slice(0, index + 1)));
+        const nestedApiResources = flatMap(controllers, ({path}) => path.map((_, index) => path.slice(0, index + 1)));
         templatePromises.push(Promise.resolve({
             Resources: nestedApiResources.map((path) => ({
                 [getApiResourceLogicalId(path)]: {
@@ -809,14 +812,14 @@ export class Broiler {
         }));
         // Build templates for every HTTP method, for every operation
         const apiMethods = flatMap(
-            operations, ({operation, path, name}) => operation.methods.map(
-                (method) => ({method, path, name, auth: operation.authType}),
+            controllers, ({methods, path, name, requiresAuth}) => methods.map(
+                (method) => ({method, path, name, requiresAuth}),
             ),
         );
-        templatePromises.push(...apiMethods.filter(({auth, name, path, method}) => {
+        templatePromises.push(...apiMethods.filter(({requiresAuth, name, path, method}) => {
             // Either ignore or fail if the user registry is not enabled but the operation requires one
             const config = this.config;
-            if (config.auth || auth === 'none') {
+            if (config.auth || !requiresAuth) {
                 return true;
             } else if (config.debug) {
                 this.log(yellow(`${bold('WARNING!')} The operation ${name} (${method} /${path.join('/')}) is not deployed because no user registry for authentication is configured!`));
@@ -824,23 +827,20 @@ export class Broiler {
             }
             throw new Error(`The operation ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
         }).map(
-            ({method, path, name, auth}) => readTemplates(['cloudformation-api-method.yml'], {
+            ({method, path, name, requiresAuth}) => readTemplates(['cloudformation-api-method.yml'], {
                 ApiMethodName: getApiMethodLogicalId(path, method),
                 ApiFunctionName: getApiLambdaFunctionLogicalId(name),
                 ApiResourceName: getApiResourceLogicalId(path),
                 ApiDeploymentId: apiHash.toUpperCase(),
                 ApiMethod: method,
-                AuthorizationType: auth === 'none' ? '"NONE"' : '"COGNITO_USER_POOLS"',
-                AuthorizerId: JSON.stringify(auth === 'none' ? '' : {Ref: 'ApiGatewayUserPoolAuthorizer'}),
+                AuthorizationType: requiresAuth ? '"COGNITO_USER_POOLS"' : '"NONE"',
+                AuthorizerId: JSON.stringify(requiresAuth ? {Ref: 'ApiGatewayUserPoolAuthorizer'} : ''),
             })),
         );
         // Enable CORS for every operation URL
         const methodsByPath = transformValues(
-            groupBy(
-                operations.map(({path, operation: {methods}}) => ({path, methods})),
-                ({path}) => formatPathForLogicalId(path),
-            ),
-            (operations) => operations.reduce((result, {path, methods}) => ({
+            groupBy(controllers, ({path}) => formatPathForLogicalId(path)),
+            (controllers) => controllers.reduce((result, {path, methods}) => ({
                 ...result, path, methods: union(result.methods, methods),
             })),
         );
