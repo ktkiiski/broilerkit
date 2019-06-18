@@ -6,7 +6,7 @@ import { compare, isEqual } from './compare';
  * @param items Items to map
  * @param callback Function that should expand each item in the array
  */
-export function flatMap<T, R>(items: T[], callback: (item: T) => R[]): R[] {
+export function flatMap<T, R>(items: T[], callback: (item: T) => R[] | Iterable<R>): R[] {
     const results: R[] = [];
     for (const item of items) {
         results.push(...callback(item));

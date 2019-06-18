@@ -117,7 +117,7 @@ const finalizerMiddleware = responseMiddleware(async (response: HttpResponse, re
         body,
         headers: {
             // Add the CORS headers
-            'Access-Control-Allow-Origin': request.siteOrigin,
+            'Access-Control-Allow-Origin': request.serverOrigin,
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With',
             'Access-Control-Allow-Credentials': 'true',
             // Calculate the length for the response body

@@ -12,6 +12,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const HtmlWebpackHarddiskPlugin = require('html-webpack-harddisk-plugin');
 
 export interface WebpackConfigOptions extends BroilerConfig {
     devServer: boolean;
@@ -30,7 +31,7 @@ export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
  */
 export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
     const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, title, siteFile, projectRootPath, analyze} = config;
-    const {assetsRoot, siteRoot} = config;
+    const {assetsRoot, serverRoot} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const stageDirPath = path.resolve(projectRootPath, stageDir);
@@ -74,6 +75,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             inject: 'body',
             // No cache-busting needed, because hash is included in file names
             hash: false,
+            // Force-write the file to file system to make it available for SSR
+            alwaysWriteToDisk: devServer,
         }),
         /**
          * Provide polyfills with ProvidePlugin.
@@ -119,7 +122,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 filename: '_oauth2_signin_complete.html',
                 template: path.resolve(__dirname, `./res/_oauth2_signin_complete.ejs`),
                 templateParameters: {
-                    siteRootJson: encodeSafeJSON(siteRoot),
+                    siteRootJson: encodeSafeJSON(serverRoot),
                 },
                 chunks: [],
                 inject: false,
@@ -129,7 +132,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 filename: '_oauth2_signout_complete.html',
                 template: path.resolve(__dirname, `./res/_oauth2_signout_complete.ejs`),
                 templateParameters: {
-                    siteRootJson: encodeSafeJSON(siteRoot),
+                    siteRootJson: encodeSafeJSON(serverRoot),
                 },
                 chunks: [],
                 inject: false,
@@ -189,6 +192,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             }),
         );
     }
+    // Add support for `alwaysWriteToDisk` option
+    plugins.push(new HtmlWebpackHarddiskPlugin());
     return {
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
@@ -392,7 +397,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     // Entry points to be bundled
     const entries: Record<string, string> = {
         // Entry point for rendering the views on server-side
-        ssr: require.resolve(devServer ? './bootstrap/local-ssr' : './bootstrap/ssr'),
+        server: require.resolve(devServer ? './bootstrap/local-server' : './bootstrap/server'),
     };
     // Aliases that entry points will `require`
     const aliases: Record<string, string> = {
@@ -405,7 +410,6 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     ];
     // If an API is defined, compile it as well
     if (serverFile) {
-        entries.api = require.resolve('./bootstrap/api');
         aliases._service = path.resolve(projectRootPath, sourceDir, serverFile);
     } else {
         // API not available. Let the bundle to compile without it, but

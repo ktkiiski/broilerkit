@@ -1,3 +1,7 @@
+/**
+ * IMPORTANT: Do not import this file directly!
+ * This is used as an endpoint file for a webpack bundle!
+ */
 import * as React from 'react';
 import { hydrate } from 'react-dom';
 import { BrowserRouter } from 'react-router-dom';

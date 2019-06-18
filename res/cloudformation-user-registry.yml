@@ -167,20 +167,13 @@ Resources:
       IdentityValidationExpression:
         Fn::Sub: "^${UserPoolClientSecret.ClientId}$"
       RestApiId:
-        Ref: ApiGatewayRestApi
+        Ref: ServerApiGatewayRestApi
       ProviderARNs:
         - Fn::GetAtt: UserPool.Arn
 
-  # Make the user pool ARN available for Lambda functions as a stage variable
-  ApiGatewayStage:
-    Properties:
-      Variables:
-        DatabaseTableUsersURI:
-          Fn::GetAtt: UserPool.Arn
-
   # Make the user pool client information available for server-side rendering Lambda function
   # as API Gateway stage variables
-  SiteGatewayStage:
+  ServerApiGatewayStage:
     Properties:
       Variables:
         DatabaseTableUsersURI:

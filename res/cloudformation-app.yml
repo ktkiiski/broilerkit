@@ -2,19 +2,19 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Stack for the deployed application
 Parameters:
   # Root URL for the website
-  SiteRoot:
+  ServerRoot:
     Type: String
   # Origin for the website
-  SiteOrigin:
+  ServerOrigin:
     Type: String
   # Domain for the website
-  SiteDomainName:
+  ServerDomainName:
     Type: String
   # Hosted zone name of the domain for the website
-  SiteHostedZoneName:
+  ServerHostedZoneName:
     Type: String
   # The key of the ZIP file in the deployment S3 bucket
-  SiteRequestLambdaFunctionS3Key:
+  ServerRequestLambdaFunctionS3Key:
     Type: String
   # Root URL for the static asset files
   AssetsRoot:
@@ -91,7 +91,7 @@ Conditions:
         # ...from the dot-separated list of domain name items
         - Fn::Split:
           - "."
-          - Ref: SiteDomainName
+          - Ref: ServerDomainName
 
 Resources:
   # S3 bucket for storing the static asset files
@@ -115,11 +115,11 @@ Resources:
       # it's name must match the corresponding domain, in this
       # case the Apex domain
       BucketName:
-        Ref: SiteHostedZoneName
+        Ref: ServerHostedZoneName
       WebsiteConfiguration:
         RedirectAllRequestsTo:
           HostName:
-            Ref: SiteDomainName
+            Ref: ServerDomainName
           Protocol: https
   # Make static asset files public for everyone
   AssetsS3BucketPolicy:
@@ -192,11 +192,11 @@ Resources:
     Condition: SiteIsWwwDomain
     Properties:
       HostedZoneName:
-        Fn::Sub: "${SiteHostedZoneName}."
+        Fn::Sub: "${ServerHostedZoneName}."
       Comment: "Domain for the redirection website hosted as a S3 bucket"
       Type: A
       Name:
-        Fn::Sub: "${SiteHostedZoneName}."
+        Fn::Sub: "${ServerHostedZoneName}."
       AliasTarget:
         HostedZoneId:
           Fn::FindInMap:
@@ -214,13 +214,13 @@ Resources:
     Type: "AWS::CertificateManager::Certificate"
     Properties:
       DomainName:
-        Ref: SiteDomainName
+        Ref: ServerDomainName
       DomainValidationOptions:
         # Send validation emails using the top-level domains
         - DomainName:
-            Ref: SiteDomainName
+            Ref: ServerDomainName
           ValidationDomain:
-            Ref: SiteHostedZoneName
+            Ref: ServerHostedZoneName
         - DomainName:
             Ref: AssetsDomainName
           ValidationDomain:
@@ -326,43 +326,34 @@ Resources:
     - ApiGatewayCloudWatchLoggingRole
 
   # API gateway for server-side rendering
-  SiteGatewayRestApi:
+  ServerApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name:
-        Fn::Sub: "${AWS::StackName}-ssr"
+        Fn::Sub: "${AWS::StackName}-server"
       # Enable GZIP compression of the responses
       MinimumCompressionSize: 128
 
   # Deployment of the API gateway
-  SiteGatewayDeployment<SiteDeploymentId>:
+  ServerApiGatewayDeployment<ServerDeploymentId>:
     Type: AWS::ApiGateway::Deployment
     Properties:
       RestApiId:
-        Ref: SiteGatewayRestApi
-    DependsOn:
-    - SiteProxyPathGETApiGatewayMethod
-    - SiteRootGETApiGatewayMethod
+        Ref: ServerApiGatewayRestApi
 
   # Stage for the API gateway
-  SiteGatewayStage:
+  ServerApiGatewayStage:
     Type: AWS::ApiGateway::Stage
     Properties:
       DeploymentId:
-        Ref: SiteGatewayDeployment<SiteDeploymentId>
+        Ref: ServerApiGatewayDeployment<ServerDeploymentId>
       Variables:
-        # Make the API root URL available as a stage variable
-        ApiRoot:
-          Ref: ApiRoot
-        # Make the API origin available as a stage variable
-        ApiOrigin:
-          Ref: ApiOrigin
         # Make the website root URL available as a stage variable
-        SiteRoot:
-          Ref: SiteRoot
+        ServerRoot:
+          Ref: ServerRoot
         # Make the website origin available as a stage variable
-        SiteOrigin:
-          Ref: SiteOrigin
+        ServerOrigin:
+          Ref: ServerOrigin
         # Make the AWS region available as a stage variable
         Region:
           Ref: AWS::Region
@@ -373,131 +364,45 @@ Resources:
         LoggingLevel: INFO
         ResourcePath: "/*"
       RestApiId:
-        Ref: SiteGatewayRestApi
-      StageName: site
+        Ref: ServerApiGatewayRestApi
+      StageName: server
 
   # Custom domain name for the website
-  SiteGatewayRestApiDomainName:
+  ServerApiGatewayRestApiDomainName:
     Type: AWS::ApiGateway::DomainName
     Properties:
       CertificateArn:
         Ref: DomainCertificate
       DomainName:
-        Ref: SiteDomainName
+        Ref: ServerDomainName
 
-  # Removes the '/site' part from the URL path
-  SiteGatewayRestApiBasePathMapping:
+  # Removes the '/server' part from the URL path
+  ServerApiGatewayBasePathMapping:
     Type: AWS::ApiGateway::BasePathMapping
     Properties:
       BasePath: ''
       DomainName:
-        Ref: SiteGatewayRestApiDomainName
+        Ref: ServerApiGatewayRestApiDomainName
       RestApiId:
-        Ref: SiteGatewayRestApi
+        Ref: ServerApiGatewayRestApi
       Stage:
-        Ref: SiteGatewayStage
+        Ref: ServerApiGatewayStage
 
   # DNS domain name for the website
-  SiteDNS:
+  ServerDNS:
     Type: "AWS::Route53::RecordSetGroup"
     Properties:
       HostedZoneName:
-        Fn::Sub: "${SiteHostedZoneName}."
+        Fn::Sub: "${ServerHostedZoneName}."
       Comment: "Domain for the server-side rendering API Gateway deployment"
       RecordSets:
         - Name:
-            Fn::Sub: "${SiteDomainName}."
+            Fn::Sub: "${ServerDomainName}."
           Type: A
           AliasTarget:
             HostedZoneId: Z2FDTNDATAQYW2
             DNSName:
-              Fn::GetAtt: SiteGatewayRestApiDomainName.DistributionDomainName
-
-  # Lambda function
-  SiteRenderViewLambdaFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      Code:
-        S3Bucket:
-          Ref: DeploymentManagementS3Bucket
-        S3Key:
-          Ref: SiteRequestLambdaFunctionS3Key
-      FunctionName:
-        Fn::Sub: "${AWS::StackName}-site-renderView"
-      Handler: ssr.request
-      MemorySize: 1024
-      Role:
-        Fn::GetAtt: ["LambdaExecutionIamRole", "Arn"]
-      Runtime: nodejs10.x
-      Timeout: 6
-    DependsOn:
-    - SiteRenderViewLambdaFunctionLogGroup
-    - LambdaExecutionIamRole
-
-  # Grant API Gateway REST API a permission to execute the Lambda function
-  SiteRenderViewLambdaFunctionPermissionApiGateway:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName:
-        Fn::GetAtt: ["SiteRenderViewLambdaFunction", "Arn"]
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn:
-        Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SiteGatewayRestApi}/*/*"
-
-  # CloudWatch log group for the lambda function
-  SiteRenderViewLambdaFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName:
-        Fn::Sub: "/aws/lambda/${AWS::StackName}-site-renderView"
-
-  SiteProxyPathApiGatewayResource:
-    Type: 'AWS::ApiGateway::Resource'
-    Properties:
-      ParentId:
-        Fn::GetAtt: ['SiteGatewayRestApi', 'RootResourceId']
-      PathPart: '{proxy+}'
-      RestApiId:
-        Ref: SiteGatewayRestApi
-
-  # HTTP method for rendering the view at the root URL '/''
-  SiteRootGETApiGatewayMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      HttpMethod: GET
-      ResourceId:
-        Fn::GetAtt: ['SiteGatewayRestApi', 'RootResourceId']
-      RestApiId:
-        Ref: SiteGatewayRestApi
-      RequestParameters: {}
-      AuthorizationType: NONE
-      Integration:
-        # NOTE: Lambda execution endpoint is always called with POST
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri:
-          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SiteRenderViewLambdaFunction.Arn}/invocations"
-      MethodResponses: []
-
-  # HTTP method for rendering the view at any other than the root URL
-  SiteProxyPathGETApiGatewayMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      HttpMethod: GET
-      ResourceId:
-        Ref: SiteProxyPathApiGatewayResource
-      RestApiId:
-        Ref: SiteGatewayRestApi
-      RequestParameters: {}
-      AuthorizationType: NONE
-      Integration:
-        # NOTE: Lambda execution endpoint is always called with POST
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri:
-          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SiteRenderViewLambdaFunction.Arn}/invocations"
-      MethodResponses: []
+              Fn::GetAtt: ServerApiGatewayRestApiDomainName.DistributionDomainName
 
 Outputs:
   AssetsS3BucketName:
@@ -506,7 +411,3 @@ Outputs:
   AssetsCloudFrontDistributionId:
     Value:
       Ref: AssetsCloudFrontDistribution
-  SiteRenderViewLambdaFunctionLogGroupName:
-    Description: "Log group name of SSR requests"
-    Value:
-      Ref: SiteRenderViewLambdaFunctionLogGroup

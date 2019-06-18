@@ -1,14 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
   # API gateway method for OPTIONS request, for enabling CORS
-  <ApiMethodName>:
+  <ServerMethodName>:
     Type: AWS::ApiGateway::Method
     Properties:
       HttpMethod: OPTIONS
-      ResourceId:
-        Ref: <ApiResourceName>
+      ResourceId: <ServerResourceId>
       RestApiId:
-        Ref: ApiGatewayRestApi
+        Ref: ServerApiGatewayRestApi
       AuthorizationType: NONE
       MethodResponses:
       - StatusCode: '200'
@@ -27,14 +26,14 @@ Resources:
         - StatusCode: '200'
           ResponseParameters:
             method.response.header.Access-Control-Allow-Origin:
-              Fn::Sub: "'${SiteOrigin}'"
+              Fn::Sub: "'${ServerOrigin}'"
             method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Requested-With'"
-            method.response.header.Access-Control-Allow-Methods: "'<ApiResourceAllowedMethods>'"
+            method.response.header.Access-Control-Allow-Methods: "'<ServerResourceAllowedMethods>'"
             method.response.header.Access-Control-Allow-Credentials: "'true'"
           ResponseTemplates:
             application/json: ''
 
   # Add this method to the deployment dependencies
-  ApiGatewayDeployment<ApiDeploymentId>:
+  ServerApiGatewayDeployment<ServerDeploymentId>:
     DependsOn:
-    - <ApiMethodName>
+    - <ServerMethodName>

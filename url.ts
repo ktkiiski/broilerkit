@@ -1,7 +1,8 @@
 // tslint:disable:no-shadowed-variable
 import { keys, omit } from './utils/objects';
 
-const urlPlaceholderRegexp = /^\{(.+)\}$/;
+const encodedSlashRegexp = /%2F/g;
+const urlPlaceholderRegexp = /^\{(.+?)(\+)?\}$/;
 
 /**
  * Converts a URL path pattern to a RegExp that can be used to
@@ -44,8 +45,12 @@ export class UrlPattern<T extends string = string> {
         const regexpComponents = pattern.split('/').map((component) => {
             const keywordMatch = urlPlaceholderRegexp.exec(component);
             if (keywordMatch) {
-                pathKeywords.push(keywordMatch[1] as T);
-                return '([^/]+)'; // capturing group
+                const [, placeholderName, greedy] = keywordMatch;
+                pathKeywords.push(placeholderName as T);
+                if (greedy) {
+                    return '(.*)'; // capturing group matching everything
+                }
+                return '([^/]+)'; // capturing group not matching slashes
             }
             return escapeRegExp(component);
         });
@@ -83,9 +88,10 @@ export class UrlPattern<T extends string = string> {
 
     public compile(urlParameters: {[key: string]: string}): Url {
         const queryParameters = {...urlParameters};
-        const path = this.pattern.replace(/\{(\w+)\}/g, (_, urlKeyword: T) => {
+        const path = this.pattern.replace(/\{(\w+)(\+)?\}/g, (_, urlKeyword: T, greedy: string) => {
             delete queryParameters[urlKeyword];
-            return encodeURIComponent(urlParameters[urlKeyword]);
+            const encoded = encodeURIComponent(urlParameters[urlKeyword]);
+            return greedy ? encoded.replace(encodedSlashRegexp, '/') : encoded;
         });
         return new Url(path, queryParameters);
     }

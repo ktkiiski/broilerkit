@@ -1,24 +1,26 @@
+/**
+ * IMPORTANT: Do not import this file directly!
+ * This is used as an endpoint file for a webpack bundle!
+ */
 import { readFile } from '../fs';
 import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
 import { middleware } from '../middleware';
 import { ApiService } from '../server';
-import { renderView } from '../ssr';
+import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 
 // When deployed, load the HTML base file immediately, which is expected to be located as a sibling index.html file
 const pageHtml$ = readFile('./index.html');
+// API service
+const apiService = getApiService();
+// Load the module exporting the rendered React component
+const view: React.ComponentType<{}> = require('_site').default;
+const service = apiService.extend({
+    [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, pageHtml$),
+});
 
-const executeLambda = lambdaMiddleware(middleware(async (req) => {
-    const pageHtml = await pageHtml$;
-    // Load the module exporting the rendered React component
-    const siteModule = require('_site');
-    const view: React.ComponentType<{}> = siteModule.default;
-    return await renderView(
-        req,
-        pageHtml,
-        view,
-        () => new ApiService(require('_service').default),
-    );
-}));
+const executeLambda = lambdaMiddleware(middleware(
+    async (req) => service.execute(req, {}),
+));
 
 /**
  * AWS Lambda compatible handler function that processes the given
@@ -35,3 +37,14 @@ export const request: LambdaHttpHandler = (lambdaRequest, _, callback) => {
         (error) => callback(error),
     );
 };
+
+function getApiService() {
+    let apiModule;
+    try {
+        apiModule = require('_service');
+    } catch {
+        // No API available
+        return new ApiService({});
+    }
+    return new ApiService(apiModule.default);
+}

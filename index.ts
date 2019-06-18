@@ -19,25 +19,14 @@ export interface StageConfig {
      */
     assetsRoot: string;
     /**
-     * The base URL where the HTML pages are hosted. This must contain the protocol,
+     * The base URL where the server is hosted. This must contain the protocol,
      * hostname and optionally any port. The root URL must NOT end with a trailing slash.
      *
      * Examples:
      * - "https://www.example.com"
      * - "http://localhost:8080"
      */
-    siteRoot: string;
-    /**
-     * The base URL where the REST API is hosted. This must contain the protocol,
-     * hostname and optionally any port. The root URL must NOT end with a trailing slash.
-     *
-     * You may omit this if the app does not have an API.
-     *
-     * Examples:
-     * - "https://api.example.com"
-     * - "http://localhost:8081"
-     */
-    apiRoot?: string;
+    serverRoot: string;
 }
 
 export interface AuthConfig {

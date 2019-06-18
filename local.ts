@@ -1,8 +1,7 @@
 import { URL } from 'url';
-import authLocalServer from './auth-local-server';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
-import { readStream } from './fs';
+import { readFile, readStream } from './fs';
 import { HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
 import { middleware, requestMiddleware } from './middleware';
 import { ApiService } from './server';
@@ -18,7 +17,6 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 
 import chalk from 'chalk';
-import { request } from './request';
 const { cyan, green, red, yellow } = chalk;
 
 /**
@@ -70,39 +68,26 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
  * Runs the REST API development server.
  */
 export async function serveBackEnd(options: BroilerConfig, params: {[param: string]: string}) {
-    const {siteRoot, apiRoot, assetsRoot, stageDir, buildDir, projectRootPath} = options;
+    const {serverRoot, assetsRoot, stageDir, buildDir, projectRootPath} = options;
     const stageDirPath = path.resolve(projectRootPath, stageDir);
-    const siteRootUrl = new URL(siteRoot);
-    const siteOrigin = siteRootUrl.origin;
-    const siteProtocol = siteRootUrl && siteRootUrl.protocol;
-    const siteServerPort = siteRootUrl && parseInt(siteRootUrl.port, 10);
-    const siteEnableHttps = siteProtocol === 'https:';
-    if (siteRoot && siteEnableHttps) {
-        throw new Error(`HTTPS is not yet supported on the local server! Switch to use ${siteRoot.replace(/^https/, 'http')} instead!`);
+    const serverRootUrl = new URL(serverRoot);
+    const serverOrigin = serverRootUrl.origin;
+    const serverProtocol = serverRootUrl && serverRootUrl.protocol;
+    const serverPort = serverRootUrl && parseInt(serverRootUrl.port, 10);
+    const serverEnableHttps = serverProtocol === 'https:';
+    if (serverRoot && serverEnableHttps) {
+        throw new Error(`HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(/^https/, 'http')} instead!`);
     }
-    const apiRootUrl = apiRoot && new URL(apiRoot);
-    const apiOrigin = apiRootUrl && apiRootUrl.origin;
-    const apiProtocol = apiRootUrl && apiRootUrl.protocol;
-    const apiServerPort = apiRootUrl && parseInt(apiRootUrl.port, 10);
-    const apiEnableHttps = apiProtocol === 'https:';
-    if (apiRoot && apiEnableHttps) {
-        throw new Error(`HTTPS is not yet supported on the local REST API server! Switch to use ${apiRoot.replace(/^https/, 'http')} instead!`);
-    }
-    const htmlPageUrl = `${assetsRoot}/index.html`;
+    const htmlPagePath = path.resolve(buildDir, './index.html');
     const cache: {[uri: string]: any} = {};
     const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
-    let ssrServer: http.Server | undefined;
-    let apiServer: http.Server | undefined;
+    let server: http.Server | undefined;
     try {
         for await (const stats of watch(config)) {
             // Close any previously running server(s)
-            if (ssrServer) {
-                ssrServer.close();
-                ssrServer = undefined;
-            }
-            if (apiServer) {
-                apiServer.close();
-                apiServer = undefined;
+            if (server) {
+                server.close();
+                server = undefined;
             }
             // Check for compilation errors
             if (stats.hasErrors()) {
@@ -121,81 +106,43 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             // NOTE: Webpack type definition is wrong there! Need to force re-cast!
             const assetsByChunkName: Record<string, string[]> = statsJson.assetsByChunkName as any;
             // Get compiled server-site rendering view
-            const ssrRequestHandlerFileName: string = assetsByChunkName.ssr && assetsByChunkName.ssr[0];
-            const ssrRequestHandlerFilePath = path.resolve(
-                projectRootPath, buildDir, ssrRequestHandlerFileName,
+            const serverRequestHandlerFileName: string = assetsByChunkName.server && assetsByChunkName.server[0];
+            const serverRequestHandlerFilePath = path.resolve(
+                projectRootPath, buildDir, serverRequestHandlerFileName,
             );
             // Ensure that module will be re-loaded
-            delete require.cache[ssrRequestHandlerFilePath];
-            // Load the module exporting the rendered React component
-            const siteModule = require(ssrRequestHandlerFilePath);
-            const siteRequestExecutor: (req: HttpRequest, htmlPage: string) => Promise<HttpResponse> = siteModule.default;
+            delete require.cache[serverRequestHandlerFilePath];
+            // Load the module exporting the service getter
+            const serverModule = require(serverRequestHandlerFilePath);
+            const service: ApiService = serverModule.default(readFile(htmlPagePath));
             // Get handler for the API requests (if defined)
-            const apiRequestHandlerFileName: string | undefined = assetsByChunkName.api && assetsByChunkName.api[0];
-            const apiRequestHandlerFilePath = apiRequestHandlerFileName && path.resolve(
-                projectRootPath, buildDir, apiRequestHandlerFileName,
-            );
-            let apiHandler: ApiService | undefined;
-            if (apiRequestHandlerFilePath) {
-                // Ensure that module will be re-loaded
-                delete require.cache[apiRequestHandlerFilePath];
-                const serviceModule = require(apiRequestHandlerFilePath);
-                apiHandler = serviceModule.default;
-                if (!apiHandler || typeof apiHandler.execute !== 'function') {
-                    // tslint:disable-next-line:no-console
-                    console.error(red(`The module ${options.serverFile} must export API endpoint implementations as a default export!`));
-                    continue;
-                }
-                // If user registry is enabled then add APIs for local sign in functionality
-                if (options.auth) {
-                    apiHandler = apiHandler.extend(authLocalServer);
-                }
-            }
             const context = {
-                apiOrigin: apiOrigin || '',
-                apiRoot: apiRoot || '',
-                siteOrigin, siteRoot,
+                serverOrigin, serverRoot,
                 environment: {
                     ...params,
                     AuthClientId: 'LOCAL_AUTH_CLIENT_ID',
-                    AuthSignInUri: `${siteRoot}/_oauth2_signin`,
-                    AuthSignOutUri: `${siteRoot}/_oauth2_signout`,
+                    AuthSignInUri: `${serverRoot}/_oauth2_signin`,
+                    AuthSignOutUri: `${serverRoot}/_oauth2_signout`,
                     AuthSignInRedirectUri: `${assetsRoot}/_oauth2_signin_complete.html`,
                     AuthSignOutRedirectUri: `${assetsRoot}/_oauth2_signout_complete.html`,
-                    ...getRequestEnvironment(stageDirPath, apiHandler),
+                    ...getRequestEnvironment(stageDirPath, service),
                 },
             };
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
                 await convertNodeRequest(httpRequest, context)
             ));
             // Set up the server for the view rendering
-            const executeSrrRequest = nodeMiddleware(middleware(
-                async (req) => {
-                    const htmlPageResponse = await request({
-                        url: htmlPageUrl,
-                        method: 'GET',
-                    });
-                    const htmlPage = htmlPageResponse.body;
-                    return await siteRequestExecutor(req, htmlPage);
-                },
+            const executeServerRequest = nodeMiddleware(middleware(
+                localAuthenticationMiddleware(
+                    async (req) => service.execute(req, cache),
+                ),
             ));
-            ssrServer = createServer(executeSrrRequest);
-            ssrServer.listen(siteServerPort);
-            // Set up the server for the API
-            if (apiHandler) {
-                const executeApiRequest = nodeMiddleware(middleware(
-                    localAuthenticationMiddleware(apiHandler.execute),
-                ));
-                // Start the server
-                apiServer = createServer(executeApiRequest, cache);
-                apiServer.listen(apiServerPort);
-            }
+            server = createServer(executeServerRequest);
+            server.listen(serverPort);
         }
     } finally {
-        try {
-            if (ssrServer) { ssrServer.close(); }
-        } finally {
-            if (apiServer) { apiServer.close(); }
+        if (server) {
+            server.close();
         }
     }
 }
@@ -242,7 +189,7 @@ function getRequestEnvironment(directoryPath: string, service?: ApiService): {[k
     return environment;
 }
 
-async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {siteOrigin: string, apiOrigin: string, siteRoot: string, apiRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {
+async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {serverOrigin: string, serverRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const headers = flattenParameters(nodeRequest.headers);
     const requestUrlObj = url.parse(nodeRequest.url as string, true);

@@ -23,7 +23,7 @@ import { flatMap, union } from './utils/arrays';
 import { buildObject, forEachKey, mapObject, toPairs, transformValues } from './utils/objects';
 import { capitalize, upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
-import { zip, zipAll } from './zip';
+import { zipAll } from './zip';
 
 import * as mime from 'mime';
 import * as path from 'path';
@@ -32,6 +32,7 @@ import * as File from 'vinyl';
 import chalk from 'chalk';
 import { clean } from './clean';
 import { askParameters } from './parameters';
+import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { groupBy } from './utils/groups';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
@@ -92,7 +93,7 @@ export class Broiler {
         await this.uploadBackend();
         await this.deployStack();
         await this.uploadFrontend();
-        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.siteRoot}/`)}`);
+        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.serverRoot}/`)}`);
         await this.printAuthClientInfo();
     }
 
@@ -213,7 +214,7 @@ export class Broiler {
             this.log(red(`Failed to write parameters to the JSON file:\n${error}`));
         }
         await Promise.all([
-            serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.siteRoot}/`)}`)),
+            serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.serverRoot}/`)}`)),
             serveBackEnd(opts, params),
         ]);
     }
@@ -442,14 +443,12 @@ export class Broiler {
      * Ensures that the required hosted zone(s) exist, creating them if not.
      */
     public async initializeHostedZones() {
-        const {siteRoot, assetsRoot, apiRoot} = this.config;
-        const siteRootUrl = new URL(siteRoot);
+        const {serverRoot, assetsRoot} = this.config;
+        const siteRootUrl = new URL(serverRoot);
         const siteHostedZone = getHostedZone(siteRootUrl.hostname);
         const assetsRootUrl = new URL(assetsRoot);
         const assetsHostedZone = getHostedZone(assetsRootUrl.hostname);
-        const apiRootUrl = apiRoot && new URL(apiRoot);
-        const apiHostedZone = apiRootUrl && getHostedZone(apiRootUrl.hostname);
-        const rawHostedZones = [siteHostedZone, assetsHostedZone, apiHostedZone];
+        const rawHostedZones = [siteHostedZone, assetsHostedZone];
         const hostedZones = union(rawHostedZones.filter((hostedZone) => !!hostedZone) as string[]);
         // Wait until every hosted zone is available
         await Promise.all(hostedZones.map((hostedZone) => this.initializeHostedZone(hostedZone)));
@@ -484,7 +483,7 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     public async uploadFrontend(): Promise<IFileUpload[]> {
-        const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!api*.js', '!ssr*.js']);
+        const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!server*.js']);
         const output = await this.cloudFormation.getStackOutput();
         return await toArray(this.uploadFilesToS3Bucket(
             output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false,
@@ -495,17 +494,14 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {siteRoot, apiRoot, assetsRoot, auth, parameters} = this.config;
-        const siteRootUrl = new URL(siteRoot);
-        const siteDomain = siteRootUrl.hostname;
+        const {serverRoot, assetsRoot, auth, parameters} = this.config;
+        const serverRootUrl = new URL(serverRoot);
+        const serverDomain = serverRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
         const assetsDomain = assetsRootUrl.hostname;
-        const apiRootUrl = apiRoot && new URL(apiRoot);
-        const apiDomain = apiRootUrl && apiRootUrl.hostname;
-        const apiFile$ = this.getCompiledApiFile();
-        const ssrFileKey$ = this.getSSRZipFileS3Key();
+        const serverFileKey$ = this.getServerZipFileS3Key();
         const prevParams$ = auth ? this.cloudFormation.getStackParameters() : Promise.resolve(undefined);
-        const [apiFile, ssrFileKey, prevParams] = await Promise.all([apiFile$, ssrFileKey$, prevParams$]);
+        const [serverFileKey, prevParams] = await Promise.all([serverFileKey$, prevParams$]);
         // Facebook client settings
         const facebookClientId = auth && auth.facebookClientId || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
@@ -533,19 +529,14 @@ export class Broiler {
         // Ask all the custom parameters
         const customParameters = await askParameters(parameters, prevParams, 'X');
         return {
-            SiteRoot: siteRoot,
-            SiteOrigin: siteRootUrl.origin,
-            SiteDomainName: siteDomain,
-            SiteHostedZoneName: getHostedZone(siteDomain),
-            SiteRequestLambdaFunctionS3Key: ssrFileKey,
+            ServerRoot: serverRoot,
+            ServerOrigin: serverRootUrl.origin,
+            ServerDomainName: serverDomain,
+            ServerHostedZoneName: getHostedZone(serverDomain),
+            ServerRequestLambdaFunctionS3Key: serverFileKey,
             AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
-            ApiRoot: apiRoot,
-            ApiOrigin: apiRootUrl && apiRootUrl.origin,
-            ApiHostedZoneName: apiDomain && getHostedZone(apiDomain),
-            ApiDomainName: apiDomain,
-            ApiRequestLambdaFunctionS3Key: apiFile && formatS3KeyName(apiFile.relative, '.zip'),
             // These parameters are only defined if 'auth' is enabled
             FacebookClientId: facebookClientId,
             FacebookClientSecret: facebookClientSecret,
@@ -618,45 +609,20 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     private async uploadBackend() {
-        await Promise.all([
-            this.uploadSRRFiles(),
-            this.uploadApiFiles(),
-        ]);
-    }
-    private async uploadSRRFiles() {
-        const [ssrFile, htmlFile] = await Promise.all([
-            this.getCompiledSSRFile(),
+        const [serverFile, htmlFile] = await Promise.all([
+            this.getCompiledServerFile(),
             this.getCompiledHtmlFile(),
         ]);
         const zipFileData$ = zipAll([
-            {filename: 'ssr.js', data: ssrFile.contents},
+            {filename: 'server.js', data: serverFile.contents},
             {filename: 'index.html', data: htmlFile.contents},
         ]);
         const output$ = this.cloudFormation.getStackOutput();
         const [output, zipFileData, key] = await Promise.all([
-            output$, zipFileData$, this.getSSRZipFileS3Key(),
+            output$, zipFileData$, this.getServerZipFileS3Key(),
         ]);
         const bucketName = output.DeploymentManagementS3BucketName;
-        this.log(`Zipped the API implementation as ${bold(key)}`);
-        return this.createS3File$({
-            Bucket: bucketName,
-            Key: key,
-            Body: zipFileData,
-            ACL: 'private',
-            ContentType: 'application/zip',
-        }, false);
-    }
-    private async uploadApiFiles() {
-        const file = await this.getCompiledApiFile();
-        if (!file) {
-            return;
-        }
-        const zipFileData$ = zip(file.contents, 'api.js');
-        const output$ = this.cloudFormation.getStackOutput();
-        const [output, zipFileData] = await Promise.all([output$, zipFileData$]);
-        const bucketName = output.DeploymentManagementS3BucketName;
-        const key = formatS3KeyName(file.relative, '.zip');
-        this.log(`Zipped the API implementation as ${bold(key)}`);
+        this.log(`Zipped the server implementation as ${bold(key)}`);
         return this.createS3File$({
             Bucket: bucketName,
             Key: key,
@@ -703,7 +669,7 @@ export class Broiler {
     }
 
     private async generateTemplate(): Promise<any> {
-        const apiServer = this.importServer();
+        const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const templateFiles = [
             'cloudformation-init.yml',
@@ -724,15 +690,15 @@ export class Broiler {
         }
         const siteHash = await this.getSiteHash();
         const template$ = readTemplates(templateFiles, {
-            SiteDeploymentId: siteHash.toUpperCase(),
+            ServerDeploymentId: siteHash.toUpperCase(),
         });
-        if (!apiServer) {
+        if (!server) {
             return await template$;
         }
         const templates = await Promise.all([
             template$,
-            this.generateApiTemplate(apiServer),
-            this.generateDbTemplates(apiServer),
+            this.generateServerTemplate(server),
+            this.generateDbTemplates(server),
         ]);
         if (parameters) {
             forEachKey(parameters, (paramName, paramConfig) => {
@@ -744,16 +710,7 @@ export class Broiler {
                         },
                     },
                     Resources: {
-                        ApiGatewayStage: {
-                            Properties: {
-                                Variables: {
-                                    [paramName]: {
-                                        Ref: `X${paramName}`,
-                                    },
-                                },
-                            },
-                        },
-                        SiteGatewayStage: {
+                        ServerApiGatewayStage: {
                             Properties: {
                                 Variables: {
                                     [paramName]: {
@@ -769,42 +726,50 @@ export class Broiler {
         return templates.reduce(mergeTemplates);
     }
 
-    private async generateApiTemplate(server: ApiService): Promise<any> {
+    private async generateServerTemplate(server: ApiService): Promise<any> {
+        const controllersByName = server && server.controllersByName || {};
         const controllers = sort(
-            mapObject(server && server.controllers || {}, (controller, name) => ({
-                name,
-                methods: controller.methods,
-                pattern: controller.pattern,
-                requiresAuth: controller.requiresAuth,
-                path: controller.pattern.pattern.replace(/^\/|\/$/g, '').split('/'),
-            })),
+            flatMap(toPairs(controllersByName), function *([name, controller]) {
+                const { pattern, methods, requiresAuth } = controller;
+                const pathPattern = controller.pattern.pattern.replace(/^\/|\/$/g, '');
+                const path = pathPattern ? pathPattern.split('/') : [];
+                yield { name, methods, pattern, requiresAuth, path };
+                if (path.length && /^\{.*\+\}$/.test(path[path.length - 1])) {
+                    // If last path pattern is a all-matching placeholder,
+                    // then this also should match when no placeholder is provided at all.
+                    yield {
+                        name, methods, pattern, requiresAuth,
+                        path: path.slice(0, -1),
+                    };
+                }
+            }),
             ({pattern}) => pattern.pattern,
         );
-        const apiHash = await this.getApiHash();
-        if (!apiHash) {
+        const serverHash = await this.getSiteHash();
+        if (!serverHash) {
             // No API to be deployed
             return;
         }
         // Collect all the template promises to an array
         const templatePromises: Array<Promise<any>> = [];
         // Build templates for API Lambda functions
-        templatePromises.push(...controllers.map(({name}) => readTemplates(['cloudformation-api-function.yml'], {
-            ApiFunctionName: getApiLambdaFunctionLogicalId(name),
+        templatePromises.push(...controllers.map(({name}) => readTemplates(['cloudformation-server-function.yml'], {
+            ServerFunctionName: getServerLambdaFunctionLogicalId(name),
             apiFunctionName: name,
         })));
         // Build templates for every API Gateway Resource
-        const nestedApiResources = flatMap(controllers, ({path}) => path.map((_, index) => path.slice(0, index + 1)));
+        const nestedServerResources = flatMap(controllers, ({path}) => (
+            path.map((_, index) => path.slice(0, index + 1))
+        ));
         templatePromises.push(Promise.resolve({
-            Resources: nestedApiResources.map((path) => ({
-                [getApiResourceLogicalId(path)]: {
+            Resources: nestedServerResources.map((path) => ({
+                [getServerResourceLogicalId(path)]: {
                     Type: 'AWS::ApiGateway::Resource',
                     Properties: {
-                        ParentId: path.length > 1 ?
-                            {Ref: getApiResourceLogicalId(path.slice(0, -1))} :
-                            {'Fn::GetAtt': ['ApiGatewayRestApi', 'RootResourceId']},
+                        ParentId: getServerResourceReference(path.slice(0, -1)),
                         PathPart: path[path.length - 1],
                         RestApiId: {
-                            Ref: 'ApiGatewayRestApi',
+                            Ref: 'ServerApiGatewayRestApi',
                         },
                     },
                 },
@@ -827,12 +792,12 @@ export class Broiler {
             }
             throw new Error(`The operation ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
         }).map(
-            ({method, path, name, requiresAuth}) => readTemplates(['cloudformation-api-method.yml'], {
-                ApiMethodName: getApiMethodLogicalId(path, method),
-                ApiFunctionName: getApiLambdaFunctionLogicalId(name),
-                ApiResourceName: getApiResourceLogicalId(path),
-                ApiDeploymentId: apiHash.toUpperCase(),
-                ApiMethod: method,
+            ({method, path, name, requiresAuth}) => readTemplates(['cloudformation-server-method.yml'], {
+                ServerMethodName: getServerMethodLogicalId(path, method),
+                ServerFunctionName: getServerLambdaFunctionLogicalId(name),
+                ServerResourceId: JSON.stringify(getServerResourceReference(path)),
+                ServerDeploymentId: serverHash.toUpperCase(),
+                ServerMethod: method,
                 AuthorizationType: requiresAuth ? '"COGNITO_USER_POOLS"' : '"NONE"',
                 AuthorizerId: JSON.stringify(requiresAuth ? {Ref: 'ApiGatewayUserPoolAuthorizer'} : ''),
             })),
@@ -845,16 +810,12 @@ export class Broiler {
             })),
         );
         templatePromises.push(...mapObject(methodsByPath, ({path, methods}) => {
-            return readTemplates(['cloudformation-api-resource-cors.yml'], {
-                ApiMethodName: getApiMethodLogicalId(path, 'OPTIONS'),
-                ApiResourceName: getApiResourceLogicalId(path),
-                ApiResourceAllowedMethods: methods.join(','),
-                ApiDeploymentId: apiHash.toUpperCase(),
+            return readTemplates(['cloudformation-server-resource-cors.yml'], {
+                ServerMethodName: getServerMethodLogicalId(path, 'OPTIONS'),
+                ServerResourceId: JSON.stringify(getServerResourceReference(path)),
+                ServerResourceAllowedMethods: methods.join(','),
+                ServerDeploymentId: serverHash.toUpperCase(),
             });
-        }));
-        // Read the base template for the API Gateway
-        templatePromises.push(readTemplates(['cloudformation-api.yml'], {
-            ApiDeploymentId: apiHash.toUpperCase(),
         }));
         // Merge everything together
         const templates = await Promise.all(templatePromises);
@@ -878,16 +839,7 @@ export class Broiler {
                         },
                     },
                     // Make the domain name available for Lambda functions as a stage variable
-                    ApiGatewayStage: {
-                        Properties: {
-                            Variables: {
-                                [tableUriVar]: {
-                                    'Fn::Sub': tableUriSub,
-                                },
-                            },
-                        },
-                    },
-                    SiteGatewayStage: {
+                    ServerApiGatewayStage: {
                         Properties: {
                             Variables: {
                                 [tableUriVar]: {
@@ -948,44 +900,26 @@ export class Broiler {
         return files[0];
     }
 
-    private async getCompiledSSRFile(): Promise<File> {
-        const files = await searchFiles(this.buildDir, ['ssr.*.js']);
+    private async getCompiledServerFile(): Promise<File> {
+        const files = await searchFiles(this.buildDir, ['server.*.js']);
         if (files.length !== 1) {
             throw new Error(`Couldn't find the compiled server-site renderer bundle!`);
         }
         return files[0];
     }
 
-    private async getCompiledApiFile(): Promise<File | undefined> {
-        if (this.importServer()) {
-            const files = await searchFiles(this.buildDir, ['api.*.js']);
-            if (files.length !== 1) {
-                throw new Error(`Couldn't find the compiled API bundle!`);
-            }
-            return files[0];
-        }
-    }
-
-    private async getSSRZipFileS3Key(): Promise<string> {
+    private async getServerZipFileS3Key(): Promise<string> {
         const siteHash = await this.getSiteHash();
-        return formatS3KeyName(`ssr.${siteHash}.zip`);
+        return formatS3KeyName(`server.${siteHash}.zip`);
     }
 
     private async getSiteHash(): Promise<string> {
-        const [ssrFile, htmlFile] = await Promise.all([
-            this.getCompiledSSRFile(), this.getCompiledHtmlFile(),
+        const [serverFile, htmlFile] = await Promise.all([
+            this.getCompiledServerFile(), this.getCompiledHtmlFile(),
         ]);
-        const [, ssrFileHash] = ssrFile.basename.split('.');
+        const [, serverFileHash] = serverFile.basename.split('.');
         const [, htmlFileHash] = htmlFile.basename.split('.');
-        return `${ssrFileHash}${htmlFileHash}`;
-    }
-
-    private async getApiHash(): Promise<string | void> {
-        const file = await this.getCompiledApiFile();
-        if (file) {
-            const match = /\.(\w+)\./.exec(file.basename) as RegExpExecArray;
-            return match[1];
-        }
+        return `${serverFileHash}${htmlFileHash}`;
     }
 
     private async printAuthClientInfo() {
@@ -1087,10 +1021,15 @@ export class Broiler {
     }
 
     private importServer(): ApiService | null {
-        const { serverFile, projectRootPath, sourceDir } = this.config;
+        const { serverFile, projectRootPath, sourceDir, siteFile } = this.config;
         if (serverFile) {
             const serverModule = require(path.resolve(projectRootPath, sourceDir, serverFile));
-            return new ApiService(serverModule.default);
+            const siteModule = require(path.resolve(projectRootPath, sourceDir, siteFile));
+            const apiService = new ApiService(serverModule.default);
+            const view = siteModule.default;
+            return apiService.extend({
+                [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, Promise.resolve('')),
+            });
         }
         return null;
     }
@@ -1165,15 +1104,23 @@ function formatResourceDelete(resource: CloudFormation.StackResource): string {
     });
 }
 
-function getApiLambdaFunctionLogicalId(name: string) {
-    return `Api${upperFirst(name)}LambdaFunction`;
+function getServerLambdaFunctionLogicalId(name: string) {
+    return `Server${upperFirst(name)}LambdaFunction`;
 }
 
-function getApiResourceLogicalId(urlPath: string[]) {
+function getServerResourceLogicalId(urlPath: string[]) {
     return `Endpoint${formatPathForLogicalId(urlPath)}ApiGatewayResource`;
 }
 
-function getApiMethodLogicalId(urlPath: string[], method: HttpMethod) {
+function getServerResourceReference(urlPath: string[]) {
+    if (urlPath.length) {
+        return {Ref: getServerResourceLogicalId(urlPath)};
+    }
+    // Refer to the root resource
+    return {'Fn::GetAtt': ['ServerApiGatewayRestApi', 'RootResourceId']};
+}
+
+function getServerMethodLogicalId(urlPath: string[], method: HttpMethod) {
     return `Endpoint${formatPathForLogicalId(urlPath)}${capitalize(method)}ApiGatewayMethod`;
 }
 

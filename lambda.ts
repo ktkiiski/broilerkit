@@ -86,29 +86,21 @@ export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequ
     if (!region) {
         throw new Error(`The Region stage variable is missing!`);
     }
-    const apiOrigin = environment.ApiOrigin;
-    if (!apiOrigin) {
-        throw new Error(`The ApiOrigin stage variable is missing!`);
+    const serverOrigin = environment.ServerOrigin;
+    if (!serverOrigin) {
+        throw new Error(`The ServerOrigin stage variable is missing!`);
     }
-    const apiRoot = environment.ApiRoot;
-    if (!apiRoot) {
-        throw new Error(`The ApiRoot stage variable is missing!`);
-    }
-    const siteOrigin = environment.SiteOrigin;
-    if (!siteOrigin) {
-        throw new Error(`The SiteOrigin stage variable is missing!`);
-    }
-    const siteRoot = environment.SiteRoot;
-    if (!siteRoot) {
-        throw new Error(`The SiteRoot stage variable is missing!`);
+    const serverRoot = environment.ServerRoot;
+    if (!serverRoot) {
+        throw new Error(`The ServerRoot stage variable is missing!`);
     }
     return {
         method: httpMethod,
         path: request.path,
         queryParameters, headers, body,
         environment, region,
-        apiRoot, siteRoot,
-        apiOrigin, siteOrigin,
+        serverRoot,
+        serverOrigin,
         auth,
         // Read the directory path from environment variables
         // directoryPath: process.env.LAMBDA_TASK_ROOT as string,

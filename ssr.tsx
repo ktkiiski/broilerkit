@@ -10,17 +10,40 @@ import { errorMiddleware } from './middleware';
 import { ClientProvider } from './react/client';
 import { MetaContextProvider } from './react/meta';
 import { Serializer } from './serializers';
-import { ApiService } from './server';
-import { buildQuery, Url } from './url';
+import { ApiService, Controller } from './server';
+import { buildQuery, Url, UrlPattern } from './url';
 import { buildObject, mapObject, pick } from './utils/objects';
 
-export async function renderView(
+export const RENDER_WEBSITE_ENDPOINT_NAME = 'renderWebsite' as const;
+
+export class SsrController implements Controller {
+    public readonly methods = ['GET' as const];
+    public readonly pattern = new UrlPattern('/{path+}');
+    public readonly tables = this.apiService.tables;
+    public readonly requiresAuth = false;
+
+    constructor(
+        private readonly apiService: ApiService,
+        private readonly view: React.ComponentType<{}>,
+        private readonly templateHtml$: Promise<string>,
+    ) {}
+
+    public async execute(request: HttpRequest, cache?: {[uri: string]: any}) {
+        // TODO: Could be awaited inside renderView for a tiny performance boost?
+        const templateHtml = await this.templateHtml$;
+        return renderView(request, templateHtml, this.view, (apiRequest) => (
+            this.apiService.execute(apiRequest, cache)
+        ));
+    }
+}
+
+async function renderView(
     request: HttpRequest,
     templateHtml: string,
     view: React.ComponentType<{}>,
-    getApiService: () => ApiService,
+    executeApiRequest: RequestHandler,
 ): Promise<HttpResponse> {
-    const {apiRoot, environment} = request;
+    const {serverOrigin, environment} = request;
     const requestQuery = buildQuery(request.queryParameters);
     const location = {
         pathname: request.path,
@@ -34,11 +57,11 @@ export async function renderView(
     let renderResult = render(view, client, location);
     // If at least one request was made, perform it and add to cache
     if (retrievals.length || listings.length) {
-        const apiService = getApiService();
+        const execute = errorMiddleware(executeApiRequest);
         // Perform the requests and populate the cache
         const [resourceCache, collectionCache] = await Promise.all([
-            executeRetrievals(apiService, retrievals, request),
-            executeListings(apiService, listings, request),
+            executeRetrievals(execute, retrievals, request),
+            executeListings(execute, listings, request),
         ]);
         // Re-render, now with the cache populated in the Client
         client = new DummyClient(null, null, resourceCache, collectionCache);
@@ -58,7 +81,7 @@ export async function renderView(
 
     const launchParams = [
         'document.getElementById("app")',
-        encodePrettySafeJSON(apiRoot),
+        encodePrettySafeJSON(serverOrigin),
         // Parameters for the AuthClient
         encodePrettySafeJSON(
             environment.AuthClientId && {
@@ -100,6 +123,8 @@ export async function renderView(
     };
 }
 
+type RequestHandler = (request: HttpRequest) => Promise<HttpResponse | ApiResponse>;
+
 function render(View: React.ComponentType<{}>, client: Client, location: object) {
     const routerContext: StaticRouterContext = {};
     const meta = {
@@ -127,14 +152,14 @@ function render(View: React.ComponentType<{}>, client: Client, location: object)
     return {viewHtml, routerContext, meta};
 }
 
-async function executeRetrievals(apiService: ApiService, retrievals: Retrieval[], request: HttpRequest): Promise<ResourceCache> {
+async function executeRetrievals(execute: RequestHandler, retrievals: Retrieval[], request: HttpRequest): Promise<ResourceCache> {
     const distinctRetrievals = getActionUrls(retrievals);
     const cache: ResourceCache = {};
     await Promise.all(
         mapObject(distinctRetrievals, async ([url, retrieval], urlStr) => {
             const {operation} = retrieval;
             const resourceName = operation.endpoint.resource.name;
-            const [resource, error] = await executeRenderRequest(apiService, url, request, operation.responseSerializer);
+            const [resource, error] = await executeRenderRequest(execute, url, request, operation.responseSerializer);
             const state: ResourceState = {
                 resource,
                 error,
@@ -147,14 +172,14 @@ async function executeRetrievals(apiService: ApiService, retrievals: Retrieval[]
     return cache;
 }
 
-async function executeListings(apiService: ApiService, listings: Listing[], request: HttpRequest): Promise<CollectionCache> {
+async function executeListings(execute: RequestHandler, listings: Listing[], request: HttpRequest): Promise<CollectionCache> {
     const distinctListings = getActionUrls(listings);
     const cache: CollectionCache = {};
     await Promise.all(
         mapObject(distinctListings, async ([url, listing], urlStr) => {
             const {operation} = listing;
             const resourceName = operation.endpoint.resource.name;
-            const [page, error] = await executeRenderRequest(apiService, url, request, operation.responseSerializer);
+            const [page, error] = await executeRenderRequest(execute, url, request, operation.responseSerializer);
             const { ordering, direction, since, ...filters } = listing.input;
             const state: CollectionState = {
                 resources: page ? page.results : [],
@@ -184,13 +209,12 @@ function getActionUrls<T extends Retrieval | Listing>(actions: T[]): Record<stri
     });
 }
 
-async function executeRenderRequest<T>(apiService: ApiService, url: Url, origRequest: HttpRequest, serializer: Serializer<T>): Promise<[T | null, ApiResponse | null]> {
-    const execute = errorMiddleware(apiService.execute);
+async function executeRenderRequest<T>(execute: (request: HttpRequest) => Promise<HttpResponse | ApiResponse>, url: Url, origRequest: HttpRequest, serializer: Serializer<T>): Promise<[T | null, ApiResponse | null]> {
     const response = await execute({
         // Copy most of the properties from the original request
         ...pick(origRequest, [
-            'apiOrigin', 'apiRoot', 'environment',
-            'auth', 'region', 'siteOrigin', 'siteRoot',
+            'environment', 'auth',
+            'region', 'serverOrigin', 'serverRoot',
         ]),
         // Set up properties for the render request
         method: 'GET',

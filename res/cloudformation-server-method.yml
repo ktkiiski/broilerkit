@@ -1,14 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
   # Enabled HTTP method for an API resource
-  <ApiMethodName>:
+  <ServerMethodName>:
     Type: AWS::ApiGateway::Method
     Properties:
-      HttpMethod: <ApiMethod>
-      ResourceId:
-        Ref: <ApiResourceName>
+      HttpMethod: <ServerMethod>
+      ResourceId: <ServerResourceId>
       RestApiId:
-        Ref: ApiGatewayRestApi
+        Ref: ServerApiGatewayRestApi
       RequestParameters: {}
       AuthorizationType: <AuthorizationType>
       AuthorizerId: <AuthorizerId>
@@ -17,10 +16,10 @@ Resources:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
         Uri:
-          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${<ApiFunctionName>.Arn}/invocations"
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${<ServerFunctionName>.Arn}/invocations"
       MethodResponses: []
 
   # Add this method to the deployment dependencies
-  ApiGatewayDeployment<ApiDeploymentId>:
+  ServerApiGatewayDeployment<ServerDeploymentId>:
     DependsOn:
-    - <ApiMethodName>
+    - <ServerMethodName>

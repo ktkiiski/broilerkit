@@ -9,7 +9,8 @@ import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { Serializer } from './serializers';
 import { Url, UrlPattern } from './url';
-import { buildObject, hasOwnProperty, transformValues } from './utils/objects';
+import { sort } from './utils/arrays';
+import { buildObject, transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
@@ -26,7 +27,7 @@ type OperationImplementors<I, O, D, R> = {
     [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], D, R[P]>;
 };
 
-interface Controller {
+export interface Controller {
     /**
      * All HTTP methods accepted by this endpoint.
      */
@@ -123,7 +124,7 @@ export function implement<I, O, R, D>(
                     return new OK(page);
                 }
                 const url = operation.route.compile(page.next);
-                const next = `${request.apiRoot}${url}`;
+                const next = `${request.serverOrigin}${url}`;
                 const headers = {Link: `${next}; rel="next"`};
                 return new OK(page, headers);
             },
@@ -165,13 +166,17 @@ export function implementAll<I, O, R, D>(
 export class ApiService {
 
     public readonly tables: Array<Table<Model<any, any, any, any, any>>>;
+    public readonly controllers: Controller[];
 
     constructor(
-        public readonly controllers: Record<string, Controller>,
+        public readonly controllersByName: Record<string, Controller>,
     ) {
         const tablesByName: Record<string, Table<Model<any, any, any, any, any>>> = {};
-        Object.values(controllers).forEach((implementation) => {
-            Object.values(implementation.tables).forEach((table) => {
+        // IMPORTANT: Sort controllers by pattern, because this way static path components
+        // take higher priority than placeholders, e.g. `/api/foobar` comes before `/{path+}`
+        this.controllers = sort(Object.values(controllersByName), ({pattern}) => pattern.pattern, 'asc');
+        this.controllers.forEach((controller) => {
+            Object.values(controller.tables).forEach((table) => {
                 tablesByName[table.name] = table;
             });
         });
@@ -229,7 +234,7 @@ export class ApiService {
     }
 
     public extend(controllers: Record<string, Controller>) {
-        return new ApiService({...this.controllers, ...controllers});
+        return new ApiService({...this.controllersByName, ...controllers});
     }
 
     public getTable(tableName: string): Table<Model<any, any, any, any, any>> | undefined {
@@ -238,16 +243,10 @@ export class ApiService {
 
     private *iterateForPath(path: string) {
         const url = new Url(path);
-        const {controllers: controllers} = this;
-        for (const endpointName in controllers) {
-            if (hasOwnProperty(controllers, endpointName)) {
-                const controller = controllers[endpointName];
-                if (controller) {
-                    // NOTE: We just make a simple match against the path!
-                    if (controller.pattern.match(url)) {
-                        yield controller;
-                    }
-                }
+        for (const controller of this.controllers) {
+            // NOTE: We just make a simple match against the path!
+            if (controller.pattern.match(url)) {
+                yield controller;
             }
         }
     }
