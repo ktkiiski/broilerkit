@@ -160,6 +160,13 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 inject: true,
                 // Locate the cache folder inside the .broiler directory
                 cache: path.resolve(stageDirPath, '.wwp-cache'),
+                // The configuration for `favicon`:
+                // https://github.com/itgalaxy/favicons#usage
+                favicon: {
+                    // Start URL when launching the application from a device. `string`
+                    start_url: serverRoot,
+                    // NOTE The most of the metadata is read automatically from package.json
+                },
                 /**
                  * Which icons should be generated.
                  * See: https://github.com/haydenbleasel/favicons#usage
