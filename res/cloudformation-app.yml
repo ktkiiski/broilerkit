@@ -103,6 +103,16 @@ Resources:
         Fn::Sub: "${AWS::StackName}-assets"
       WebsiteConfiguration:
         IndexDocument: index.html
+      # Allow CORS access to the assets from the website origin.
+      # This is required e.g. for the manifest.json file to work
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - GET
+            AllowedOrigins:
+              - Ref: ServerOrigin
+            AllowedHeaders:
+              - "*"
   # S3 bucket that is just used for simple redirection from the root
   # domain to the www domain.
   RedirectS3Bucket:

@@ -25,6 +25,7 @@ const { cyan, green, red, yellow } = chalk;
 export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Promise<void> {
     const assetsRootUrl = new URL(options.assetsRoot);
     const assetsProtocol = assetsRootUrl.protocol;
+    const serverRootUrl = new URL(options.serverRoot);
     const serverPort = parseInt(assetsRootUrl.port, 10);
     const enableHttps = assetsProtocol === 'https:';
     const config = getFrontendWebpackConfig({
@@ -47,6 +48,10 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
         // As we are "proxying" the base HTML file, where the script is injected,
         // we need to explicitly define the host of the webpack-dev-server
         public: assetsRootUrl.host,
+        headers: {
+            // Prevent CORS issues with resources
+            'Access-Control-Allow-Origin': serverRootUrl.origin,
+        },
     };
     WebpackDevServer.addDevServerEntrypoints(config, devServerOptions);
     const compiler = webpack(config);
