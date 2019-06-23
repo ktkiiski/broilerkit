@@ -10,25 +10,6 @@ interface MultipartData {
     body: string;
 }
 
-/*
- * MultiPart_parse decodes a multipart/form-data encoded response into a named-part-map.
- * The response can be a string or raw bytes.
- *
- * Usage for string response:
- *      var map = MultiPart_parse(xhr.responseText, xhr.getResponseHeader('Content-Type'));
- *
- * Usage for raw bytes:
- *      xhr.open(..);
- *      xhr.responseType = "arraybuffer";
- *      ...
- *      var map = MultiPart_parse(xhr.response, xhr.getResponseHeader('Content-Type'));
- *
- * TODO: Can we use https://github.com/felixge/node-formidable
- * See http://stackoverflow.com/questions/6965107/converting-between-strings-and-arraybuffers
- * See http://www.w3.org/Protocols/rfc1341/7_2_Multipart.html
- *
- * Copyright@ 2013-2014 Wolfgang Kuehn, released under the MIT license.
-*/
 export function parseFormData(body: string, boundary: string): MultipartData[] {
     if (!boundary) {
         throw new ValidationError('Missing the multipart/form-data boundary');

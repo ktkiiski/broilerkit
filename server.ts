@@ -2,15 +2,14 @@
 import { Handler, ResponseHandler } from './api';
 import { CognitoModel } from './cognito';
 import { Model, Table } from './db';
-import { BadRequest, HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, parseHeaderDirectives, Unauthorized, UnsupportedMediaType } from './http';
+import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
-import { parseFormData } from './multipart';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
-import { Serializer } from './serializers';
+import { parsePayload } from './parser';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
-import { buildObject, transformValues } from './utils/objects';
+import { transformValues } from './utils/objects';
 import { upperFirst } from './utils/strings';
 
 export type Models<T> = T & {users: CognitoModel};
@@ -265,7 +264,7 @@ function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {
-    const {path, queryParameters, method, body, headers} = request;
+    const {path, queryParameters, method, body = '', headers} = request;
     const url = new Url(path, queryParameters);
     if (!operation.route.pattern.match(url)) {
         // The pattern doesn't match this URL path
@@ -285,38 +284,9 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
         return urlParameters;
     }
     // Deserialize/decode the payload, raising validation error if invalid
-    const payload = parsePayload(payloadSerializer, body, headers['Content-Type']);
+    const { 'Content-Type': contentTypeHeader = 'application/json'} = headers;
+    const serializedPayload = parsePayload(body, contentTypeHeader);
+    const payload = payloadSerializer.deserialize(serializedPayload);
     // TODO: Gather validation errors togeter?
     return {...urlParameters, ...payload};
-}
-
-function parsePayload(serializer: Serializer, body?: string, contentTypeHeader: string = 'application/json'): any {
-    if (!body) {
-        // Empty body equals to an empty object
-        // This way body may be omitted if the endpoint takes no payload input.
-        return serializer.deserialize({});
-    }
-    const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);
-    if (contentType === 'application/json') {
-        // Deserialize JSON
-        const payload = parseJSON(body);
-        return serializer.deserialize(payload);
-
-    } else if (contentType === 'multipart/form-data') {
-        // Decode multipart/form-data
-        const formData = parseFormData(body, meta.boundary);
-        const payload = buildObject(formData, (part) => (
-            part.name ? [part.name, part.body] : undefined
-        ));
-        return serializer.decode(payload);
-    }
-    throw new UnsupportedMediaType(`Only 'application/json' requests are accepted`);
-}
-
-function parseJSON(body: string) {
-    try {
-        return JSON.parse(body);
-    } catch {
-        throw new BadRequest(`Invalid JSON payload`);
-    }
 }
