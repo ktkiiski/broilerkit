@@ -1,38 +1,38 @@
+import { encodeDataUri } from './data-uri';
 import { BadRequest, parseHeaderDirectives, UnsupportedMediaType } from './http';
 import { parseFormData } from './multipart';
-import { Upload } from './uploads';
+import { Serializer } from './serializers';
 import { buildObject } from './utils/objects';
-import { countBytes } from './utils/strings';
 
-export function parsePayload(body: string, contentTypeHeader: string): any {
+export function parsePayload(serializer: Serializer, body: string, contentTypeHeader: string): any {
     const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);
-    if (contentType === 'plain/text') {
-        // Deserialize as a string
-        return body;
-
-    } else if (contentType === 'application/json') {
+    if (contentType === 'application/json') {
         // Deserialize JSON
         // NOTE: An empty string is interpreted as an empty object!
-        return body ? parseJSON(body) : {};
+        const serializedPayload = body ? parseJSON(body) : {};
+        return serializer.deserialize(serializedPayload);
 
     } else if (contentType === 'multipart/form-data') {
         // Decode multipart/form-data
         const formData = parseFormData(body, meta.boundary);
         // tslint:disable-next-line:no-shadowed-variable
-        return buildObject(formData, ({name, headers, filename, body}) => {
+        const encodedPayload = buildObject(formData, ({name, headers, filename, body}) => {
             if (!name) {
                 return undefined;
             }
-            const { 'Content-Type': type = 'text/plain' } = headers;
             if (filename != null) {
+                const { 'Content-Type': typeHeader = 'application/octet-stream' } = headers;
+                const [fileType, fileMeta] = parseHeaderDirectives(typeHeader);
                 // This is an uploaded file
-                const size = countBytes(body);
-                const file: Upload = { name: filename, type, body, size };
-                return [name, file];
+                return [name, encodeDataUri({
+                    data: body,
+                    contentType: fileType,
+                    meta: { ...fileMeta, filename },
+                })];
             }
-            // Parse the value
-            return [name, parsePayload(body, type)];
+            return [name, body];
         });
+        return serializer.decode(encodedPayload);
     }
     throw new UnsupportedMediaType(`Content type '${contentType}' is unsupported`);
 }

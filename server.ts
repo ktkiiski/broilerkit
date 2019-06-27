@@ -285,8 +285,7 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
     }
     // Deserialize/decode the payload, raising validation error if invalid
     const { 'Content-Type': contentTypeHeader = 'application/json'} = headers;
-    const serializedPayload = parsePayload(body, contentTypeHeader);
-    const payload = payloadSerializer.deserialize(serializedPayload);
+    const payload = parsePayload(payloadSerializer, body, contentTypeHeader);
     // TODO: Gather validation errors togeter?
     return {...urlParameters, ...payload};
 }
