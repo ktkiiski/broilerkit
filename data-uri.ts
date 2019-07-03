@@ -1,7 +1,7 @@
 import { ValidationError } from './errors';
 import { parseHeaderDirectives } from './http';
 
-interface DecodedDataUri {
+export interface DecodedDataUri {
     data: string;
     contentType: string;
     meta?: Record<string, string>;

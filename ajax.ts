@@ -74,6 +74,8 @@ function requestText(request: AjaxRequest): Promise<HttpResponse> {
         xhr.onreadystatechange = onReadyStateChange;
         if (payload == null) {
             xhr.send();
+        } else if (payload instanceof FormData) {
+            xhr.send(payload);
         } else {
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.send(JSON.stringify(payload));

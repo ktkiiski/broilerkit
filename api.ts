@@ -1,7 +1,8 @@
 import { Client } from './client';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
+import { ValidationError } from './errors';
 import { HttpMethod, SuccesfulResponse } from './http';
-import { CreateOperation, DestroyOperation, Operation, UpdateOperation } from './operations';
+import { CreateOperation, DestroyOperation, Operation, UpdateOperation, UploadOperation } from './operations';
 import { OptionalInput, OptionalOutput } from './serializers';
 import { Url } from './url';
 import { Key, pick } from './utils/objects';
@@ -46,7 +47,8 @@ export class CreateApi<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, 
 extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
     public async post(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         const method = 'POST';
-        const {route, payloadSerializer} = this.operation;
+        const {route} = this.operation;
+        const payloadSerializer = this.operation.getPayloadSerializer();
         const {resource} = this.operation.endpoint;
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
@@ -64,7 +66,8 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
     }
     public async postOptimistically(input: OptionalInput<S, U | R, O, D> & S): Promise<S> {
         const {client, operation} = this;
-        const {route, payloadSerializer} = operation;
+        const {route} = operation;
+        const payloadSerializer = this.operation.getPayloadSerializer();
         const {resource} = operation.endpoint;
         const method = 'POST';
         const url = route.compile(input);
@@ -95,7 +98,8 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         }
     }
     public validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
-        const {route, payloadSerializer} = this.operation;
+        const {route} = this.operation;
+        const payloadSerializer = this.operation.getPayloadSerializer();
         return {
             ...route.serializer.validate(input),
             ...payloadSerializer.validate(input),
@@ -187,5 +191,53 @@ extends BaseApi<DestroyOperation<S, U, any, B>> {
         } finally {
             unregisterOptimisticRemoval();
         }
+    }
+}
+
+export class UploadApi<S, F extends string, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, B extends U | undefined>
+extends BaseApi<UploadOperation<S, F, U, R, O, D, any, B>> {
+    public async post(input: OptionalInput<S, U | R, O, D> & Record<F, File>): Promise<S> {
+        const {operation} = this;
+        const method = 'POST';
+        const {route} = operation;
+        const requestDataSerializer = operation.getPayloadSerializer();
+        const {resource} = operation.endpoint;
+        const url = route.compile(input);
+        // Decode the normal payload for the request
+        const payload = requestDataSerializer.encode(input);
+        const formData = new FormData();
+        Object.keys(payload).forEach((key) => {
+            formData.set(key, payload[key]);
+        });
+        // Add each file
+        operation.files.forEach((key) => {
+            const file = input[key] as File | undefined;
+            if (!file) {
+                throw new ValidationError(`Invalid fields`, [{
+                    key, message: `Missing file upload`,
+                }]);
+            }
+            formData.set(key, file);
+        });
+        const item = await this.request(method, url, formData);
+        const resourceIdentity = pick(item, resource.identifyBy);
+        const resourceName = resource.name;
+        this.client.commitChange({
+            type: 'addition',
+            collectionUrl: url.path,
+            resourceName,
+            resource: item,
+            resourceIdentity,
+        });
+        return item;
+    }
+    public validatePost(input: OptionalInput<S, U | R, O, D> & Record<F, File>): OptionalOutput<S, U | R, O, D> & Record<F, File> {
+        const {operation} = this;
+        const {route} = operation;
+        const payloadSerializer = operation.getPayloadSerializer();
+        return {
+            ...route.serializer.validate(input),
+            ...payloadSerializer.validate(input),
+        } as OptionalOutput<S, U | R, O, D> & Record<F, File>;
     }
 }

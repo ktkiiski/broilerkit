@@ -1,3 +1,4 @@
+import { decodeDataUri, DecodedDataUri, encodeDataUri } from './data-uri';
 import { KeyErrorData, ValidationError } from './errors';
 import { isErrorResponse } from './http';
 import { padEnd, padStart } from './utils/strings';
@@ -425,6 +426,36 @@ class IdField extends RegexpField {
     }
 }
 
+class DataUriField implements Field<DecodedDataUri, string> {
+    public validate(value: DecodedDataUri): DecodedDataUri {
+        if (!value.contentType) {
+            throw new ValidationError(`Missing data content type`);
+        }
+        return value;
+    }
+    public serialize(value: DecodedDataUri): string {
+        return this.encode(value);
+    }
+    public deserialize(value: unknown): DecodedDataUri {
+        if (typeof value !== 'string') {
+            throw new ValidationError(`Invalid string value`);
+        }
+        return this.decode(value);
+    }
+    public encode(value: DecodedDataUri): string {
+        return encodeDataUri(value);
+    }
+    public decode(value: string): DecodedDataUri {
+        return decodeDataUri(value);
+    }
+    public encodeSortable(value: DecodedDataUri): string {
+        return this.encode(value);
+    }
+    public decodeSortable(value: string): DecodedDataUri {
+        return this.decode(value);
+    }
+}
+
 function isNullable(value: unknown): value is null | '' {
     return value === null || value === '';
 }
@@ -577,6 +608,10 @@ export function id(): Field<string> {
 
 export function url(): Field<string> {
     return new URLField();
+}
+
+export function data(): Field<DecodedDataUri, string> {
+    return new DataUriField();
 }
 
 export function nullable<I, O>(field: Field<I, O>): Field<I | null, O | null> {
