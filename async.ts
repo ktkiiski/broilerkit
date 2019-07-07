@@ -33,6 +33,14 @@ export async function toArray<T>(iterator: AsyncIterable<T>): Promise<T[]> {
     return items;
 }
 
+export async function toFlattenArray<T>(iterator: AsyncIterable<T[]>): Promise<T[]> {
+    const items: T[] = [];
+    for await (const chunk of iterator) {
+        items.push(...chunk);
+    }
+    return items;
+}
+
 export async function *mapAsync<T, R>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => R) {
     let index = 0;
     for await (const item of iterable) {
