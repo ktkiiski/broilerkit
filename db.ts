@@ -27,7 +27,7 @@ export interface Model<T, I, R, P, D> {
      * Results to the item object, with all of its attributes,
      * if found successfully.
      */
-    retrieve(identity: I, notFoundError?: Error): Promise<T>;
+    retrieve(identity: I): Promise<T>;
     /**
      * Inserts an item with the given ID to the database,
      * The given item must contain all model attributes, including
@@ -38,7 +38,7 @@ export interface Model<T, I, R, P, D> {
      *
      * Results to the given item object if inserted successfully.
      */
-    create(item: R, alreadyExistsError?: Error): Promise<T>;
+    create(item: R): Promise<T>;
     /**
      * Replaces an existing item in the database, identified by the given
      * identity object. The given item object must contain all model attributes,
@@ -56,7 +56,7 @@ export interface Model<T, I, R, P, D> {
      *
      * Results to the updated item object if inserted successfully.
      */
-    replace(identity: I, item: R, notFoundError?: Error): Promise<T>;
+    replace(identity: I, item: R): Promise<T>;
     /**
      * Updates some of the attributes of an existing item in the database,
      * identified by the given identity object. The changes must contain
@@ -75,14 +75,14 @@ export interface Model<T, I, R, P, D> {
      * Results to the updated item object with all up-to-date attributes,
      * if updated successfully.
      */
-    update(identity: I, changes: P, notFoundError?: Error): Promise<T>;
+    update(identity: I, changes: P): Promise<T>;
     /**
      * Same than patch, but instead resulting to the whole updated object,
      * only results to the changes given as parameter. Prefer this instead
      * of patch if you do not need to know all the up-to-date attributes of the
      * object after a successful patch, as this is more efficient.
      */
-    amend<C extends P>(identity: I, changes: C, notFoundError?: Error): Promise<C>;
+    amend<C extends P>(identity: I, changes: C): Promise<C>;
     /**
      * Either creates an item or replaces an existing one.
      * Use this instead of create/put method if you don't care if the
@@ -95,7 +95,7 @@ export interface Model<T, I, R, P, D> {
      * Deletes an item from the database, identified by the given
      * identity object. Fails if the item does not exists.
      */
-    destroy(identity: I, notFoundError?: Error): Promise<void>;
+    destroy(identity: I): Promise<void>;
     /**
      * Deletes an item from the database if it exists in the database.
      * Unlike destroy, this does not fail if the item didn't exists.

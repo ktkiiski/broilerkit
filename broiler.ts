@@ -12,7 +12,7 @@ import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
 import { ensureDirectoryExists, fileExists, readFile, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
-import { HttpMethod } from './http';
+import { HttpMethod, HttpStatus, isErrorResponse } from './http';
 import { AppStageConfig } from './index';
 import { getDbFilePath, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
@@ -386,11 +386,10 @@ export class Broiler {
                         if (overwrite) {
                             await model.write(item);
                         } else {
-                            const alreadyExists = new Error('Row already exists');
                             try {
-                                await model.create(item, alreadyExists);
+                                await model.create(item);
                             } catch (error) {
-                                if (error !== alreadyExists) {
+                                if (!isErrorResponse(error, HttpStatus.PreconditionFailed)) {
                                     throw error;
                                 }
                             }

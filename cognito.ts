@@ -1,6 +1,7 @@
 import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Table } from './db';
+import { HttpStatus, isErrorResponse, NotFound } from './http';
 import { NeDbModel } from './nedb';
 import { Page } from './pagination';
 import { Resource } from './resources';
@@ -23,11 +24,11 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
 
     constructor(private userPoolId: string, private region: string, public serializer: Resource<S, 'id', 'updatedAt'>) {}
 
-    public async retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
+    public async retrieve(query: UserIdentity): Promise<S> {
         const {identitySerializer} = this;
         const serializedQuery = identitySerializer.serialize(query);
         const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
-        const cognitoUser = await cognito.getUserById(serializedQuery.id, notFoundError);
+        const cognitoUser = await cognito.getUserById(serializedQuery.id, new NotFound(`User not found.`));
         // No deserialization needed
         return cognitoUser;
     }
@@ -37,22 +38,22 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
     }
 
     // tslint:disable-next-line:variable-name
-    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>, _notFoundError?: Error): Promise<S> {
+    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>): Promise<S> {
         throw new Error(`Replacing a user is not supported. Use an update instead.`);
     }
 
-    public async update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
+    public async update(identity: UserIdentity, changes: UserPartialUpdate<S>): Promise<S> {
         const {identitySerializer, updateSerializer} = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedChanges = updateSerializer.serialize(changes);
         const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
-        const cognitoUser = await cognito.updateUserById(serializedIdentity.id, serializedChanges, notFoundError);
+        const cognitoUser = await cognito.updateUserById(serializedIdentity.id, serializedChanges, new NotFound(`User not found.`));
         // No deserialization needed
         return cognitoUser;
     }
 
-    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C, notFoundError?: Error): Promise<C> {
-        await this.update(identity, changes, notFoundError);
+    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C): Promise<C> {
+        await this.update(identity, changes);
         return changes;
     }
 
@@ -60,20 +61,19 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         throw new Error(`Not yet implemented!`);
     }
 
-    public async destroy(identity: UserIdentity, notFoundError?: Error) {
+    public async destroy(identity: UserIdentity) {
         const {identitySerializer} = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedId = serializedIdentity.id;
         const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
-        await cognito.deleteUserById(serializedId, notFoundError);
+        await cognito.deleteUserById(serializedId, new NotFound(`User not found.`));
     }
 
     public async clear(identity: UserIdentity) {
-        const notFound = new Error(`Not found`);
         try {
-            return await this.destroy(identity, notFound);
+            return await this.destroy(identity);
         } catch (error) {
-            if (error !== notFound) {
+            if (!isErrorResponse(error, HttpStatus.NotFound)) {
                 throw error;
             }
         }
@@ -96,10 +96,9 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
     }
 
     public batchRetrieve(identities: UserIdentity[]) {
-        const notFoundError = new Error(`Not found`);
         const promises = mapCached(identities, (identity) => (
-            this.retrieve(identity, notFoundError).catch((error) => {
-                if (error === notFoundError) {
+            this.retrieve(identity).catch((error) => {
+                if (isErrorResponse(error, HttpStatus.NotFound)) {
                     return null;
                 }
                 throw error;
@@ -117,8 +116,8 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
 
     constructor(private filePath: string, public readonly serializer: Resource<S, 'id', 'updatedAt'>) {}
 
-    public retrieve(query: UserIdentity, notFoundError?: Error): Promise<S> {
-        return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>, notFoundError);
+    public retrieve(query: UserIdentity): Promise<S> {
+        return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>);
     }
 
     public create(attrs: UserCreateAttributes<S>): Promise<S> {
@@ -127,17 +126,17 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     }
 
     // tslint:disable-next-line:variable-name
-    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>, _notFoundError?: Error): Promise<S> {
+    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>): Promise<S> {
         throw new Error(`Replacing a user is not supported. Use an update instead.`);
     }
 
-    public update(identity: UserIdentity, changes: UserPartialUpdate<S>, notFoundError?: Error): Promise<S> {
+    public update(identity: UserIdentity, changes: UserPartialUpdate<S>): Promise<S> {
         const update = {...changes, updatedAt: new Date()};
-        return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>, notFoundError);
+        return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>);
     }
 
-    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C, notFoundError?: Error): Promise<C> {
-        await this.update(identity, changes, notFoundError);
+    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C): Promise<C> {
+        await this.update(identity, changes);
         return changes;
     }
 
@@ -145,8 +144,8 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
         throw new Error(`Not yet implemented!`);
     }
 
-    public destroy(identity: UserIdentity, notFoundError?: Error) {
-        return this.nedb.destroy(identity as Identity<S, 'id', 'updatedAt'>, notFoundError);
+    public destroy(identity: UserIdentity) {
+        return this.nedb.destroy(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
     public clear(identity: UserIdentity) {

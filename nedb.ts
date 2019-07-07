@@ -1,6 +1,6 @@
 import * as Datastore from 'nedb';
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
-import { NotFound } from './http';
+import { HttpStatus, isErrorResponse, NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
@@ -36,16 +36,16 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         });
     }
 
-    public async retrieve(identity: Identity<S, PK, V>, notFoundError?: Error) {
+    public async retrieve(identity: Identity<S, PK, V>) {
         const query = this.getItemQuery(identity);
         const serializedItem = await this.findItem(query);
         if (!serializedItem) {
-            throw notFoundError || new NotFound(`Item was not found.`);
+            throw new NotFound(`Item was not found.`);
         }
         return this.decoder.deserialize(serializedItem);
     }
 
-    public async create(item: S, alreadyExistsError?: Error) {
+    public async create(item: S) {
         const serializedItem = {
             ...this.serializer.serialize(item),
             [PRIMARY_KEY_FIELD]: this.getItemPrimaryKey(item),
@@ -53,12 +53,14 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         try {
             await this.insertItem(serializedItem);
         } catch (error) {
-            throw (error.errorType === 'uniqueViolated' && alreadyExistsError) || error;
+            if (error.errorType === 'uniqueViolated') {
+                throw new PreconditionFailed(`Item already exists.`);
+            }
         }
         return item;
     }
 
-    public async replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
+    public async replace(identity: Identity<S, PK, V>, item: S) {
         const {serializer: resource} = this;
         const query = this.getItemQuery(identity);
         const serializedItem = {
@@ -67,33 +69,32 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         };
         const updatedSerializedItem = await this.updateItem(query, serializedItem);
         if (!updatedSerializedItem) {
-            throw notFoundError || new NotFound(`Item was not found.`);
+            throw new NotFound(`Item was not found.`);
         }
         return this.decoder.deserialize(updatedSerializedItem);
     }
 
-    public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
+    public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): Promise<S> {
         const query = this.getItemQuery(identity);
         const serializedChanges = this.updateSerializer.serialize(changes);
         const updatedSerializedItem = await this.updateItem(query, {$set: serializedChanges});
         if (!updatedSerializedItem) {
-            throw notFoundError || new NotFound(`Item was not found.`);
+            throw new NotFound(`Item was not found.`);
         }
         return this.decoder.deserialize(updatedSerializedItem);
     }
 
-    public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C, notFoundError?: Error): Promise<C> {
+    public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C): Promise<C> {
         // TODO: Better performing implementation
-        await this.update(identity, changes, notFoundError);
+        await this.update(identity, changes);
         return changes;
     }
 
     public async write(item: S): Promise<S> {
-        const alreadyExistsError = new Error(`Item already exists!`);
         try {
-            return await this.create(item, alreadyExistsError);
+            return await this.create(item);
         } catch (error) {
-            if (error !== alreadyExistsError) {
+            if (!isErrorResponse(error, HttpStatus.PreconditionFailed)) {
                 throw error;
             }
             return await this.replace(
@@ -103,11 +104,11 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         }
     }
 
-    public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
+    public async destroy(identity: Identity<S, PK, V>) {
         const query = this.getItemQuery(identity);
         const removedCount = await this.removeItem(query);
         if (!removedCount) {
-            throw notFoundError || new NotFound(`Item was not found.`);
+            throw new NotFound(`Item was not found.`);
         }
     }
 
@@ -170,10 +171,9 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         }
     }
     public batchRetrieve(identities: Array<Identity<S, PK, V>>) {
-        const notFoundError = new Error(`Not found`);
         const promises = mapCached(identities, (identity) => (
-            this.retrieve(identity, notFoundError).catch((error) => {
-                if (error === notFoundError) {
+            this.retrieve(identity).catch((error) => {
+                if (isErrorResponse(error, HttpStatus.NotFound)) {
                     return null;
                 }
                 throw error;

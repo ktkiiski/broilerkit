@@ -22,20 +22,24 @@ export const enum HttpStatus {
     NotFound = 404,
     MethodNotAllowed = 405,
     NotAcceptable = 406,
+    RequestTimeout = 408,
     Conflict = 409,
     Gone = 410,
+    PreconditionFailed = 412,
     UnsupportedMediaType = 415,
+    TooManyRequests = 429,
     // Server-side errors
     InternalServerError = 500,
     NotImplemented = 501,
     BadGateway = 502,
     ServiceUnavailable = 503,
+    GatewayTimeout = 504,
 }
 
 export type HttpSuccessStatus = 200 | 201 | 202 | 204;
 export type HttpRedirectStatus = 301 | 302;
-export type HttpClientErrorStatus = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 409 | 410 | 415;
-export type HttpServerErrorStatus = 500 | 501 | 502 | 503;
+export type HttpClientErrorStatus = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 408 | 409 | 410 | 412 | 415 | 429;
+export type HttpServerErrorStatus = 500 | 501 | 502 | 503 | 504;
 export type HttpErrorStatus = HttpClientErrorStatus | HttpServerErrorStatus;
 
 /**
@@ -185,6 +189,14 @@ export class MethodNotAllowed extends ExceptionResponse {
     public readonly statusCode = HttpStatus.MethodNotAllowed;
 }
 
+export class Conflict extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.Conflict;
+}
+
+export class PreconditionFailed extends ExceptionResponse {
+    public readonly statusCode = HttpStatus.PreconditionFailed;
+}
+
 export class UnsupportedMediaType extends ExceptionResponse {
     public readonly statusCode = HttpStatus.UnsupportedMediaType;
 }
@@ -204,24 +216,25 @@ export class Redirect extends Error implements ApiResponse<null> {
     }
 }
 
-export function isApiResponse(response: any): response is ApiResponse {
-    return isResponse(response) && !('body' in response);
+export function isApiResponse(response: any, statusCode?: HttpStatus): response is ApiResponse {
+    return isResponse(response, statusCode) && !('body' in response);
 }
 
-export function isResponse(response: any): response is HttpResponse | ApiResponse {
+export function isResponse(response: any, statusCode?: HttpStatus): response is HttpResponse | ApiResponse {
     if (!response) {
         return false;
     }
-    const {statusCode} = response;
-    return typeof statusCode === 'number'
-        && !isNaN(statusCode)
+    const {statusCode: responseStatusCode} = response;
+    return typeof responseStatusCode === 'number'
+        && !isNaN(responseStatusCode)
         && typeof response.headers === 'object'
         && (typeof response.body === 'string' || typeof response.data !== 'undefined')
+        && (statusCode == null || responseStatusCode === statusCode)
     ;
 }
 
-export function isErrorResponse(response: any): response is ApiResponse {
-    return isApiResponse(response) && response.statusCode >= 400;
+export function isErrorResponse(response: any, statusCode?: HttpErrorStatus): response is ApiResponse {
+    return isApiResponse(response, statusCode) && response.statusCode >= 400;
 }
 
 export function acceptsContentType(request: HttpRequest, contentType: string): boolean {

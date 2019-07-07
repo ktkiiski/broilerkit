@@ -1,6 +1,6 @@
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
-import { isErrorResponse, NotFound } from './http';
+import { HttpStatus, isErrorResponse, NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
@@ -32,7 +32,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         ;
     }
 
-    public async retrieve(query: Identity<S, PK, V>, notFoundError?: Error) {
+    public async retrieve(query: Identity<S, PK, V>) {
         const {identitySerializer, decoder} = this;
         const encodedQuery = identitySerializer.encodeSortable(query);
         const itemName = this.getItemName(encodedQuery);
@@ -43,13 +43,12 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             ConsistentRead: true,
         });
         if (!hasProperties(encodedItem, encodedQuery)) {
-            throw notFoundError || new NotFound(`Item was not found.`);
+            throw new NotFound(`Item was not found.`);
         }
         return decoder.decodeSortable(encodedItem);
     }
 
-    // TODO: Already exists exception??
-    public async create(item: S, alreadyExistsError?: Error) {
+    public async create(item: S) {
         const {serializer: resource} = this;
         const primaryKey = this.serializer.identifyBy;
         const encodedItem = resource.encodeSortable(item);
@@ -71,20 +70,20 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             });
         } catch (error) {
             if (error.code === 'ConditionalCheckFailed') {
-                throw alreadyExistsError || new NotFound(`Item was not found.`);
+                throw new PreconditionFailed(`Item already exists.`);
             }
             throw error;
         }
         return item;
     }
 
-    public replace(identity: Identity<S, PK, V>, item: S, notFoundError?: Error) {
+    public replace(identity: Identity<S, PK, V>, item: S) {
         // TODO: Implement separately
         const update = omit(item, this.serializer.identifyBy);
-        return this.update(identity, update as PartialUpdate<S, V>, notFoundError);
+        return this.update(identity, update as PartialUpdate<S, V>);
     }
 
-    public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>, notFoundError?: Error): Promise<S> {
+    public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): Promise<S> {
         // TODO: Patch specific version!
         const {decoder, identitySerializer, updateSerializer} = this;
         const versionAttr = this.serializer.versionBy;
@@ -98,7 +97,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             ItemName: encodedId,
         });
         if (!hasProperties(encodedItem, encodedIdentity)) {
-            throw notFoundError || new NotFound(`Item was not found.`);
+            throw new NotFound(`Item was not found.`);
         }
         const encodedVersion: string = encodedItem[versionAttr];
         const existingItem = decoder.decodeSortable(encodedItem);
@@ -127,9 +126,9 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         return {...existingItem, ...changes} as S;
     }
 
-    public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C, notFoundError?: Error): Promise<C> {
+    public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C): Promise<C> {
         // TODO: Better performing implementation
-        await this.update(identity, changes, notFoundError);
+        await this.update(identity, changes);
         return changes;
     }
 
@@ -150,7 +149,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         return item;
     }
 
-    public async destroy(identity: Identity<S, PK, V>, notFoundError?: Error) {
+    public async destroy(identity: Identity<S, PK, V>) {
         const {identitySerializer} = this;
         const primaryKey = this.serializer.identifyBy;
         const versionAttr = this.serializer.versionBy;
@@ -168,7 +167,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
                 ItemName: itemName,
             });
             if (!hasProperties(encodedItem, encodedIdentity)) {
-                throw notFoundError || new NotFound(`Item was not found.`);
+                throw new NotFound(`Item was not found.`);
             }
             // For the next deletion, use the given version ID
             // TODO: Retry conflicts?
@@ -186,7 +185,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             });
         } catch (error) {
             if (error.code === 'AttributeDoesNotExist' || error.code === 'MultiValuedAttribute' || error.code === 'ConditionalCheckFailed') {
-                throw notFoundError || new NotFound(`Item was not found.`);
+                throw new NotFound(`Item was not found.`);
             }
             throw error;
         }
@@ -194,11 +193,10 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
 
     public async clear(identity: Identity<S, PK, V>) {
         // TODO: Better implementation!
-        const notFound = new Error(`Not found`);
         try {
-            return await this.destroy(identity, notFound);
+            return await this.destroy(identity);
         } catch (error) {
-            if (error !== notFound) {
+            if (!isErrorResponse(error, HttpStatus.NotFound)) {
                 throw error;
             }
         }
