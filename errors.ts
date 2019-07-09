@@ -1,4 +1,4 @@
-import { ApiResponse, HttpStatus } from './http';
+import { ApiResponse, HttpStatus, isErrorResponse } from './http';
 
 export interface ErrorData {
     message: string;
@@ -21,5 +21,16 @@ export class ValidationError extends Error implements ApiResponse<ErrorData> {
         if (errors) {
             this.data.errors = errors;
         }
+    }
+}
+
+export async function catchNotFound<T>(promise: Promise<T>): Promise<T | null> {
+    try {
+        return await promise;
+    } catch (error) {
+        if (isErrorResponse(error, HttpStatus.NotFound)) {
+            return null;
+        }
+        throw error;
     }
 }
