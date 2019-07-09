@@ -1,13 +1,15 @@
 import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { Identity, Model, PartialUpdate, Table } from './db';
+import { Identity, Model, PartialUpdate, Query, Table } from './db';
+import { ValidationError } from './errors';
 import { HttpStatus, isErrorResponse, NotFound } from './http';
 import { NeDbModel } from './nedb';
 import { Page } from './pagination';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
-import { mapCached } from './utils/arrays';
+import { mapCached, order } from './utils/arrays';
+import { Key } from './utils/objects';
 
 export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
 export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
@@ -15,7 +17,7 @@ export interface UserIdentity {
     id: string;
 }
 export type UserPartialUpdate<S extends User> = Partial<UserMutableAttributes<S>>;
-export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, {}>;
+export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, Query<S>>;
 
 export class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
@@ -83,14 +85,29 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         }
     }
 
-    public async list(_: {}) {
+    public async list<Q extends Query<S>>({ direction, ordering, since, ...filters }: Q) {
         // TODO: Improve the query possibilities!
         const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
         const results: S[] = [];
-        for await (const cognitoUsers of cognito.listUsers()) {
+        const filterKeys = Object.keys(filters);
+        if (filterKeys.length > 1) {
+            throw new ValidationError(`Only one filtering key supported when listing users`);
+        }
+        const options: {filterKey?: string, filterValue?: string} = {};
+        if (filterKeys.length) {
+            const filterKey = filterKeys[0] as Key<S>;
+            const { serializer } = this;
+            const field = serializer.fields[filterKey];
+            options.filterKey = filterKey;
+            options.filterValue = field.encode((filters as any)[filterKey]);
+        }
+        for await (const cognitoUsers of cognito.listUsers(options)) {
             results.push(...cognitoUsers);
         }
-        return {results, next: null};
+        return {
+            results: order(results, ordering, direction, since),
+            next: null,
+        };
     }
 
     public scan(_: {} = {}): AsyncIterableIterator<S[]> {
@@ -160,7 +177,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
         return this.nedb.clear(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
-    public list<Q extends {}>(query: {}) {
+    public list<Q extends Query<S>>(query: Q) {
         return this.nedb.list(query as any) as Promise<Page<S, Q>>;
     }
     public scan(query?: {}): AsyncIterableIterator<S[]> {
