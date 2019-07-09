@@ -183,7 +183,7 @@ extends OptionalOptions<S, R, O, D> {
 
 export class UploadOperation<S, F extends string, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
 extends BaseOperation<S, U, A, B>
-implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S, R, O, D> & Record<F, DecodedDataUri>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
+implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
     public readonly type = 'upload' as const;
     public readonly methods: HttpMethod[] = ['POST'];
     public readonly route = this.endpoint.asRoute();
@@ -207,7 +207,7 @@ implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S,
     public getPayloadSerializer() {
         return this.payloadSerializer;
     }
-    public asImplementable(): Operation<OptionalOutput<S, R, O, D> & Record<F, DecodedDataUri>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
+    public asImplementable(): Operation<OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>, SuccesfulResponse<S>, AuthRequestMapping[A]> {
         return this;
     }
 }
