@@ -84,6 +84,20 @@ export interface Model<T, I, R, P, D> {
      */
     amend<C extends P>(identity: I, changes: C): Promise<C>;
     /**
+     * Inserts a new item to the database, or updates an existing item
+     * if one already exists with the same identity.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * Results to the created/updated item.
+     */
+    upsert(creation: T, update: P): Promise<T>;
+    /**
      * Either creates an item or replaces an existing one.
      * Use this instead of create/put method if you don't care if the
      * item already existed in the database.

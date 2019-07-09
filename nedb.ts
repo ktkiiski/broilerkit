@@ -90,6 +90,21 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         return changes;
     }
 
+    public async upsert(creation: S, update: PartialUpdate<S, V>): Promise<S> {
+        try {
+            return await this.create(creation);
+        } catch (error) {
+            if (isErrorResponse(error, HttpStatus.PreconditionFailed)) {
+                // Item already exists
+                const { identifyBy } = this.serializer;
+                const identity = pick(creation, identifyBy);
+                // TODO: Handle race conditions
+                return await this.update(identity as Identity<S, PK, V>, update);
+            }
+            throw error;
+        }
+    }
+
     public async write(item: S): Promise<S> {
         try {
             return await this.create(item);

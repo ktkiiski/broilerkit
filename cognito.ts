@@ -57,6 +57,10 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         return changes;
     }
 
+    public async upsert(): Promise<S> {
+        throw new Error(`Not yet implemented!`);
+    }
+
     public async write(_: S): Promise<S> {
         throw new Error(`Not yet implemented!`);
     }
@@ -138,6 +142,10 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C): Promise<C> {
         await this.update(identity, changes);
         return changes;
+    }
+
+    public async upsert(): Promise<S> {
+        throw new Error(`Not yet implemented!`);
     }
 
     public async write(_: S): Promise<S> {
