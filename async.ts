@@ -11,7 +11,7 @@ export function asap<T>(callback: () => T): Promise<T> {
     return Promise.resolve().then(callback);
 }
 
-export async function *buffer<T>(iterator: AsyncIterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
+export async function *chunkify<T>(iterator: AsyncIterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
     let items: T[] = [];
     for await (const item of iterator) {
         items.push(item);

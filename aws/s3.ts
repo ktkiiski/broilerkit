@@ -1,5 +1,5 @@
 import { S3 } from 'aws-sdk';
-import { buffer } from '../async';
+import { chunkify } from '../async';
 import { flatMap } from '../utils/arrays';
 import { retrievePages } from './utils';
 
@@ -20,13 +20,13 @@ export class AmazonS3 {
      */
     public async *emptyBucket(bucketName: string) {
         // Delete regular objects (with null versions)
-        for await (const objects of buffer(this.iterateObjects(bucketName), 100)) {
+        for await (const objects of chunkify(this.iterateObjects(bucketName), 100)) {
             const refs = flatMap(objects, ({Key}) => Key ? [{Key}] : []);
             const removals = await this.deleteMultipleS3Objects(bucketName, refs);
             yield *removals;
         }
         // Delete all object versions
-        for await (const versions of buffer(this.iterateObjectVersions(bucketName), 100)) {
+        for await (const versions of chunkify(this.iterateObjectVersions(bucketName), 100)) {
             const refs = flatMap(versions, ({Key, VersionId}) => Key && VersionId ? [{Key, VersionId}] : []);
             const removals = await this.deleteMultipleS3Objects(bucketName, refs);
             yield *removals;
