@@ -17,13 +17,14 @@ const retryableStatusCodes = [
  * @param maxRetryCount Maximum number of retry attempts
  * @param fn The function to execute
  */
-export async function retryWithBackoff<T>(maxRetryCount: number, fn: () => Promise<T>, statusCodes = retryableStatusCodes): Promise<T> {
+export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, statusCodes = retryableStatusCodes): Promise<T> {
+    let retryCount = 0;
     const startTime = new Date().getTime();
     while (true) {
         try {
-            return await fn();
+            return await fn(retryCount);
         } catch (error) {
-            if (maxRetryCount <= 0 || !isErrorResponse(error)) {
+            if (retryCount >= maxRetryCount || !isErrorResponse(error)) {
                 // No more retries or not retryable error
                 throw error;
             }
@@ -34,7 +35,7 @@ export async function retryWithBackoff<T>(maxRetryCount: number, fn: () => Promi
             }
             // Retry
             const { 'Retry-After': retryAfter } = error.headers;
-            maxRetryCount -= 1;
+            retryCount += 1;
             // Wait for a random portion of the total time spent
             await wait(getRetryDelay(startTime, retryAfter));
         }
@@ -70,15 +71,17 @@ const conflictStatusCodes = [
  * it raises a 409 or 412 or error.
  * @param fn Function that performs a "transaction"
  */
-export async function retryOptimistically<T>(fn: () => Promise<T>, statusCodes = conflictStatusCodes): Promise<T> {
+export async function retryOptimistically<T>(fn: (retryCount: number) => Promise<T>, statusCodes = conflictStatusCodes): Promise<T> {
+    let retryCount = 0;
     while (true) {
         try {
-            return await fn();
+            return await fn(retryCount);
         } catch (error) {
             if (isErrorResponse(error)) {
                 const { statusCode } = error;
                 if (statusCodes.indexOf(statusCode) >= 0) {
                     // There was a conflict. Try again.
+                    retryCount += 1;
                     continue;
                 }
             }
