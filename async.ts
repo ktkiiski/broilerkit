@@ -17,6 +17,13 @@ export function asap<T = void>(callback?: () => T): Promise<T> {
     return callback ? promise.then(callback) : promise;
 }
 
+export function timeout<T>(maxDuration: number, task: Promise<T>, message: string = 'Operation timed out'): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timeoutId = setTimeout(() => reject(new Error(message)), maxDuration);
+        task.then(resolve, reject).finally(() => clearTimeout(timeoutId));
+    });
+}
+
 export async function *chunkify<T>(iterator: AsyncIterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
     let items: T[] = [];
     for await (const item of iterator) {
