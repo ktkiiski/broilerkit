@@ -11,9 +11,10 @@ export function wait(ms?: number): Promise<void> {
     });
 }
 
-export function asap<T>(callback: () => void): Promise<void>;
-export function asap<T>(callback: () => T): Promise<T> {
-    return Promise.resolve().then(callback);
+export function asap<T = void>(callback?: () => void): Promise<void>;
+export function asap<T = void>(callback?: () => T): Promise<T> {
+    const promise = Promise.resolve() as Promise<any>;
+    return callback ? promise.then(callback) : promise;
 }
 
 export async function *chunkify<T>(iterator: AsyncIterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
