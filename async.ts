@@ -38,7 +38,7 @@ export async function *chunkify<T>(iterator: AsyncIterable<T>, bufferSize: numbe
     }
 }
 
-export async function toArray<T>(iterator: AsyncIterable<T>): Promise<T[]> {
+export async function toArray<T>(iterator: AsyncIterable<T> | Iterable<T> | T[]): Promise<T[]> {
     const items: T[] = [];
     for await (const item of iterator) {
         items.push(item);
