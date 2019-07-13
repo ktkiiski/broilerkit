@@ -202,3 +202,18 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
         }
     }
 }
+
+interface Deferred<T> {
+    resolve: (value: T) => void;
+    reject: (error: any) => void;
+    promise: Promise<T>;
+}
+
+export function deferred<T>(): Deferred<T> {
+    const dfr = {} as any;
+    dfr.promise = new Promise((resolve, reject) => {
+        dfr.resolve = resolve;
+        dfr.reject = reject;
+    });
+    return dfr;
+}
