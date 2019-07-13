@@ -32,3 +32,10 @@ class SharedIterator<T> implements AsyncIterator<T> {
 export function shareIterator<T>(iterator: AsyncIterator<T>): AsyncIterable<T> {
     return new SharedAsyncIterable(iterator);
 }
+
+export function iterate<T>(iterable: Iterable<T> | AsyncIterable<T>): Iterator<T> | AsyncIterator<T> {
+    if (Symbol.asyncIterator in iterable) {
+        return (iterable as AsyncIterable<T>)[Symbol.asyncIterator]();
+    }
+    return (iterable as Iterable<T>)[Symbol.iterator]();
+}

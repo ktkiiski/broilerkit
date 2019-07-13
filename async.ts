@@ -1,3 +1,4 @@
+import { iterate } from './iteration';
 import { compare } from './utils/compare';
 
 export function wait(ms?: number): Promise<void> {
@@ -166,6 +167,7 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
     let nextResolve!: (value: Token) => void;
     let nextReject!: (error: any) => void;
     let nextPromise!: Promise<any>;
+    // tslint:disable-next-line:no-shadowed-variable
     function iterate() {
         nextPromise = new Promise((resolve, reject) => {
             nextResolve = (token: Token) => {
@@ -201,6 +203,93 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
             terminate();
         }
     }
+}
+
+type WorkerResult<T> = { done: true } | { done: false, value: T };
+
+/**
+ * Maps and flattens the values from the given iterable running them
+ * through a processing callback concurrently so that there is maximum
+ * of the given number of results being processed concurrently.
+ * @param maxConcurrency maximum number of concurrently running tasks
+ * @param iterable Source iterables to process
+ * @param callback Processor for each value
+ */
+export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterableIterator<R> | R[] | undefined): AsyncIterableIterator<R> {
+    const iterator = iterate(iterable);
+    let startedCount = 0;
+    let runningCount = 0;
+    const pendingTasks: Array<Promise<WorkerResult<R[]>>> = [];
+
+    async function process(next: IteratorResult<T> | Promise<IteratorResult<T>>): Promise<WorkerResult<R[]>> {
+        let runNext = false;
+        try {
+            const { done, value } = await next;
+            if (done) {
+                return { done };
+            }
+            const callbackResult = callback(value, startedCount);
+            startedCount += 1;
+            runNext = true;
+            if (!callbackResult) {
+                return { done: false, value: [] };
+            }
+            const items = await toArray(callbackResult);
+            return { done: false, value: items };
+        } finally {
+            runningCount -= 1;
+            if (runNext) {
+                run();
+            }
+        }
+    }
+
+    function run() {
+        while (runningCount < maxConcurrency) {
+            runningCount += 1;
+            const next = process(iterator.next());
+            pendingTasks.push(next);
+        }
+    }
+
+    run();
+    while (true) {
+        // Promise that resolves when the next pending task resolves,
+        // or if any of the running tasks fail.
+        const nextResult = await Promise.race(pendingTasks.map(async (task, taskIndex) => {
+            if (taskIndex > 0) {
+                // Not next in line, but still catch errors
+                return await errorsOnly(task);
+            }
+            // Otherwise await normally
+            return task;
+        }));
+        if (nextResult.done) {
+            // Everything completed
+            return;
+        }
+        // Yield the results
+        yield *nextResult.value;
+        // Remove from the pending tasks
+        pendingTasks.shift();
+    }
+}
+
+export function mapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => Promise<R>) {
+    return flatMapAsyncParallel(maxConcurrency, iterable, async function*(item, index) {
+        yield await callback(item, index);
+    });
+}
+
+/**
+ * Wraps the given promise so that it never resolves, but any
+ * errors are still passed through.
+ * @param promise promise whose result will be ignored
+ */
+export function errorsOnly(promise: Promise<any>): Promise<never> {
+    return new Promise((_, reject) => {
+        promise.catch((error) => reject(error));
+    });
 }
 
 interface Deferred<T> {
