@@ -1,6 +1,6 @@
 import * as Datastore from 'nedb';
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
-import { HttpStatus, isErrorResponse, NotFound, PreconditionFailed } from './http';
+import { HttpStatus, isResponse, NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
@@ -94,7 +94,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         try {
             return await this.create(creation);
         } catch (error) {
-            if (isErrorResponse(error, HttpStatus.PreconditionFailed)) {
+            if (isResponse(error, HttpStatus.PreconditionFailed)) {
                 // Item already exists
                 const { identifyBy } = this.serializer;
                 const identity = pick(creation, identifyBy);
@@ -109,7 +109,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         try {
             return await this.create(item);
         } catch (error) {
-            if (!isErrorResponse(error, HttpStatus.PreconditionFailed)) {
+            if (!isResponse(error, HttpStatus.PreconditionFailed)) {
                 throw error;
             }
             return await this.replace(
@@ -188,7 +188,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     public batchRetrieve(identities: Array<Identity<S, PK, V>>) {
         const promises = mapCached(identities, (identity) => (
             this.retrieve(identity).catch((error) => {
-                if (isErrorResponse(error, HttpStatus.NotFound)) {
+                if (isResponse(error, HttpStatus.NotFound)) {
                     return null;
                 }
                 throw error;

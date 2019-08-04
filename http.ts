@@ -1,4 +1,4 @@
-import { transformKeys } from './utils/objects';
+import { forEachKey } from './utils/objects';
 import { capitalize, splitOnce } from './utils/strings';
 
 /**
@@ -233,8 +233,8 @@ export function isResponse(response: any, statusCode?: HttpStatus): response is 
     ;
 }
 
-export function isErrorResponse(response: any, statusCode?: HttpErrorStatus): response is ApiResponse {
-    return isApiResponse(response, statusCode) && response.statusCode >= 400;
+export function isErrorResponse(response: any): response is HttpResponse | ApiResponse {
+    return isResponse(response) && response.statusCode >= 400;
 }
 
 export function acceptsContentType(request: HttpRequest, contentType: string): boolean {
@@ -268,10 +268,24 @@ export function parseHeaders(headersString: string) {
     return normalizeHeaders(headers);
 }
 
-export function normalizeHeaders(headers: HttpHeaders): HttpHeaders {
-    return transformKeys(headers, (header) => (
-        header.replace(/(\w+)/g, (match) => capitalize(match))
-    ));
+interface RawHttpHeaders {
+    [header: string]: string | string[] | undefined | null;
+}
+
+export function normalizeHeaders(rawHeaders: RawHttpHeaders): HttpHeaders {
+    const wordRegex = /\w+/g;
+    const headers: HttpHeaders = {};
+    forEachKey(rawHeaders, (rawHeader) => {
+        const rawValue = rawHeaders[rawHeader];
+        const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+        if (value == null) {
+            // Omit undefined values
+            return;
+        }
+        const header = rawHeader.replace(wordRegex, (match) => capitalize(match));
+        headers[header] = value;
+    });
+    return headers;
 }
 
 export function parseHeaderDirectives(header: string): [string, Record<string, string>] {

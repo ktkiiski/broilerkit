@@ -2,7 +2,7 @@ import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
 import { readStream } from './fs';
-import { HttpMethod } from './http';
+import { HttpMethod, normalizeHeaders } from './http';
 import { forEachKey } from './utils/objects';
 
 interface Request extends https.RequestOptions {
@@ -56,8 +56,12 @@ export async function request({url, query, body: requestBody, ...options}: Reque
     });
     const chunks = await readStream(resp);
     const body = chunks.join('');
-    const {statusCode, headers} = resp;
-    if (statusCode && statusCode >= 200 && statusCode < 300) {
+    const {statusCode, headers: rawHeaders} = resp;
+    if (statusCode == null) {
+        throw new Error(`Responded with invalid status code`);
+    }
+    const headers = normalizeHeaders(rawHeaders);
+    if (statusCode >= 200 && statusCode < 300) {
         return {statusCode, headers, body};
     } else {
         throw {statusCode, headers, body};

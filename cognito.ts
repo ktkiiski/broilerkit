@@ -2,7 +2,7 @@ import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { Identity, Model, PartialUpdate, Query, Table } from './db';
 import { ValidationError } from './errors';
-import { HttpStatus, isErrorResponse, NotFound } from './http';
+import { HttpStatus, isResponse, NotFound } from './http';
 import { NeDbModel } from './nedb';
 import { Page } from './pagination';
 import { Resource } from './resources';
@@ -79,7 +79,7 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
         try {
             return await this.destroy(identity);
         } catch (error) {
-            if (!isErrorResponse(error, HttpStatus.NotFound)) {
+            if (!isResponse(error, HttpStatus.NotFound)) {
                 throw error;
             }
         }
@@ -119,7 +119,7 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
     public batchRetrieve(identities: UserIdentity[]) {
         const promises = mapCached(identities, (identity) => (
             this.retrieve(identity).catch((error) => {
-                if (isErrorResponse(error, HttpStatus.NotFound)) {
+                if (isResponse(error, HttpStatus.NotFound)) {
                     return null;
                 }
                 throw error;

@@ -12,7 +12,7 @@ import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
 import { ensureDirectoryExists, fileExists, readFile, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
-import { HttpMethod, HttpStatus, isErrorResponse } from './http';
+import { HttpMethod, HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
 import { getDbFilePath, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
@@ -389,7 +389,7 @@ export class Broiler {
                             try {
                                 await model.create(item);
                             } catch (error) {
-                                if (!isErrorResponse(error, HttpStatus.PreconditionFailed)) {
+                                if (!isResponse(error, HttpStatus.PreconditionFailed)) {
                                     throw error;
                                 }
                             }

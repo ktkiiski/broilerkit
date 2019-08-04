@@ -1,6 +1,6 @@
 import { decodeDataUri, DecodedDataUri, encodeDataUri } from './data-uri';
 import { KeyErrorData, ValidationError } from './errors';
-import { isErrorResponse } from './http';
+import { isApiResponse } from './http';
 import { padEnd, padStart } from './utils/strings';
 
 export type NonEmptyString = Exclude<string, ''>;
@@ -526,8 +526,8 @@ class ListField<I, O> implements Field<I[], O[]> {
             try {
                 return iteratee(item, key);
             } catch (error) {
-                // Collect nested errors
-                if (isErrorResponse(error)) {
+                // Collect nested validation errors
+                if (isApiResponse(error)) {
                     errors.push({...error.data, key});
                 } else {
                     // Pass through the error

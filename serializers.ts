@@ -1,6 +1,6 @@
 import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
-import { isErrorResponse } from './http';
+import { isApiResponse } from './http';
 import { difference } from './utils/arrays';
 import { forEachKey, Key, keys, omit, pick, Require } from './utils/objects';
 
@@ -79,7 +79,7 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
                 }
             } catch (error) {
                 // Collect nested validation errors
-                if (isErrorResponse(error)) {
+                if (isApiResponse(error)) {
                     errors.push({...error.data, key});
                 } else {
                     // Pass this error through, causing an internal server error
@@ -240,6 +240,6 @@ export function nestedList<I>(res: Serializer<I, any>): Field<I[], Encoding[]> {
     return list(nested(res));
 }
 
-export function serializer<T>(fields: Fields<T>): Serializer<T> {
+export function serializer<T>(fields: Fields<T>): FieldSerializer<T> {
     return new FieldSerializer<T>(fields);
 }

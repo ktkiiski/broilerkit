@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bindable, Client } from '../client';
-import { HttpStatus, isErrorResponse } from '../http';
+import { HttpStatus, isResponse } from '../http';
 import { ListOperation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
 import { hasProperties, isEqual, isNotNully } from '../utils/compare';
@@ -31,7 +31,7 @@ export function useResource<S, U extends Key<S>>(
         client.inquiryResource(op, input),
     );
     const {error} = state;
-    const isValid = !isValidationError(error);
+    const isValid = !error || !isResponse(error, HttpStatus.BadRequest);
     useEffect(() => {
         if (input && isValid) {
             return client.subscribeResourceChanges(op, input, (newState) => {
@@ -200,8 +200,4 @@ function applyCollectionFilters<S, C extends Collection<S>>(collection: C, filte
             (resource) => hasProperties(resource, filters),
         ),
     };
-}
-
-function isValidationError(error: unknown) {
-    return !!error && isErrorResponse(error) && error.statusCode === HttpStatus.BadRequest;
 }

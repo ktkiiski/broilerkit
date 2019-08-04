@@ -1,7 +1,7 @@
 import { wait } from './async';
-import { HttpStatus, isErrorResponse } from './http';
+import { HttpErrorStatus, HttpStatus, isErrorResponse } from './http';
 
-const retryableStatusCodes = [
+const retryableStatusCodes: HttpErrorStatus[] = [
     HttpStatus.ServiceUnavailable,
     HttpStatus.RequestTimeout,
     HttpStatus.TooManyRequests,
@@ -29,7 +29,7 @@ export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount
                 throw error;
             }
             const { statusCode } = error;
-            if (statusCodes.indexOf(statusCode) < 0) {
+            if (statusCodes.indexOf(statusCode as HttpErrorStatus) < 0) {
                 // Not a retryable status code
                 throw error;
             }
@@ -45,14 +45,19 @@ export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount
 function getRetryDelay(startTime: number, retryAfter: string | undefined): number {
     const now = new Date().getTime();
     if (retryAfter) {
+        if (/^\d+(\.\d+)?$/.test(retryAfter)) {
+            // Retry-After represents a floating point number.
+            // Interprete as seconds
+            const retryDelay = parseFloat(retryAfter);
+            if (!Number.isNaN(retryDelay)) {
+                return Math.max(0, retryDelay * 1000);
+            }
+        }
+        // Otherwise parse as a date/time string
         const retryTimestamp = new Date(retryAfter).getTime();
         if (!Number.isNaN(retryTimestamp)) {
             // Retry-After is a valid date/time
             return Math.max(0, now - retryTimestamp);
-        }
-        const retryDelay = parseFloat(retryAfter);
-        if (!Number.isNaN(retryDelay)) {
-            return Math.max(0, retryDelay * 1000);
         }
     }
     // Otherwise get a random portion from the duration passed so far

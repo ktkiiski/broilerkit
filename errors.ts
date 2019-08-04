@@ -1,4 +1,4 @@
-import { ApiResponse, HttpStatus, isErrorResponse } from './http';
+import { ApiResponse, HttpStatus, isResponse } from './http';
 
 export interface ErrorData {
     message: string;
@@ -28,7 +28,7 @@ export async function catchNotFound<T>(promise: Promise<T>): Promise<T | null> {
     try {
         return await promise;
     } catch (error) {
-        if (isErrorResponse(error, HttpStatus.NotFound)) {
+        if (isResponse(error, HttpStatus.NotFound)) {
             return null;
         }
         throw error;

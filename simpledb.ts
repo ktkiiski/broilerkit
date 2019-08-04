@@ -1,6 +1,6 @@
 import { AmazonSimpleDB, escapeQueryIdentifier, escapeQueryParam } from './aws/simpledb';
 import { Identity, PartialUpdate, Query, VersionedModel } from './db';
-import { HttpStatus, isErrorResponse, NotFound, PreconditionFailed } from './http';
+import { HttpStatus, isErrorResponse, isResponse, NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
@@ -136,7 +136,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         try {
             return await this.create(creation);
         } catch (error) {
-            if (isErrorResponse(error, HttpStatus.PreconditionFailed)) {
+            if (isResponse(error, HttpStatus.PreconditionFailed)) {
                 // Item already exists
                 const { identifyBy } = this.serializer;
                 const identity = pick(creation, identifyBy);
@@ -211,7 +211,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         try {
             return await this.destroy(identity);
         } catch (error) {
-            if (!isErrorResponse(error, HttpStatus.NotFound)) {
+            if (!isResponse(error, HttpStatus.NotFound)) {
                 throw error;
             }
         }
