@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { Client, DummyClient } from '../client';
 
 /**
@@ -10,6 +10,11 @@ export const ClientContext = React.createContext<Client>(new DummyClient(null, n
 
 export function useClient(): Client {
     return useContext(ClientContext);
+}
+
+export function useUniqueId(): number {
+    const client = useClient();
+    return useMemo(() => client.generateUniqueId(), []);
 }
 
 interface ClientProviderProps {

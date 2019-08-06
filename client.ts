@@ -33,6 +33,7 @@ export interface Client {
     subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>, minCount: number, listener: (collection: CollectionState) => void): () => void;
     registerOptimisticChange(change: ResourceChange<any, any>): () => void;
     commitChange(change: ResourceChange<any, any>): void;
+    generateUniqueId(): number;
 }
 
 export interface ResourceState<T = any> {
@@ -73,6 +74,7 @@ abstract class BaseClient implements Client {
     private optimisticChanges: Array<ResourceChange<any, any>> = [];
     private resourceListeners: ListMapping<ResourceListener> = {};
     private collectionListeners: ListMapping<CollectionListener> = {};
+    private uniqueIdCounter = 0;
 
     constructor(
         public resourceCache: ResourceCache = {},
@@ -177,6 +179,10 @@ abstract class BaseClient implements Client {
         for (const url of changedCollectionUrls) {
             this.triggerCollectionUrl(resourceName, url);
         }
+    }
+
+    public generateUniqueId(): number {
+        return (this.uniqueIdCounter += 1);
     }
 
     public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
