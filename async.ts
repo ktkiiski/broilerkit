@@ -25,7 +25,7 @@ export function timeout<T>(maxDuration: number, task: Promise<T>, message: strin
     });
 }
 
-export async function *chunkify<T>(iterator: AsyncIterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
+export async function *chunkify<T>(iterator: AsyncIterable<T> | Iterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
     let items: T[] = [];
     for await (const item of iterator) {
         items.push(item);
@@ -116,7 +116,7 @@ export async function *mergeSortedAsync<T, K extends keyof T>(iterables: Array<A
     }
 }
 
-export async function *flatMapAsync<T, R>(iterable: AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterableIterator<R> | R[] | undefined): AsyncIterableIterator<R> {
+export async function *flatMapAsync<T, R>(iterable: AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterable<R> | R[] | undefined): AsyncIterableIterator<R> {
     let index = 0;
     for await (const sourceItem of iterable) {
         const targetItems = callback(sourceItem, index);
@@ -215,7 +215,7 @@ type WorkerResult<T> = { done: true } | { done: false, value: T };
  * @param iterable Source iterables to process
  * @param callback Processor for each value
  */
-export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterableIterator<R> | R[] | undefined): AsyncIterableIterator<R> {
+export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterable<R> | R[] | undefined): AsyncIterableIterator<R> {
     const iterator = iterate(iterable);
     let startedCount = 0;
     let runningCount = 0;
