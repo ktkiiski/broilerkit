@@ -167,3 +167,20 @@ export function findLastIndex<T>(arr: T[], iteratee: (item: T, index: number, ar
     const index = [...arr].reverse().findIndex(iteratee);
     return index < 0 ? index : arr.length - index - 1;
 }
+
+/**
+ * Divides the given array to chunks with at most the given number of items.
+ */
+export function deal<T>(items: T[], maxChunkSize: number): T[][] {
+    if (maxChunkSize <= 0) {
+        throw new Error(`Chunk size must be a positive integer`);
+    }
+    const count = items.length;
+    const chunkCount = Math.ceil(count / maxChunkSize);
+    const chunkSize = Math.ceil(count / chunkCount);
+    const chunks: T[][] = [];
+    for (let i = 0; i < count; i += chunkSize) {
+        chunks.push(items.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
