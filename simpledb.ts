@@ -5,6 +5,7 @@ import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { Resource } from './resources';
 import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
+import { deal, flatten } from './utils/arrays';
 import { hasProperties } from './utils/compare';
 import { Key, keys, mapObject, omit, pick } from './utils/objects';
 
@@ -237,9 +238,15 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         return {results, next: null};
     }
 
-    public async batchRetrieve(identities: Array<Identity<S, PK, V>>) {
+    public async batchRetrieve(identities: Array<Identity<S, PK, V>>): Promise<Array<S | null>> {
         if (!identities.length) {
             return [];
+        }
+        // SimpleDB only allows max 20 conditions per request (including IN clauses).
+        // Therefore split (recursively) if there are more than 20 identities.
+        if (identities.length > 20) {
+            const promises = deal(identities, 20).map(async (chunk) => this.batchRetrieve(chunk));
+            return flatten(await Promise.all(promises));
         }
         const {identitySerializer} = this;
         const itemNames = identities.map((identity) => (
@@ -291,6 +298,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
                     const escapedValues = value.map((item) => escapeQueryParam(
                         field.encodeSortable(item),
                     ));
+                    // TODO: This will break there are more than 20 conditions!
                     filters.push(
                         `${escapeQueryIdentifier(key)} in (${escapedValues.join(',')})`,
                     );
