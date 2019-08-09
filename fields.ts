@@ -510,14 +510,16 @@ class ListField<I, O> implements Field<I[], O[]> {
         return this.mapWith(value, (item) => encodeURIComponent(this.field.encode(item))).join('&');
     }
     public decode(value: string): I[] {
-        const items = value.split('&');
+        // TODO: Should differentiate an empty array vs. an array with a blank value!
+        const items = value ? value.split('&') : [];
         return this.mapWith(items, (item) => this.field.decode(decodeURIComponent(item)));
     }
     public encodeSortable(value: I[]): string {
         return this.mapWith(value, (item) => encodeURIComponent(this.field.encodeSortable(item))).join('&');
     }
     public decodeSortable(value: string): I[] {
-        const items = value.split('&');
+        // TODO: Should differentiate an empty array vs. an array with a blank value!
+        const items = value ? value.split('&') : [];
         return this.mapWith(items, (item) => this.field.decodeSortable(decodeURIComponent(item)));
     }
     private mapWith<X, Y>(items: X[], iteratee: (item: X, index: number) => Y): Y[] {
