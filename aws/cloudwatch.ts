@@ -56,6 +56,9 @@ export class AmazonCloudWatch {
     private cloudWatch = new CloudWatchLogs({
         region: this.region,
         apiVersion: '2014-03-28',
+        // The default max retry count is not quite enough when
+        // watching logs from all the log groups.
+        maxRetries: 20,
     });
 
     constructor(private region: string) { }

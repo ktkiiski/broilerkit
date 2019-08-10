@@ -21,6 +21,7 @@ export class AmazonCloudFormation {
     private cloudFormation = new CloudFormation({
         region: this.region,
         apiVersion: '2010-05-15',
+        maxRetries: 20,
     });
 
     constructor(private region: string, private stackName: string) { }

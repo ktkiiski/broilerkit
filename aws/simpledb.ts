@@ -20,6 +20,7 @@ export class AmazonSimpleDB {
     private simpleDB = new SimpleDB({
         region: this.region,
         apiVersion: '2009-04-15',
+        maxRetries: 20,
     });
 
     constructor(private region: string) { }

@@ -11,6 +11,7 @@ export class AmazonS3 {
     private s3 = new S3({
         region: this.region,
         apiVersion: '2006-03-01',
+        maxRetries: 20,
     });
 
     constructor(private region: string) { }

@@ -11,6 +11,7 @@ export class AmazonRoute53 {
     private route53 = new Route53({
         region: this.region,
         apiVersion: '2013-04-01',
+        maxRetries: 20,
     });
 
     constructor(private region: string) { }

@@ -14,7 +14,10 @@ export interface CognitoUser {
 }
 
 export class AmazonCognitoIdentity<S = {}> {
-    private cognito = new CognitoIdentityServiceProvider({region: this.region});
+    private cognito = new CognitoIdentityServiceProvider({
+        region: this.region,
+        maxRetries: 20,
+    });
     constructor(private region: string, private userPoolId: string) {}
 
     public async getUserById(id: string, notFoundError?: Error): Promise<CognitoUser & S> {
