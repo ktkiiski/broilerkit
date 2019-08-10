@@ -1,6 +1,9 @@
+import { Field } from './fields';
 import { UnionToIntersection } from './react/client';
 import { Fields, FieldSerializer, Serializer } from './serializers';
 import { buildObject, Key, keys, pick, toPairs, transformValues } from './utils/objects';
+
+type ResourceFields<I, O> = {[P in keyof I]: Field<I[P], any>} & {[P in keyof O]: Field<any, O[P]>};
 
 export interface Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> {
     readonly name: string;
@@ -34,14 +37,14 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T> | undefined> extends 
 
 export type Deserialization<T extends Serializer<any, any>> = T extends Serializer<infer R> ? R : any;
 
-interface ResourceOptions<T, PK extends Key<T>, V extends Key<T> | undefined> {
+interface ResourceOptions<T, X, PK extends Key<T>, V extends Key<T> | undefined> {
     name: string;
-    fields: Fields<T>;
+    fields: ResourceFields<T, X>;
     identifyBy: PK[];
     versionBy?: V;
 }
 
-export function resource<T, PK extends Key<T>, V extends Key<T> | undefined = undefined>(options: ResourceOptions<T, PK, V>): FieldResource<T, PK, V> {
+export function resource<T, X, PK extends Key<T>, V extends Key<T> | undefined = undefined>(options: ResourceOptions<T, X, PK, V>): FieldResource<T, PK, V> {
     return new FieldResource(options.name, options.fields, options.identifyBy, options.versionBy as V);
 }
 
