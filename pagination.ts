@@ -16,10 +16,10 @@ export interface Page<T, C> {
 /**
  * Query parameters for getting an ordered slice of a collection.
  */
-export type OrderedQuery<T, O extends keyof T> = {
+export type OrderedQuery<T, O extends keyof T, D extends 'asc' | 'desc' = 'asc' | 'desc'> = {
     [P in O]: {
         ordering: P,
-        direction: 'asc' | 'desc',
+        direction: D,
         since?: T[P],
     }
 }[O];
