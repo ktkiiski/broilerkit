@@ -62,7 +62,7 @@ implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMa
     );
     public readonly route = route(this.endpoint.pattern, this.urlSerializer);
     public readonly responseSerializer: Serializer<Page<S, Cursor<S, U, O, F>>> = new FieldSerializer({
-        next: nullable(nested(this.urlSerializer)),
+        next: nullable(nested(this.urlSerializer as any)),
         results: nestedList(this.endpoint.resource),
     });
     constructor(

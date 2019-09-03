@@ -5,12 +5,14 @@ import { findLastIndex } from './utils/arrays';
 import { compare } from './utils/compare';
 import { Key } from './utils/objects';
 
+type PageCursor<C extends OrderedQuery<any, any, any>> = C & {since: Exclude<C['since'], undefined>};
+
 /**
  * Represents a paginated response to a query.
  */
-export interface Page<T, C> {
+export interface Page<T, C extends OrderedQuery<T, any, any>> {
     results: T[];
-    next: C | null;
+    next: PageCursor<C> | null;
 }
 
 /**

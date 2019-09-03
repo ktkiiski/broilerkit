@@ -7,14 +7,14 @@ import { Encoding, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { deal, flatten } from './utils/arrays';
 import { hasProperties } from './utils/compare';
-import { Key, keys, mapObject, omit, pick } from './utils/objects';
+import { Exact, Key, keys, mapObject, omit, pick } from './utils/objects';
 
 interface Chunk<T> {
     items: T[];
     isComplete: boolean;
 }
 
-export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
+export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>, D> implements VersionedModel<S, PK, V, D> {
 
     private updateSerializer = this.serializer.partial([this.serializer.versionBy]);
     private identitySerializer = this.serializer.pick([...this.serializer.identifyBy, this.serializer.versionBy]).partial(this.serializer.identifyBy);
@@ -218,7 +218,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
         }
     }
 
-    public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
+    public async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>> {
         const { ordering, direction } = query;
         const results: S[] = [];
         for await (const {items, isComplete} of this.scanChunks(query)) {
@@ -230,7 +230,7 @@ export class SimpleDbModel<S, PK extends Key<S>, V extends Key<S>> implements Ve
             if (cursor) {
                 return {
                     results: cursor.results,
-                    next: {...query, since: cursor.since},
+                    next: { ...query, since: cursor.since as any },
                 };
             }
         }

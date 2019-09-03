@@ -6,11 +6,11 @@ import { Resource } from './resources';
 import { Serialization, Serializer } from './serializers';
 import { buildQuery } from './url';
 import { mapCached } from './utils/arrays';
-import { Key, pick } from './utils/objects';
+import { Exact, Key, pick } from './utils/objects';
 
 const PRIMARY_KEY_FIELD = '_pk';
 
-export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements VersionedModel<S, PK, V, Query<S>> {
+export class NeDbModel<S, PK extends Key<S>, V extends Key<S>, D> implements VersionedModel<S, PK, V, D> {
 
     private updateSerializer = this.serializer.partial([this.serializer.versionBy]);
     private identitySerializer = this.serializer.partial(this.serializer.identifyBy);
@@ -132,7 +132,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
         await this.removeItem(query);
     }
 
-    public async list<Q extends Query<S>>(query: Q): Promise<Page<S, Q>> {
+    public async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>> {
         const { decoder } = this;
         const { fields } = this.serializer;
         const { ordering, direction, since, ...filterAttrs } = query;
@@ -172,7 +172,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
             if (cursor) {
                 return {
                     results: cursor.results,
-                    next: {...query, since: cursor.since},
+                    next: {...query, since: cursor.since as any},
                 };
             }
         }
@@ -180,7 +180,7 @@ export class NeDbModel<S, PK extends Key<S>, V extends Key<S>> implements Versio
     public async *scan(query: Query<S> = this.defaultScanQuery): AsyncIterableIterator<S[]> {
         let next: Query<S> | null = query;
         while (next) {
-            const page: Page<S, Query<S>> = await this.list(next);
+            const page: Page<S, Query<S>> = await this.list(next as any);
             yield page.results;
             next = page.next;
         }

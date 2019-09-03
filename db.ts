@@ -4,10 +4,11 @@ import { OrderedQuery, Page } from './pagination';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { SimpleDbModel } from './simpledb';
-import { Key, Require } from './utils/objects';
+import { Exact, Key, Require } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
+export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | Array<T[P]>} & OrderedQuery<T, O> & Filters<T>;
 
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
@@ -123,13 +124,13 @@ export interface Model<T, I, R, P, D> {
      * and the query parameters to retrieve the next batch, or null
      * if no more items are found.
      */
-    list<Q extends D>(query: Q): Promise<Page<T, Q>>;
+    list<Q extends D & OrderedQuery<T, Key<T>>>(query: Exact<Q, D>): Promise<Page<T, Q>>;
     /**
      * Iterate over batches of items from the table matching the given criteria.
      *
      * Without parameters should scan the whole table, in some order.
      */
-    scan(query?: D): AsyncIterable<T[]>;
+    scan(query?: Query<T>): AsyncIterable<T[]>;
     /**
      * Retrieves item for each of the identity given objects, or null values if no
      * matching item is found, in the most efficient way possible. The results
@@ -181,15 +182,42 @@ export interface Table<M> {
     getModel(uri: string): M;
 }
 
-export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>> implements Table<VersionedModel<S, PK, V, Query<S>>> {
+type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
-    public readonly name: string;
-    constructor(public readonly resource: Resource<S, PK, V>, public readonly options: TableOptions<S, PK, V, D>) {
-        this.name = options.name;
+export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implements Table<VersionedModel<S, PK, V, D>> {
+
+    constructor(
+        public readonly resource: Resource<S, PK, V>,
+        public readonly name: string,
+        private readonly indexes: IndexTree<S>,
+        private readonly defaults?: {[P in any]: S[any]},
+    ) {}
+
+    /**
+     * Sets default values for the properties loaded from the database.
+     * They are used to fill in any missing values for loaded items. You should
+     * provide this when you have added any new fields to the database
+     * model. Otherwise you will get errors when attempting to decode an object
+     * from the database that lack required attributes.
+     */
+    public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): TableDefinition<S, PK, V, D> {
+        return new TableDefinition(this.resource, this.name, this.indexes, {...this.defaults, ...defaults});
     }
 
-    public getModel(uri: string): VersionedModel<S, PK, V, Query<S>> {
-        const {resource, options} = this;
+    public index<K1 extends keyof S>(key: K1): TableDefinition<S, PK, V, D | IndexQuery<S, never, K1>>;
+    public index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): TableDefinition<S, PK, V, D | IndexQuery<S, K1, K2>>;
+    public index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): TableDefinition<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
+    public index<K extends keyof S>(...keys: K[]): TableDefinition<S, PK, V, D | IndexQuery<S, K, K>> {
+        let newIndexes: IndexTree<S> = {};
+        while (keys.length) {
+            const key = keys.pop() as K;
+            newIndexes = {[key]: newIndexes} as IndexTree<S>;
+        }
+        return new TableDefinition(this.resource, this.name, {...this.indexes, ...newIndexes}, this.defaults);
+    }
+
+    public getModel(uri: string): VersionedModel<S, PK, V, D> {
+        const {resource, defaults} = this;
         if (uri.startsWith('arn:')) {
             const {service, region, resourceType, resourceId} = parseARN(uri);
             if (service !== 'sdb') {
@@ -198,16 +226,20 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D extends E
             if (resourceType !== 'domain') {
                 throw new Error(`Unknown AWS resource type "${resourceType}"`);
             }
-            return new SimpleDbModel<S, PK, V>(resourceId, region, resource, options.defaults);
+            return new SimpleDbModel<S, PK, V, D>(resourceId, region, resource, defaults);
         }
         if (uri.startsWith('file://')) {
             const filePath = uri.slice('file://'.length);
-            return new NeDbModel(filePath, resource, options.defaults);
+            return new NeDbModel<S, PK, V, D>(filePath, resource, defaults);
         }
         throw new Error(`Invalid database table URI ${uri}`);
     }
 }
 
-export function table<S, PK extends Key<S>, V extends Key<S>, D extends Exclude<keyof S, PK | V>>(resource: Resource<S, PK, V>, options: TableOptions<S, PK, V, D>) {
-    return new TableDefinition(resource, options);
+/**
+ * @param resource Resource that is stored to the table
+ * @param name An unique name for the table
+ */
+export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string) {
+    return new TableDefinition<S, PK, V, never>(resource, name, {});
 }
