@@ -207,6 +207,7 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
 }
 
 class NestedSerializerField<I> implements Field<I, Serialization> {
+    public readonly type: string = 'jsonb';
     // tslint:disable-next-line:no-shadowed-variable
     constructor(private serializer: Serializer<I, any>) {}
     public validate(value: I): I {

@@ -6,6 +6,7 @@ import { padEnd, padStart } from './utils/strings';
 export type NonEmptyString = Exclude<string, ''>;
 
 export interface Field<I, E = I> {
+    readonly type: string;
     validate(value: I): I;
     serialize(value: I): E;
     deserialize(value: unknown): I;
@@ -16,6 +17,7 @@ export interface Field<I, E = I> {
 }
 
 class TextField implements Field<string> {
+    public readonly type: string = 'text';
     public validate(value: string): string {
         return value;
     }
@@ -101,6 +103,7 @@ const POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
 const NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY;
 
 class NumberField implements Field<number> {
+    public readonly type: string = 'number';
     constructor(private options: NumberFieldOptions) {}
     public validate(value: number): number {
         if (isFinite(value)) {
@@ -163,6 +166,7 @@ const MAX_INTEGER = Number.MAX_SAFE_INTEGER;
 const MIN_INTEGER = Number.MIN_SAFE_INTEGER;
 
 class IntegerField extends NumberField implements Field<number> {
+    public readonly type: string = 'integer';
     public validate(value: number): number {
         if (isFinite(value)) {
             if (value > MAX_INTEGER) {
@@ -233,6 +237,7 @@ class ConstantField<K extends number> extends IntegerField {
 }
 
 class BooleanField implements Field<boolean> {
+    public readonly type: string = 'boolean';
     public validate(value: boolean): boolean {
         return value;
     }
@@ -265,6 +270,7 @@ class BooleanField implements Field<boolean> {
 }
 
 class DateTimeField implements Field<Date, string> {
+    public readonly type: string = 'datetime';
     public validate(value: Date): Date {
         return value;
     }
@@ -300,6 +306,7 @@ class DateTimeField implements Field<Date, string> {
 }
 
 class DateField implements Field<Date, string> {
+    public readonly type: string = 'date';
     public validate(value: Date): Date {
         return new Date(
             value.getFullYear(),
@@ -356,6 +363,7 @@ class RegexpField extends TextField {
 }
 
 class DecimalField extends RegexpField {
+    public readonly type: string = 'decimal';
     private numberField = new NumberField({});
     constructor(private decimals: number) {
         super(
@@ -406,6 +414,7 @@ class URLField extends RegexpField {
 }
 
 class UUIDField extends RegexpField {
+    public readonly type: string = 'uuid';
     constructor(version?: 1 | 4 | 5) {
         super(
             new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-[${version || '145'}][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, 'i'),
@@ -427,6 +436,7 @@ class IdField extends RegexpField {
 }
 
 class DataUriField implements Field<DecodedDataUri, string> {
+    public readonly type: string = 'bytea';
     public validate(value: DecodedDataUri): DecodedDataUri {
         if (!value.contentType) {
             throw new ValidationError(`Missing data content type`);
@@ -468,6 +478,7 @@ function isNullable(value: unknown): value is null | '' {
  * Useful to be used with string(), datetime() and integer() fields.
  */
 class NullableField<I, O> implements Field<I | null, O | null> {
+    public readonly type: string = this.field.type;
     constructor(public readonly field: Field<I, O>) {}
     public validate(value: I | null): I | null {
         return !isNullable(value) && this.field.validate(value) || null;
@@ -493,6 +504,7 @@ class NullableField<I, O> implements Field<I | null, O | null> {
 }
 
 class ListField<I, O> implements Field<I[], O[]> {
+    public readonly type: string = this.field.type === 'jsonb' ? 'jsonb' : `${this.field.type}[]`;
     constructor(public readonly field: Field<I, O>) {}
     public validate(items: I[]): I[] {
         return this.mapWith(items, (item) => this.field.validate(item));
