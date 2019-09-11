@@ -251,51 +251,44 @@ Resources:
             - lambda.amazonaws.com
           Action:
           - sts:AssumeRole
-      Policies:
-      - PolicyName:
-          Fn::Sub: ${AWS::Region}-lambda
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-            - logs:CreateLogStream
-            Resource:
-            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*
-          - Effect: Allow
-            Action:
-            - logs:PutLogEvents
-            Resource:
-            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*:*
-          # Allow access to any SimpleDB domains related to this stack
-          # NOTE: We assume that auto-generated domain names start with the stack name
-          - Effect: Allow
-            Action:
-            - sdb:BatchDeleteAttributes
-            - sdb:BatchPutAttributes
-            - sdb:DeleteAttributes
-            - sdb:DomainMetadata
-            - sdb:GetAttributes
-            - sdb:PutAttributes
-            - sdb:Select
-            Resource:
-            - Fn::Sub: arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-*
-          # Allow access to the user pool
-          - Effect: Allow
-            Action:
-            - cognito-idp:AdminDeleteUser
-            - cognito-idp:AdminGetUser
-            - cognito-idp:AdminUpdateUserAttributes
-            - cognito-idp:DeleteUser
-            - cognito-idp:GetUser
-            - cognito-idp:ListUsers
-            - cognito-idp:UpdateUserAttributes
-            Resource:
-            # TODO: Could we restrict access to the particular userpool only?
-            - Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
       Path: "/"
       RoleName:
         Fn::Sub: "${AWS::StackName}-${AWS::Region}-lambdaRole"
+
+  # The inline policy attached to the Lambda function execution role
+  LambdaExecutionIamRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - Ref: LambdaExecutionIamRole
+      PolicyName:
+        Fn::Sub: ${AWS::Region}-lambda
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - logs:CreateLogStream
+          Resource:
+          - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*
+        - Effect: Allow
+          Action:
+          - logs:PutLogEvents
+          Resource:
+          - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-*:*:*
+        # Allow access to any SimpleDB domains related to this stack
+        # NOTE: We assume that auto-generated domain names start with the stack name
+        - Effect: Allow
+          Action:
+          - sdb:BatchDeleteAttributes
+          - sdb:BatchPutAttributes
+          - sdb:DeleteAttributes
+          - sdb:DomainMetadata
+          - sdb:GetAttributes
+          - sdb:PutAttributes
+          - sdb:Select
+          Resource:
+          - Fn::Sub: arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-*
 
   # Role for the API gateway for enabling CloudWatch logging
   ApiGatewayCloudWatchLoggingRole:

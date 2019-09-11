@@ -229,6 +229,24 @@ Resources:
       SourceArn:
         Fn::GetAtt: UserPool.Arn
 
+  # Extend LambdaExecutionIamRolePolicy to allow accessing the database secret
+  LambdaExecutionIamRolePolicy:
+    Properties:
+      PolicyDocument:
+        Statement:
+        # Allow access to the user pool
+        - Effect: Allow
+          Action:
+          - cognito-idp:AdminDeleteUser
+          - cognito-idp:AdminGetUser
+          - cognito-idp:AdminUpdateUserAttributes
+          - cognito-idp:DeleteUser
+          - cognito-idp:GetUser
+          - cognito-idp:ListUsers
+          - cognito-idp:UpdateUserAttributes
+          Resource:
+          - Fn::GetAtt: UserPool.Arn
+
 Outputs:
   UserPoolRoot:
     Description: "Root URL for the AWS Cognito user pool"
