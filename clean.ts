@@ -11,12 +11,20 @@ export async function *clean(dirPath: string): AsyncIterableIterator<string> {
     if (!dirPath || dirPath === '/') {
         throw new Error(`Invalid directory path: ${dirPath}`);
     }
-    const stats = await getFileStats(dirPath);
-    if (!stats.isDirectory()) {
-        // This is a file. Delete this.
-        await unlinkFile(dirPath);
-        yield dirPath;
-        return;
+    try {
+        const stats = await getFileStats(dirPath);
+        if (!stats.isDirectory()) {
+            // This is a file. Delete this.
+            await unlinkFile(dirPath);
+            yield dirPath;
+            return;
+        }
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            // Does not exist! Nothing to remove!
+            return;
+        }
+        throw error;
     }
     // List contents of the directory
     const contents = await readDirectory(dirPath);
