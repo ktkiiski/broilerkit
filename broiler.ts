@@ -89,6 +89,7 @@ export class Broiler {
             )),
             this.compileFrontend(false),
             this.compileBackend(false),
+            this.deployVpc(),
         ]);
         await this.uploadBackend();
         await this.deployStack();
@@ -475,6 +476,51 @@ export class Broiler {
             }
         }
         return oldStack;
+    }
+
+    public async deployVpc(): Promise<void> {
+        const { vpc, region } = this.config;
+        if (!vpc) {
+            // This stack does not use a VPC
+            return;
+        }
+        const vpcStackName = `${vpc}-vpc`;
+        const template = await readTemplates(['cloudformation-vpc.yml']);
+        const templateStr = dumpTemplate(template);
+        const stackParameters = {};
+        const vpcCloudFormation = new AmazonCloudFormation(region, vpcStackName);
+        try {
+            let oldStack = await vpcCloudFormation.describeStackWithResources();
+            // Update an existing VPC stack
+            this.log(`Updating the existing VPC stack ${bold(vpcStackName)} in region ${bold(region)}...`);
+            const execution$ = vpcCloudFormation.updateStack(templateStr, stackParameters);
+            let hasChanges = false;
+            for await (const newStack of execution$) {
+                hasChanges = true;
+                this.logStackChanges(oldStack, newStack);
+                oldStack = newStack;
+            }
+            if (hasChanges) {
+                this.log(`Existing VPC stack ${bold(vpcStackName)} updated successfully!`, green('✔︎'));
+            } else {
+                this.log(`Existing VPC stack ${bold(vpcStackName)} is already up-to-date!`, green('✔︎'));
+            }
+        } catch (error) {
+            // Check if the message indicates that the stack was not found
+            if (!isDoesNotExistsError(error)) {
+                // Pass the error through
+                throw error;
+            }
+            // Create a new VPC stack
+            this.log(`Creating a new VPC stack ${bold(vpcStackName)} to region ${bold(region)}...`);
+            let oldStack = {} as IStackWithResources;
+            const execution$ = vpcCloudFormation.createStack(templateStr, stackParameters);
+            for await (const newStack of execution$) {
+                this.logStackChanges(oldStack, newStack);
+                oldStack = newStack;
+            }
+            this.log(`VPC stack ${bold(vpcStackName)} created successfully!`, green('✔︎'));
+        }
     }
 
     /**

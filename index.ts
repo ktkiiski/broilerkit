@@ -27,6 +27,13 @@ export interface StageConfig {
      * - "http://localhost:8080"
      */
     serverRoot: string;
+    /**
+     * If the app uses a database, it needs to belong to a VPC.
+     * Define the identifier for the VPC. It will be reated if it does not exists.
+     * You may use an existing VPC shared with another app. The VPC stack
+     * will always be updated on deployment.
+     */
+    vpc?: string;
 }
 
 export interface AuthConfig {

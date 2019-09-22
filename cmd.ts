@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as yargs from 'yargs';
 import { Broiler } from './broiler';
 import { escapeForShell } from './exec';
+import { App } from './index';
 
 // Allow executing TypeScript (.ts) files
 import * as tsNode from 'ts-node';
@@ -28,7 +29,7 @@ function getBroiler(argv: CommandOptions) {
     const appPath = path.resolve(cwd, appConfigPath);
     const projectRootPath = path.dirname(appPath);
     const appModule = require(appPath);
-    const app = appModule.default; // App should be the default export
+    const app: App = appModule.default; // App should be the default export
     return new Broiler(app.configure({...options, projectRootPath}));
 }
 
