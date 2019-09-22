@@ -119,6 +119,34 @@ export class AmazonCloudFormation {
     }
 
     /**
+     * Updates a CloudFormation stack with the given template
+     * This will fail if the stack does not exist.
+     * @param template CloudFormation stack template string as JSON/YAML
+     * @param parameters Template parameters as a key-value object mapping
+     */
+    public async *updateStack(template: string, parameters: {[name: string]: string}, pollInterval = 2000): AsyncIterableIterator<IStackWithResources> {
+        const request = {
+            StackName: this.stackName,
+            TemplateBody: template,
+            Parameters: convertStackParameters(parameters),
+            Capabilities: [
+                'CAPABILITY_IAM',
+                'CAPABILITY_NAMED_IAM',
+            ],
+        };
+        try {
+            await this.cloudFormation.updateStack(request).promise();
+        } catch (error) {
+            if (!error || !/No updates are to be performed/.test(error.message)) {
+                throw error;
+            }
+            // No changes!
+            return;
+        }
+        yield *this.waitForDeployment(pollInterval);
+    }
+
+    /**
      * Deletes the existing CloudFormation stack.
      * This will fail if the stack does not exist.
      */
