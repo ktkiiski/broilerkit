@@ -103,7 +103,7 @@ const POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
 const NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY;
 
 class NumberField implements Field<number> {
-    public readonly type: string = 'number';
+    public readonly type: string = 'double precision';
     constructor(private options: NumberFieldOptions) {}
     public validate(value: number): number {
         if (isFinite(value)) {
@@ -166,7 +166,7 @@ const MAX_INTEGER = Number.MAX_SAFE_INTEGER;
 const MIN_INTEGER = Number.MIN_SAFE_INTEGER;
 
 class IntegerField extends NumberField implements Field<number> {
-    public readonly type: string = 'integer';
+    public readonly type: string = 'bigint';
     public validate(value: number): number {
         if (isFinite(value)) {
             if (value > MAX_INTEGER) {
@@ -270,7 +270,7 @@ class BooleanField implements Field<boolean> {
 }
 
 class DateTimeField implements Field<Date, string> {
-    public readonly type: string = 'datetime';
+    public readonly type: string = 'timestamptz';
     public validate(value: Date): Date {
         return value;
     }
@@ -363,7 +363,7 @@ class RegexpField extends TextField {
 }
 
 class DecimalField extends RegexpField {
-    public readonly type: string = 'decimal';
+    public readonly type: string = 'numeric';
     private numberField = new NumberField({});
     constructor(private decimals: number) {
         super(
