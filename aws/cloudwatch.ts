@@ -129,6 +129,7 @@ export class AmazonCloudWatch {
 export function formatLogEvent(event: LogEvent, stackName?: string) {
     const timestamp = new Date(event.timestamp).toISOString();
     const groupName = event.logGroupName.replace(/^\/aws\/lambda\//, '');
+    // TODO: function name no longer available in the group name!
     const functionName = stackName && stripPrefix(groupName, `${stackName}-`) || groupName;
     const message = event.message.trim().replace(/\t+(\{\"[^\t]+\})$/, (match, encodedJson) => {
         let obj: any;

@@ -16,7 +16,7 @@ Resources:
         IntegrationHttpMethod: POST
         Type: AWS_PROXY
         Uri:
-          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${<ServerFunctionName>.Arn}/invocations"
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ServerLambdaFunction.Arn}/invocations"
       MethodResponses: []
 
   # Add this method to the deployment dependencies

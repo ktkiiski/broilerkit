@@ -797,11 +797,8 @@ export class Broiler {
         }
         // Collect all the template promises to an array
         const templatePromises: Array<Promise<any>> = [];
-        // Build templates for API Lambda functions
-        templatePromises.push(...controllers.map(({name}) => readTemplates(['cloudformation-server-function.yml'], {
-            ServerFunctionName: getServerLambdaFunctionLogicalId(name),
-            apiFunctionName: name,
-        })));
+        // Build templates for the HTTP server Lambda function
+        templatePromises.push(readTemplates(['cloudformation-server-function.yml']));
         // Build templates for every API Gateway Resource
         const nestedServerResources = flatMap(controllers, ({path}) => (
             path.map((_, index) => path.slice(0, index + 1))
@@ -837,9 +834,8 @@ export class Broiler {
             }
             throw new Error(`The operation ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
         }).map(
-            ({method, path, name, requiresAuth}) => readTemplates(['cloudformation-server-method.yml'], {
+            ({method, path, requiresAuth}) => readTemplates(['cloudformation-server-method.yml'], {
                 ServerMethodName: getServerMethodLogicalId(path, method),
-                ServerFunctionName: getServerLambdaFunctionLogicalId(name),
                 ServerResourceId: JSON.stringify(getServerResourceReference(path)),
                 ServerDeploymentId: serverHash.toUpperCase(),
                 ServerMethod: method,
@@ -1147,10 +1143,6 @@ function formatResourceDelete(resource: CloudFormation.StackResource): string {
         ResourceStatus: 'DELETE_COMPLETED',
         ResourceStatusReason: undefined,
     });
-}
-
-function getServerLambdaFunctionLogicalId(name: string) {
-    return `Server${upperFirst(name)}LambdaFunction`;
 }
 
 function getServerResourceLogicalId(urlPath: string[]) {

@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Resources:
-  # Lambda function
-  <ServerFunctionName>:
+  # Lambda function for handling HTTP requests
+  ServerLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
       Code:
@@ -10,7 +10,7 @@ Resources:
         S3Key:
           Ref: ServerRequestLambdaFunctionS3Key
       FunctionName:
-        Fn::Sub: "${AWS::StackName}-<apiFunctionName>"
+        Fn::Sub: "${AWS::StackName}-server"
       Handler: server.request
       MemorySize: 1024
       Role:
@@ -18,30 +18,30 @@ Resources:
       Runtime: nodejs10.x
       Timeout: 300  # = 5 minutes
     DependsOn:
-    - <ServerFunctionName>LogGroup
+    - ServerLambdaFunctionLogGroup
     - LambdaExecutionIamRole
 
   # Grant API Gateway REST API a permission to execute the Lambda function
-  <ServerFunctionName>PermissionApiGateway:
+  ServerLambdaFunctionPermissionApiGateway:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName:
-        Fn::GetAtt: <ServerFunctionName>.Arn
+        Fn::GetAtt: ServerLambdaFunction.Arn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn:
         Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ServerApiGatewayRestApi}/*/*"
 
   # CloudWatch log group for the lambda function
-  <ServerFunctionName>LogGroup:
+  ServerLambdaFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName:
-        Fn::Sub: "/aws/lambda/${AWS::StackName}-<apiFunctionName>"
+        Fn::Sub: "/aws/lambda/${AWS::StackName}-server"
 
 # Output the log group name
 Outputs:
-  <ServerFunctionName>LogGroupName:
-    Description: "Log group name of <apiFunctionName>"
+  ServerLambdaFunctionLogGroupName:
+    Description: "Log group name of the HTTP server Lambda function logs"
     Value:
-      Ref: <ServerFunctionName>LogGroup
+      Ref: ServerLambdaFunctionLogGroup
