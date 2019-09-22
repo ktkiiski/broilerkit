@@ -34,19 +34,18 @@ export function searchFiles(dir: string, patterns: string[]): Promise<File[]> {
     });
 }
 
-export function readFile(filename: string): Promise<string> {
+export async function readFile(filename: string): Promise<string> {
+    const buffer = await readFileBuffer(filename);
+    return String(buffer);
+}
+
+export function readFileBuffer(filename: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
         fs.readFile(filename, (error, data) => {
             if (error) {
                 reject(error);
             } else {
-                let result;
-                try {
-                    result = String(data);
-                } catch (strError) {
-                    reject(strError);
-                }
-                resolve(result);
+                resolve(data);
             }
         });
     });
