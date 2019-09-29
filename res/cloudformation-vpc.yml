@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 172.31.0.0/16
+      Tags:
+        - Key: Name
+          Value:
+            Ref: AWS::StackName
+  VpcPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      AvailabilityZone:
+        Fn::Select:
+         - 0
+         - Fn::GetAZs: ""
+      CidrBlock: 172.31.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-public-subnet-a"
+  VpcPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      AvailabilityZone:
+        Fn::Select:
+         - 0
+         - Fn::GetAZs: ""
+      CidrBlock: 172.31.3.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-private-subnet-a"
+  VpcPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      AvailabilityZone:
+        Fn::Select:
+         - 1
+         - Fn::GetAZs: ""
+      CidrBlock: 172.31.2.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-private-subnet-b"
+  VpcInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-gateway"
+  VpcInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: Vpc
+      InternetGatewayId:
+        Ref: VpcInternetGateway
+  VpcPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  VpcPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcInternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: VpcPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VpcInternetGateway
+  VpcPublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: VpcPublicSubnet1
+      RouteTableId:
+        Ref: VpcPublicRouteTable
+  VpcNatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: VpcNatPublicIP
+    Properties:
+      AllocationId:
+        Fn::GetAtt: VpcNatPublicIP.AllocationId
+      SubnetId:
+        Ref: VpcPublicSubnet1
+  VpcNatPublicIP:
+    Type: AWS::EC2::EIP
+    DependsOn: Vpc
+    Properties:
+      Domain: vpc
+  VpcPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  VpcPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: VpcPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: VpcNatGateway
+  VpcPrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: VpcPrivateSubnet1
+      RouteTableId:
+        Ref: VpcPrivateRouteTable
+  VpcPrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: VpcPrivateSubnet2
+      RouteTableId:
+        Ref: VpcPrivateRouteTable
+  VpcEndpointS3:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal: "*"
+          Action:
+            - "s3:*"
+          Resource:
+            - "*"
+      RouteTableIds:
+        - Ref: VpcPrivateRouteTable
+      ServiceName:
+        Fn::Sub: "com.amazonaws.${AWS::Region}.s3"
+      VpcId:
+        Ref: Vpc
+Outputs:
+  VpcId:
+    Description: ID of the VPC
+    Value:
+      Ref: Vpc
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-vpc"
+  VpcPublicSubnet1Id:
+    Description: ID of the Public Subnet A
+    Value:
+      Ref: VpcPublicSubnet1
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-public-subnet-a"
+  VpcPrivateSubnet1Id:
+    Description: ID of the Private Subnet A
+    Value:
+      Ref: VpcPrivateSubnet1
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-private-subnet-a"
+  VpcPrivateSubnet2Id:
+    Description: ID of the Private Subnet B
+    Value:
+      Ref: VpcPrivateSubnet2
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-private-subnet-b"
+  VpcSecurityGroup:
+    Description: Default security group of the VPC
+    Value:
+      Fn::GetAtt: Vpc.DefaultSecurityGroup
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-security-group"
+

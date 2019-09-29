@@ -10,6 +10,39 @@ const retryableStatusCodes: HttpErrorStatus[] = [
 
 /**
  * Executes the given (async) function, running it again if it
+ * throws an exception. The retry attempts are delayed with an
+ * exponential backoff mechanism with automatically calculated
+ * duration. Retrying is done maximum of the given number of times.
+ * You can optionally provide a callback that is called on error
+ * with the error. If it returns false, then no retry is made.
+ * @param maxRetryCount Maximum number of retry attempts
+ * @param fn The function to execute
+ */
+export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, retryCheck?: (error: any, retryCount: number) => boolean): Promise<T> {
+    let retryCount = 0;
+    const startTime = new Date().getTime();
+    while (true) {
+        try {
+            return await fn(retryCount);
+        } catch (error) {
+            if (retryCount >= maxRetryCount) {
+                // No more retries or not retryable error
+                throw error;
+            }
+            if (retryCheck && !retryCheck(error, retryCount)) {
+                // Not a retryable status code
+                throw error;
+            }
+            // Retry
+            retryCount += 1;
+            // Wait for a random portion of the total time spent
+            await wait(getRetryDelay(startTime));
+        }
+    }
+}
+
+/**
+ * Executes the given (async) function, running it again if it
  * throws an exception that represents a retryable HTTP error status.
  * The retry attempts are delayed with an exponential backoff mechanism
  * with automatically calculated duration. Retrying is done maximum
@@ -17,7 +50,7 @@ const retryableStatusCodes: HttpErrorStatus[] = [
  * @param maxRetryCount Maximum number of retry attempts
  * @param fn The function to execute
  */
-export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, statusCodes = retryableStatusCodes): Promise<T> {
+export async function retryRequestWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, statusCodes = retryableStatusCodes): Promise<T> {
     let retryCount = 0;
     const startTime = new Date().getTime();
     while (true) {
@@ -42,7 +75,7 @@ export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount
     }
 }
 
-function getRetryDelay(startTime: number, retryAfter: string | undefined): number {
+function getRetryDelay(startTime: number, retryAfter?: string): number {
     const now = new Date().getTime();
     if (retryAfter) {
         if (/^\d+(\.\d+)?$/.test(retryAfter)) {

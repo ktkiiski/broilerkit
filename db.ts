@@ -1,10 +1,10 @@
-import { parseARN } from './aws/arn';
-import { NeDbModel } from './nedb';
+import { ClientBase } from 'pg';
+import { TableState } from './migration';
 import { OrderedQuery, Page } from './pagination';
+import { PostgreSqlDbModel } from './postgres';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
-import { SimpleDbModel } from './simpledb';
-import { Exact, Key, Require } from './utils/objects';
+import { Exact, Key, keys, Require } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -157,6 +157,19 @@ export interface TableOptions<T, PK extends Key<T>, V extends Key<T>, D extends 
     defaults?: {[P in D]: T[P]};
 }
 
+export interface ModelContext {
+    region: string;
+    environment: {[key: string]: string};
+    /**
+     * Returns a promise for an open PostgreSQL database connection.
+     * It always uses an existing connection if already opened for
+     * this request, or uses one from a collection pool if available.
+     * Note that the connection will be shared with other models during
+     * a request execution.
+     */
+    connect(): Promise<ClientBase>;
+}
+
 export interface Table<M> {
     /**
      * An identifying name for the table that distinguishes it from the
@@ -164,34 +177,37 @@ export interface Table<M> {
      */
     name: string;
     /**
-     * Binds the table to a specific environment (stage), defining the
-     * location where the table data is to be stored with the given URI.
-     *
-     * For a deployed environment, the URI should be an ARN of a SimpleDB
-     * domain, for example:
-     *
-     *      arn:aws:sdb:us-east-1:111122223333:domain/Domain1
-     *
-     * For local environment, this describes the location of the SQLite3
-     * database file where the data is to be persisted, for example:
-     *
-     *      file:/home/fred/data.db
-     *
-     * @param uri URI to the resource storing the data
+     * A definition of the resource being stored to this database table.
      */
-    getModel(uri: string): M;
+    resource: Resource<any, any, any>;
+    /**
+     * List of indexes for this database table.
+     */
+    indexes: string[][];
+    /**
+     * Binds the table to a execution contect, returning an actual model
+     * that is used to read and write data from/to the database.
+     */
+    getModel(context: ModelContext): M;
+    /**
+     * Returns a state representation of the table for migration.
+     */
+    getState(): TableState;
 }
 
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
 export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implements Table<VersionedModel<S, PK, V, D>> {
 
+    public readonly indexes: string[][] = [];
     constructor(
         public readonly resource: Resource<S, PK, V>,
         public readonly name: string,
-        private readonly indexes: IndexTree<S>,
+        private readonly indexTree: IndexTree<S>,
         private readonly defaults?: {[P in any]: S[any]},
-    ) {}
+    ) {
+        this.indexes = flattenIndexes(indexTree);
+    }
 
     /**
      * Sets default values for the properties loaded from the database.
@@ -201,38 +217,28 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
      * from the database that lack required attributes.
      */
     public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): TableDefinition<S, PK, V, D> {
-        return new TableDefinition(this.resource, this.name, this.indexes, {...this.defaults, ...defaults});
+        return new TableDefinition(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults});
     }
 
     public index<K1 extends keyof S>(key: K1): TableDefinition<S, PK, V, D | IndexQuery<S, never, K1>>;
     public index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): TableDefinition<S, PK, V, D | IndexQuery<S, K1, K2>>;
     public index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): TableDefinition<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
-    public index<K extends keyof S>(...keys: K[]): TableDefinition<S, PK, V, D | IndexQuery<S, K, K>> {
+    public index<K extends keyof S>(...index: K[]): TableDefinition<S, PK, V, D | IndexQuery<S, K, K>> {
         let newIndexes: IndexTree<S> = {};
-        while (keys.length) {
-            const key = keys.pop() as K;
+        while (index.length) {
+            const key = index.pop() as K;
             newIndexes = {[key]: newIndexes} as IndexTree<S>;
         }
-        return new TableDefinition(this.resource, this.name, {...this.indexes, ...newIndexes}, this.defaults);
+        return new TableDefinition(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults);
     }
 
-    public getModel(uri: string): VersionedModel<S, PK, V, D> {
-        const {resource, defaults} = this;
-        if (uri.startsWith('arn:')) {
-            const {service, region, resourceType, resourceId} = parseARN(uri);
-            if (service !== 'sdb') {
-                throw new Error(`Unknown AWS service "${service}"`);
-            }
-            if (resourceType !== 'domain') {
-                throw new Error(`Unknown AWS resource type "${resourceType}"`);
-            }
-            return new SimpleDbModel<S, PK, V, D>(resourceId, region, resource, defaults);
-        }
-        if (uri.startsWith('file://')) {
-            const filePath = uri.slice('file://'.length);
-            return new NeDbModel<S, PK, V, D>(filePath, resource, defaults);
-        }
-        throw new Error(`Invalid database table URI ${uri}`);
+    public getModel(context: ModelContext): VersionedModel<S, PK, V, D> {
+        return new PostgreSqlDbModel(context, this.name, this.resource);
+    }
+
+    public getState(): TableState {
+        const { name, indexes } = this;
+        return getResourceState(name, this.resource, indexes);
     }
 }
 
@@ -242,4 +248,36 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
  */
 export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string) {
     return new TableDefinition<S, PK, V, never>(resource, name, {});
+}
+
+export function getResourceState(name: string, resource: Resource<any, Key<any>, Key<any>>, indexes: string[][]): TableState {
+    const { fields, identifyBy } = resource;
+    return {
+        name,
+        primaryKeys: identifyBy.map((key) => ({
+            name: key,
+            type: fields[key].type,
+        })),
+        columns: Object.keys(fields)
+            .filter((key) => !identifyBy.includes(key))
+            .map((key) => ({
+                name: key,
+                type: fields[key].type,
+            })),
+        // tslint:disable-next-line:no-shadowed-variable
+        indexes: indexes.map((keys) => ({ keys })),
+    };
+}
+
+function flattenIndexes<S>(idxTree: IndexTree<S>): Array<Array<Key<S>>> {
+    const indexes: Array<Array<Key<S>>> = [];
+    keys(idxTree).forEach((key) => {
+        const subIndexes = flattenIndexes(idxTree[key] as IndexTree<S>);
+        if (subIndexes.length) {
+            indexes.push([key]);
+        } else {
+            indexes.push(...subIndexes.map((subIndex) => [key, ...subIndex]));
+        }
+    });
+    return indexes;
 }

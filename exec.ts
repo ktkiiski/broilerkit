@@ -1,6 +1,24 @@
 import * as childProcess from 'child_process';
 
 /**
+ * Executes a command, returning the output as a string,
+ * with any trailing whitespace trimmed out.
+ * @param cmd The command to execute
+ */
+export async function execute(cmd: string): Promise<string> {
+    const output = await new Promise<string>((resolve, reject) => {
+        childProcess.exec(cmd, (error, stdout) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve(stdout);
+            }
+        });
+    });
+    return output.trim();
+}
+
+/**
  * Executes a command synchronously, returning the output as a string,
  * with any trailing whitespace trimmed out.
  * @param cmd The command to execute

@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  # Name of the VPC stack
+  VpcStackName:
+    Type: String
+  # Name of the database
+  DatabaseName:
+    Type: String
+  # Master username for the database
+  DatabaseUsername:
+    Type: String
+    Default: master
+  # S3 key for the deployment ZIP package for table migration Lambda function
+  DatabaseTableMigrationDeploymentPackageS3Key:
+    Type: String
+
+Resources:
+  # Sub-stack for the custom resources
+  DatabaseTableResource:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        LambdaFunctionS3Bucket:
+          Ref: DeploymentManagementS3Bucket
+        LambdaFunctionS3Key:
+          Ref: DatabaseTableMigrationDeploymentPackageS3Key
+        VpcSecurityGroupId:
+          Fn::ImportValue:
+            Fn::Sub: "${VpcStackName}-security-group"
+        VpcSubnetIds:
+          Fn::Join:
+            - ","
+            - - Fn::ImportValue:
+                  Fn::Sub: "${VpcStackName}-private-subnet-a"
+              - Fn::ImportValue:
+                  Fn::Sub: "${VpcStackName}-private-subnet-b"
+      TemplateURL:
+        Fn::Sub: https://s3.amazonaws.com/${DeploymentManagementS3Bucket}/cloudformation-custom-table-resource.yml
+
+  # Policy that allows custom table resource Lambda function to access the database credentials
+  DatabaseTableResourcePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DatabaseTableResourcePolicy
+      Roles:
+        - Fn::GetAtt: DatabaseTableResource.Outputs.Role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Add all the actions required for any used custom resources
+          # The full reference is available here:
+          # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
+          - Effect: Allow
+            Resource:
+              - Ref: DatabaseMasterSecret
+            Action:
+              - secretsmanager:GetSecretValue
+
+  # Aurora Serverless Database Cluster
+  DatabaseDBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: aurora-postgresql
+      EngineMode: serverless
+      EngineVersion: 10.7
+      DatabaseName:
+        Ref: DatabaseName
+      MasterUsername:
+        Fn::Sub: "{{resolve:secretsmanager:${DatabaseMasterSecret}:SecretString:username}}"
+      MasterUserPassword:
+        Fn::Sub: "{{resolve:secretsmanager:${DatabaseMasterSecret}:SecretString:password}}"
+      BackupRetentionPeriod: 35
+      ScalingConfiguration:
+        AutoPause: true
+        SecondsUntilAutoPause: 1800 # 30 min
+        # TODO: MinCapacity & MaxCapacity
+      DBClusterParameterGroupName:
+        Ref: DatabaseDBClusterParameterGroup
+      DBSubnetGroupName:
+        Ref: DatabaseDBSubnetGroup
+      VpcSecurityGroupIds:
+        - Fn::ImportValue:
+            Fn::Sub: "${VpcStackName}-security-group"
+
+  # Database subnet group
+  DatabaseDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription:
+        Fn::Sub: Aurora Serverless database subnet group in VPC for ${AWS::StackName} CloudFormation stack
+      DBSubnetGroupName:
+        Fn::Sub: "${AWS::StackName}"
+      SubnetIds:
+        - Fn::ImportValue:
+            Fn::Sub: "${VpcStackName}-private-subnet-a"
+        - Fn::ImportValue:
+            Fn::Sub: "${VpcStackName}-private-subnet-b"
+
+  # Enable the HTTP endpoint ("Data API") for the DB cluster
+  DatabaseDBClusterHttpEndpoint:
+    Type: Custom::DBClusterHttpEndpoint
+    DependsOn:
+    - CustomResourcePolicy
+    - DatabaseDBCluster
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+      Service: RDS
+      Create:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/RDS.html#modifyDBCluster-property
+        Action: modifyDBCluster
+        Parameters:
+          DBClusterIdentifier:
+            Ref: DatabaseDBCluster
+          EnableHttpEndpoint: true
+          ApplyImmediately: true
+      Delete:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/RDS.html#modifyDBCluster-property
+        Action: modifyDBCluster
+        Parameters:
+          DBClusterIdentifier:
+            Ref: DatabaseDBCluster
+          EnableHttpEndpoint: false
+          ApplyImmediately: true
+
+  # Parameter group for the database
+  DatabaseDBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description:
+        Fn::Sub: "Aurora PG Cluster Parameter Group for ${AWS::StackName} CloudFormation stack"
+      Family: aurora-postgresql10
+      Parameters:
+        rds.force_ssl: 1
+
+  # Generate a password for the database
+  DatabaseMasterSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: "${AWS::StackName}/database/credentials"
+      Description:
+        Fn::Sub: "Aurora PostgreSQL database master user secret for ${AWS::StackName} CloudFormation stack"
+      GenerateSecretString:
+        SecretStringTemplate:
+          Fn::Sub: '{"username": "${DatabaseUsername}"}'
+        GenerateStringKey: "password"
+        ExcludeCharacters: '"@/\'
+        PasswordLength: 16
+
+  # Extend LambdaExecutionIamRolePolicy to allow accessing the database secret
+  LambdaExecutionIamRolePolicy:
+    Properties:
+      PolicyDocument:
+        Statement:
+        # Allow access to the database credentials for connecting the database
+        - Effect: Allow
+          Action:
+          - secretsmanager:GetSecretValue
+          Resource:
+          - Ref: DatabaseMasterSecret
+
+  # Make the database information available for server-side Lambda function
+  # as API Gateway stage variables
+  ServerApiGatewayStage:
+    Properties:
+      Variables:
+        DatabaseHost:
+          Fn::GetAtt: DatabaseDBCluster.Endpoint.Address
+        DatabasePort:
+          Fn::GetAtt: DatabaseDBCluster.Endpoint.Port
+        DatabaseName:
+          Ref: DatabaseName
+        DatabaseCredentialsArn:
+          Ref: DatabaseMasterSecret
+
+Outputs:
+  DatabaseDBClusterEndpointAddress:
+    Description: Endpoint host address of the Aurora Serverless DB cluster
+    Value:
+      Fn::GetAtt: DatabaseDBCluster.Endpoint.Address
+  DatabaseDBClusterEndpointPort:
+    Description: Endpoint port number of the Aurora Serverless DB cluster
+    Value:
+      Fn::GetAtt: DatabaseDBCluster.Endpoint.Port
+  DatabaseDBClusterArn:
+    Description: ARN of the Aurora Serverless DB cluster
+    Value:
+      Fn::Sub: "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DatabaseDBCluster}"
+  DatabaseMasterSecretArn:
+    Description: ARN of the Secrets Manager master credentials secret
+    Value:
+      Ref: DatabaseMasterSecret

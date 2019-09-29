@@ -36,6 +36,11 @@ Resources:
               - cognito-idp:CreateIdentityProvider
               - cognito-idp:UpdateIdentityProvider
               - cognito-idp:DeleteIdentityProvider
+              # TODO: Define these in cloudformation-db.yml
+              - rds:DescribeDBClusters
+              - rds:ModifyDBCluster  # TODO: Only the related DB cluster!
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
 
   # The user pool for the registry
   UserPool:
@@ -176,8 +181,8 @@ Resources:
   ServerApiGatewayStage:
     Properties:
       Variables:
-        DatabaseTableUsersURI:
-          Fn::GetAtt: UserPool.Arn
+        UserPoolId:
+          Ref: UserPool
         AuthSignInUri:
           Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
         AuthSignOutUri:

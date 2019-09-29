@@ -6,7 +6,6 @@ import { HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthoriz
 import { middleware, requestMiddleware } from './middleware';
 import { ApiService } from './server';
 import { transformValues } from './utils/objects';
-import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import * as http from 'http';
@@ -17,6 +16,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 
 import chalk from 'chalk';
+import { escapeForShell, execute } from './exec';
 const { cyan, green, red, yellow } = chalk;
 
 /**
@@ -73,8 +73,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
  * Runs the REST API development server.
  */
 export async function serveBackEnd(options: BroilerConfig, params: {[param: string]: string}) {
-    const {serverRoot, assetsRoot, stageDir, buildDir, projectRootPath} = options;
-    const stageDirPath = path.resolve(projectRootPath, stageDir);
+    const {serverRoot, assetsRoot, buildDir, projectRootPath} = options;
     const serverRootUrl = new URL(serverRoot);
     const serverOrigin = serverRootUrl.origin;
     const serverProtocol = serverRootUrl && serverRootUrl.protocol;
@@ -130,7 +129,9 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
                     AuthSignOutUri: `${serverRoot}/_oauth2_signout`,
                     AuthSignInRedirectUri: `${assetsRoot}/_oauth2_signin_complete.html`,
                     AuthSignOutRedirectUri: `${assetsRoot}/_oauth2_signout_complete.html`,
-                    ...getRequestEnvironment(stageDirPath, service),
+                    DatabaseHost: 'localhost',
+                    DatabasePort: '54320',
+                    DatabaseName: 'postgres',
                 },
             };
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
@@ -149,6 +150,23 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
         if (server) {
             server.close();
         }
+    }
+}
+
+interface LocalDatabaseLaunchOptions {
+    name: string;
+    stage: string;
+    port: number;
+}
+
+export async function launchLocalDatabase({name, stage, port}: LocalDatabaseLaunchOptions): Promise<void> {
+    const containerName = escapeForShell(`${name}_${stage}_postgres`.replace(/-+/g, '_'));
+    try {
+        // Assume that the container already exists. Restart it.
+        await execute(`docker restart ${containerName}`);
+    } catch {
+        // Assuming that the container did not exist. Start a new one.
+        await execute(`docker run -d --name ${containerName} -v ${containerName}:/var/lib/postgresql/data -p ${port}:5432 postgres:10`);
     }
 }
 
@@ -179,19 +197,6 @@ function createServer<P extends any[]>(handler: (request: http.IncomingMessage, 
             httpResponse.end(`Internal server error:\n${error.stack || error}`);
         }
     });
-}
-
-function getRequestEnvironment(directoryPath: string, service?: ApiService): {[key: string]: string} {
-    const environment: {[key: string]: string} = {
-        DatabaseTableUsersURI: `file://${getDbFilePath(directoryPath, 'Users')}`,
-    };
-    if (service) {
-        for (const table of service.tables)  {
-            const filePath = `file://${getDbFilePath(directoryPath, table.name)}`;
-            environment[`DatabaseTable${upperFirst(table.name)}URI`] = filePath;
-        }
-    }
-    return environment;
 }
 
 async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {serverOrigin: string, serverRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {

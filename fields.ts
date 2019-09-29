@@ -162,11 +162,11 @@ class NumberField implements Field<number> {
     }
 }
 
-const MAX_INTEGER = Number.MAX_SAFE_INTEGER;
-const MIN_INTEGER = Number.MIN_SAFE_INTEGER;
+const MAX_INTEGER = Math.min(Number.MAX_SAFE_INTEGER, +2147483647);
+const MIN_INTEGER = Math.max(Number.MIN_SAFE_INTEGER, -2147483648);
 
 class IntegerField extends NumberField implements Field<number> {
-    public readonly type: string = 'bigint';
+    public readonly type: string = 'integer';
     public validate(value: number): number {
         if (isFinite(value)) {
             if (value > MAX_INTEGER) {
@@ -187,7 +187,7 @@ class IntegerField extends NumberField implements Field<number> {
         if (typeof value === 'string') {
             // If starting with special character '!', then it is a sortable encoding
             if (value[0] === '!') {
-                value = parseInt(value.slice(1), 10) + MIN_INTEGER;
+                value = parseInt(value.slice(1), 10) + Number.MIN_SAFE_INTEGER;
             } else {
                 value = parseInt(value, 10);
             }

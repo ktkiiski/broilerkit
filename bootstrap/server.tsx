@@ -18,8 +18,9 @@ const service = apiService.extend({
     [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, pageHtml$),
 });
 
+const cache = {};
 const executeLambda = lambdaMiddleware(middleware(
-    async (req) => service.execute(req, {}),
+    async (req) => service.execute(req, cache),
 ));
 
 /**

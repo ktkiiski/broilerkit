@@ -14,3 +14,7 @@
 
 # Ignore packed npm packages
 *.tgz
+
+# This zip file is made manually when publishing the npm package,
+# after the compilation, so it is ignored from the version control.
+/res/cloudformation-migration-lambda.zip

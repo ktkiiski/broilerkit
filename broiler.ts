@@ -11,10 +11,10 @@ import { formatS3KeyName } from './aws/utils';
 import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
-import { ensureDirectoryExists, fileExists, readFile, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
+import { ensureDirectoryExists, fileExists, readFile, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
 import { HttpMethod, HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
-import { getDbFilePath, serveBackEnd, serveFrontEnd } from './local';
+import { getDbFilePath, launchLocalDatabase, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
@@ -30,8 +30,14 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
+import { Client } from 'pg';
 import { clean } from './clean';
+import { users } from './cognito';
+import { Table } from './db';
+import { createTable } from './migration';
 import { askParameters } from './parameters';
+import { PostgreSqlDbModel, RemotePostgreSqlDbModel } from './postgres';
+import { retryWithBackoff } from './retry';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { groupBy } from './utils/groups';
 
@@ -45,6 +51,9 @@ export interface IFileUpload {
 
 // Static assets are cached for a year
 const staticAssetsCacheDuration = 31556926;
+
+const dbTableMigrationVersion = '0.0.3';
+const localDbPortNumber = 54320;
 
 export class Broiler {
 
@@ -84,9 +93,10 @@ export class Broiler {
     public async deploy(): Promise<void> {
         await this.clean();
         await Promise.all([
-            this.initialize().then(() => (
-                this.uploadCustomResource()
-            )),
+            this.initialize().then(() => Promise.all([
+                this.uploadCustomResource(),
+                this.uploadDatabaseTableResource(),
+            ])),
             this.compileFrontend(false),
             this.compileBackend(false),
             this.deployVpc(),
@@ -143,11 +153,11 @@ export class Broiler {
         return oldStack;
     }
 
-    public async compile(): Promise<WebpackStats[]> {
+    public async compile(analyze = true): Promise<WebpackStats[]> {
         await this.clean();
         const [backend, frontend] = await Promise.all([
-            this.compileBackend(true),
-            this.compileFrontend(true),
+            this.compileBackend(analyze),
+            this.compileFrontend(analyze),
         ]);
         return backend ? [backend, frontend] : [frontend];
     }
@@ -180,11 +190,7 @@ export class Broiler {
      * Preview the changes that would be deployed.
      */
     public async preview() {
-        await this.clean();
-        await Promise.all([
-            this.compileBackend(false),
-            this.compileFrontend(false),
-        ]);
+        await this.compile(false);
         const templateUrl = await this.prepareStackTemplate();
         const parameters = await this.getStackParameters();
         const changeSet = await this.cloudFormation.createChangeSet(templateUrl, parameters);
@@ -196,6 +202,7 @@ export class Broiler {
      * Prints the CloudFormation stack template.
      */
     public async printTemplate() {
+        await this.compile(false);
         const template = await this.generateTemplate();
         this.log(dumpTemplate(template));
     }
@@ -213,6 +220,31 @@ export class Broiler {
             await writeJSONFile(paramFile, params);
         } catch (error) {
             this.log(red(`Failed to write parameters to the JSON file:\n${error}`));
+        }
+        const tables = this.getTables();
+        if (opts.auth) {
+            tables.push(users);
+        }
+        if (tables.length) {
+            process.stdout.write(`Connecting to the database...`);
+            // Ensure that the database is running
+            await launchLocalDatabase({ ...opts, port: localDbPortNumber });
+            const client = await retryWithBackoff(10, async () => {
+                process.stdout.write(`.`);
+                const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
+                await client.connect();
+                return client;
+            });
+            process.stdout.write(` ${green('✔︎')}\n`);
+            // Run migrations for each table
+            try {
+                const tableStates = tables.map((table) => table.getState());
+                for (const tableState of tableStates) {
+                    await createTable(client, tableState);
+                }
+            } finally {
+                await client.end();
+            }
         }
         await Promise.all([
             serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.serverRoot}/`)}`)),
@@ -539,14 +571,17 @@ export class Broiler {
      * Returns the parameters that are given to the CloudFormation template.
      */
     public async getStackParameters() {
-        const {serverRoot, assetsRoot, auth, parameters} = this.config;
+        const {serverRoot, assetsRoot, auth, parameters, vpc} = this.config;
         const serverRootUrl = new URL(serverRoot);
         const serverDomain = serverRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
         const assetsDomain = assetsRootUrl.hostname;
         const serverFileKey$ = this.getServerZipFileS3Key();
         const prevParams$ = auth ? this.cloudFormation.getStackParameters() : Promise.resolve(undefined);
+        const databaseName = this.getDatabaseName();
         const [serverFileKey, prevParams] = await Promise.all([serverFileKey$, prevParams$]);
+        const vpcStackName = vpc == null ? undefined : `${vpc}-vpc`;
+        const dbTableMigrationDeploymentPackageS3Key = `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`;
         // Facebook client settings
         const facebookClientId = auth && auth.facebookClientId || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
@@ -582,6 +617,10 @@ export class Broiler {
             AssetsRoot: assetsRoot,
             AssetsDomainName: assetsDomain,
             AssetsHostedZoneName: getHostedZone(assetsDomain),
+            // These are only used if the database is enabled
+            VpcStackName: vpcStackName,
+            DatabaseName: databaseName,
+            DatabaseTableMigrationDeploymentPackageS3Key: dbTableMigrationDeploymentPackageS3Key,
             // These parameters are only defined if 'auth' is enabled
             FacebookClientId: facebookClientId,
             FacebookClientSecret: facebookClientSecret,
@@ -647,6 +686,35 @@ export class Broiler {
             ContentType: 'application/x-yaml',
         }, true);
         return (await templateUpload$) as S3.PutObjectOutput;
+    }
+
+    /**
+     * Uploads a CloudFormation template and a Lambda JavaScript source code
+     * required for database table resources. Any existing files
+     * are overwritten.
+     */
+    private async uploadDatabaseTableResource(): Promise<S3.PutObjectOutput[]> {
+        const templateFileName = 'cloudformation-custom-table-resource.yml';
+        const packageFileName = 'cloudformation-migration-lambda.zip';
+        const bucketName$ = this.cloudFormation.getStackOutput().then((output) => output.DeploymentManagementS3BucketName);
+        const resDir = path.join(__dirname, 'res');
+        const templateFile$ = readFile(path.join(resDir, templateFileName));
+        const packageFile$ = readFileBuffer(path.join(resDir, packageFileName));
+        const templateUpload$ = Promise.all([bucketName$, templateFile$])
+            .then(([bucketName, templateFile]) => this.createS3File$({
+                Bucket: bucketName,
+                Key: templateFileName,
+                Body: templateFile,
+                ContentType: 'application/x-yaml',
+            }, true));
+        const zipUpload$ = Promise.all([bucketName$, packageFile$])
+            .then(([bucketName, packageFile]) => this.createS3File$({
+                Bucket: bucketName,
+                Key: `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`,
+                Body: packageFile,
+                ContentType: 'application/zip',
+            }, true));
+        return Promise.all([templateUpload$, zipUpload$]);
     }
 
     /**
@@ -743,7 +811,7 @@ export class Broiler {
         const templates = await Promise.all([
             template$,
             this.generateServerTemplate(server),
-            this.generateDbTemplates(server),
+            this.generateDbTemplates(),
         ]);
         if (parameters) {
             forEachKey(parameters, (paramName, paramConfig) => {
@@ -863,45 +931,42 @@ export class Broiler {
         return templates.reduce(mergeTemplates, {});
     }
 
-    private async generateDbTemplates(service: ApiService): Promise<any> {
-        const sortedTables = order(service.tables, 'name', 'asc');
-        return sortedTables.map((table) => {
-            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
-            const tableUriVar = `${logicalId}URI`;
-            const tableUriSub = 'arn:aws:sdb:${AWS::Region}:${AWS::AccountId}:domain/${' + logicalId + '}';
-            return {
-                AWSTemplateFormatVersion: '2010-09-09',
-                // Create the domain for the SimpleDB table
-                Resources: {
-                    [logicalId]: {
-                        Type : 'AWS::SDB::Domain',
-                        Properties : {
-                            Description: `Database table for "${table.name}"`,
-                        },
-                    },
-                    // Make the domain name available for Lambda functions as a stage variable
-                    ServerApiGatewayStage: {
-                        Properties: {
-                            Variables: {
-                                [tableUriVar]: {
-                                    'Fn::Sub': tableUriSub,
-                                },
-                            },
-                        },
-                    },
-                },
-                // Output the name for the created SimpleDB domain
-                Outputs: {
-                    [tableUriVar]: {
-                        Value: {
-                            'Fn::Sub': tableUriSub,
-                        },
-                    },
-                },
-            };
-        }).reduce(mergeTemplates, {});
+    private async generateDbTemplates(): Promise<any> {
+        const tables = this.getTables();
+        if (!tables.length) {
+            return {};
+        }
+        const dbSetupTemplate = await readTemplates(['cloudformation-db.yml']);
+        return tables
+            .map((table) => this.generateDbTableTemplate(table))
+            .reduce(mergeTemplates, dbSetupTemplate);
     }
 
+    private generateDbTableTemplate(table: Table<any>) {
+        const logicalId = `DatabaseTable${upperFirst(table.name)}`;
+        const tableProperties = {
+            ServiceToken: { 'Fn::GetAtt': 'DatabaseTableResource.Outputs.ServiceToken' },
+            Host: { 'Fn::GetAtt': 'DatabaseDBCluster.Endpoint.Address' },
+            Database: { Ref: 'DatabaseName' },
+            Port: { 'Fn::GetAtt': 'DatabaseDBCluster.Endpoint.Port' },
+            Region: { Ref: 'AWS::Region' },
+            SecretId: { Ref: 'DatabaseMasterSecret' },
+            Table: table.getState(),
+        };
+        return {
+            // Create the AuroraDB table
+            Resources: {
+                [logicalId]: {
+                    Type: 'Custom::DatabaseTable',
+                    Properties: tableProperties,
+                    DependsOn: ['DatabaseTableResourcePolicy'],
+                },
+            },
+        };
+    }
+
+    private async createS3File$(params: S3.PutObjectRequest, overwrite: true): Promise<S3.PutObjectOutput>;
+    private async createS3File$(params: S3.PutObjectRequest, overwrite: boolean): Promise<S3.PutObjectOutput | void>;
     private async createS3File$(params: S3.PutObjectRequest, overwrite: boolean): Promise<S3.PutObjectOutput | void> {
         if (!overwrite && await this.s3.objectExists(params)) {
             this.log('File', bold(params.Key), 'already exists in bucket', params.Bucket, green('✔︎'));
@@ -1075,8 +1140,21 @@ export class Broiler {
         return null;
     }
 
+    private getDatabaseName() {
+        const { stackName } = this.config;
+        return stackName.split('-').join('_');
+    }
+
+    private getTables() {
+        const server = this.importServer();
+        if (!server) {
+            return [];
+        }
+        return order(server.tables, 'name', 'asc');
+    }
+
     private async getTableModel(tableName: string) {
-        const { region, stageDir } = this.config;
+        const { region } = this.config;
         const service = this.importServer();
         if (!service) {
             throw new Error(`No tables defined for the app.`);
@@ -1085,20 +1163,28 @@ export class Broiler {
         if (!table) {
             throw new Error(`Table ${tableName} not found.`);
         }
-        let tableUri: string;
         if (region === 'local') {
-            const tableFilePath = getDbFilePath(stageDir, tableName);
-            tableUri = `file://${tableFilePath}`;
-        } else {
-            const logicalId = `DatabaseTable${upperFirst(table.name)}`;
-            const tableUriVar = `${logicalId}URI`;
-            const output = await this.cloudFormation.getStackOutput();
-            tableUri = output[tableUriVar];
-            if (!tableUri) {
-                throw new Error(`Table ${tableName} has not been deployed.`);
-            }
+            const context = {
+                region,
+                environment: {},
+                connect: async () => {
+                    // TODO: Close the connection!
+                    const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
+                    await client.connect();
+                    return client;
+                },
+            };
+            return new PostgreSqlDbModel(context, tableName, table.resource);
         }
-        return table.getModel(tableUri);
+        const output = await this.cloudFormation.getStackOutput();
+        return new RemotePostgreSqlDbModel(
+            region,
+            output.DatabaseDBClusterArn,
+            output.DatabaseMasterSecretArn,
+            this.getDatabaseName(),
+            tableName,
+            table.resource,
+        );
     }
 
     private async getTableModels() {

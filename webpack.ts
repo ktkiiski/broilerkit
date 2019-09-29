@@ -387,6 +387,13 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             // Regular expression to match the files that should be imported
             /\ben.js/,
         ),
+        /**
+         * Prevent `pg` module to import `pg-native` binding library.
+         */
+        new webpack.IgnorePlugin({
+            resourceRegExp: /^\.\/native$/,
+            contextRegExp: /node_modules\/pg\/lib$/,
+        }),
     ];
     if (!devServer) {
         // Generate some stats for the bundles

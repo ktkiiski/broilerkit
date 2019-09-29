@@ -1,18 +1,17 @@
 // tslint:disable:member-ordering
+import { SecretsManager } from 'aws-sdk';
+import { Pool, PoolClient, PoolConfig } from 'pg';
 import { Handler, ResponseHandler } from './api';
-import { CognitoModel } from './cognito';
-import { Model, Table } from './db';
-import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
+import { Model, ModelContext, Table } from './db';
 import { ApiResponse, HttpResponse, OK } from './http';
+import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
 import { transformValues } from './utils/objects';
-import { upperFirst } from './utils/strings';
 
-export type Models<T> = T & {users: CognitoModel};
 export type Tables<T> = {
     [P in keyof T]: Table<T[P]>;
 };
@@ -71,7 +70,7 @@ class ImplementedOperation implements Controller {
         this.requiresAuth = authType !== 'none';
     }
 
-    public async execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse> {
+    public async execute(request: HttpRequest, cache: {[uri: string]: any}): Promise<ApiResponse> {
         const {tablesByName, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const input = parseRequest(operation, request);
@@ -95,15 +94,22 @@ class ImplementedOperation implements Controller {
             }
         }
         // Handle the request
-        const models = getModels(tablesByName, request, cache);
-        const {data, ...response} = await this.handler(input, models, request);
-        if (!responseSerializer) {
-            // No response data should be available
-            return response;
+        const { region, environment } = request;
+        const context = new RequestModelContext(region, environment, cache);
+        try {
+            const models = transformValues(tablesByName, (table) => table.getModel(context));
+            const {data, ...response} = await this.handler(input, models, request);
+            if (!responseSerializer) {
+                // No response data should be available
+                return response;
+            }
+            // Serialize the response data
+            // TODO: Validation errors should result in 500 responses!
+            return {...response, data: responseSerializer.serialize(data)};
+        } finally {
+            // Ensure that any database connection is released to the pool
+            context.release();
         }
-        // Serialize the response data
-        // TODO: Validation errors should result in 500 responses!
-        return {...response, data: responseSerializer.serialize(data)};
     }
 }
 
@@ -116,7 +122,7 @@ export function implement<I, O, R, D>(
         case 'list':
         return new ImplementedOperation(
             operation, db,
-            async (input: I, models: Models<D>, request: HttpRequest): Promise<OK<Page<O, any>>> => {
+            async (input: I, models: D, request: HttpRequest): Promise<OK<Page<O, any>>> => {
                 // TODO: Avoid force-typecasting of request!
                 const page: Page<any, any> = await implementation(input, models, request as unknown as R) as any;
                 if (!page.next) {
@@ -131,14 +137,14 @@ export function implement<I, O, R, D>(
         case 'retrieve':
         return new ImplementedOperation(
             operation, db,
-            async (input: I, models: Models<D>, request: R): Promise<OK<O>> => {
+            async (input: I, models: D, request: R): Promise<OK<O>> => {
                 return new OK(await implementation(input, models, request));
             },
         );
         case 'destroy':
         return new ImplementedOperation(
             operation, db,
-            async (input: I, models: Models<D>, request: R): Promise<NoContent> => {
+            async (input: I, models: D, request: R): Promise<NoContent> => {
                 await implementation(input, models, request);
                 return new NoContent();
             },
@@ -251,16 +257,111 @@ export class ApiService {
     }
 }
 
-function getModels<M>(db: Tables<M>, request: HttpRequest, cache: {[uri: string]: any} = {}): Models<M> {
-    return transformValues(db, (table) => {
-        const environmentKey = `DatabaseTable${upperFirst(table.name)}URI`;
-        const tableUri = request.environment[environmentKey] as string | undefined;
-        if (!tableUri) {
-            throw new Error(`Environment does not define URI for the table "${table.name}"`);
+class RequestModelContext implements ModelContext {
+
+    private client$: Promise<PoolClient> | null = null;
+
+    constructor(
+        public readonly region: string,
+        public readonly environment: {[key: string]: any},
+        private readonly cache: {[key: string]: any},
+    ) {}
+
+    public async connect() {
+        let { client$ } = this;
+        if (client$) {
+            return client$;
         }
-        const model = cache[tableUri];
-        return model || (cache[tableUri] = table.getModel(tableUri));
-    }) as Models<M>;
+        const { region, environment } = this;
+        client$ = establishDatabaseConnection(region, environment, this.cache);
+        this.client$ = client$;
+        return client$;
+    }
+
+    public async release() {
+        const { client$ } = this;
+        if (client$) {
+            const client = await client$;
+            client.release();
+        }
+    }
+}
+
+async function establishDatabaseConnection(region: string, environment: {[key: string]: string}, cache: {[key: string]: any}): Promise<PoolClient> {
+    // Create a database pool
+    const databaseHost = environment.DatabaseHost;
+    const databasePort = environment.DatabasePort;
+    const databaseName = environment.DatabaseName;
+    if (!databaseHost) {
+        throw new Error(`Missing database host configuration!`);
+    }
+    if (!databasePort) {
+        throw new Error(`Missing database port configuration!`);
+    }
+    if (!databaseName) {
+        throw new Error(`Missing database name configuration!`);
+    }
+    const poolCacheKey = `pg:pool:${databaseHost}:${databasePort}:${databaseName}`;
+    const pool = await cached(cache, poolCacheKey, async () => {
+        const dbConfig: PoolConfig = {
+            host: databaseHost,
+            port: parseInt(databasePort, 10),
+            database: databaseName,
+            idleTimeoutMillis: 60 * 1000,
+        };
+        const databaseCredentialsArn = environment.DatabaseCredentialsArn;
+        if (databaseCredentialsArn) {
+            // Username and password are read from AWS Secrets Manager
+            const credentialsCacheKey = `pg:credentials:${databaseCredentialsArn}`;
+            const credentials = await cached(cache, credentialsCacheKey, async () => {
+                return retrieveDatabaseCredentials(region, databaseCredentialsArn);
+            });
+            dbConfig.user = credentials.username;
+            dbConfig.password = credentials.password;
+        } else {
+            // Assuming a local development environment. No password!
+            dbConfig.user = 'postgres';
+        }
+        return new Pool(dbConfig);
+    });
+    return pool.connect();
+}
+
+async function retrieveDatabaseCredentials(region: string, secretArn: string) {
+    const sdk = new SecretsManager({
+        apiVersion: '2017-10-17',
+        region,
+        httpOptions: { timeout: 5 * 1000 },
+        maxRetries: 3,
+    });
+    const response = await sdk.getSecretValue({ SecretId: secretArn }).promise();
+    const secret = response.SecretString;
+    if (!secret) {
+        throw new Error('Response does not contain a SecretString');
+    }
+    const { username, password } = JSON.parse(secret);
+    if (typeof username !== 'string' || !username) {
+        throw new Error('Secrets manager credentials are missing "username"');
+    }
+    if (typeof password !== 'string' || !password) {
+        throw new Error('Secrets manager credentials are missing "password"');
+    }
+    return { username, password };
+}
+
+function cached<T>(cache: {[key: string]: any}, key: string, fn: () => Promise<T>): Promise<T> {
+    let promise = cache[key] as Promise<T> | undefined;
+    if (!promise || typeof promise.then !== 'function') {
+        promise = fn();
+        cache[key] = promise;
+        // Remove from cache on any error
+        promise.catch(() => {
+            if (cache[key] === promise) {
+                delete cache[key];
+            }
+        });
+    }
+    return promise;
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {

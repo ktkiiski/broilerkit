@@ -1,10 +1,9 @@
-import { parseARN } from './aws/arn';
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { Identity, Model, PartialUpdate, Query, Table } from './db';
+import { getResourceState, Identity, Model, ModelContext, PartialUpdate, Query, Table } from './db';
 import { ValidationError } from './errors';
 import { HttpStatus, isResponse, NotFound } from './http';
-import { NeDbModel } from './nedb';
 import { Page } from './pagination';
+import { PostgreSqlDbModel } from './postgres';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
@@ -19,7 +18,9 @@ export interface UserIdentity {
 export type UserPartialUpdate<S extends User> = Partial<UserMutableAttributes<S>>;
 export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, Query<S>>;
 
-export class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
+const localUsersTableName = '_users';
+
+class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
     private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<UserPartialUpdate<S>>;
     private identitySerializer = this.serializer.pick(['id']);
@@ -129,21 +130,22 @@ export class UserPoolCognitoModel<S extends User = User> implements CognitoModel
     }
 }
 
-export class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
+class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private nedb = new NeDbModel(this.filePath, this.serializer, {
-        picture: null,
-    });
+    private db = new PostgreSqlDbModel(this.context, localUsersTableName, this.serializer);
 
-    constructor(private filePath: string, public readonly serializer: Resource<S, 'id', 'updatedAt'>) {}
+    constructor(
+        private readonly context: ModelContext,
+        public readonly serializer: Resource<S, 'id', 'updatedAt'>,
+    ) {}
 
     public retrieve(query: UserIdentity): Promise<S> {
-        return this.nedb.retrieve(query as Identity<S, 'id', 'updatedAt'>);
+        return this.db.retrieve(query as Identity<S, 'id', 'updatedAt'>);
     }
 
     public create(attrs: UserCreateAttributes<S>): Promise<S> {
         const now = new Date();
-        return this.nedb.create({...attrs, updatedAt: now, createdAt: now} as any);
+        return this.db.create({...attrs, updatedAt: now, createdAt: now} as any);
     }
 
     // tslint:disable-next-line:variable-name
@@ -153,7 +155,7 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
 
     public update(identity: UserIdentity, changes: UserPartialUpdate<S>): Promise<S> {
         const update = {...changes, updatedAt: new Date()};
-        return this.nedb.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>);
+        return this.db.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>);
     }
 
     public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C): Promise<C> {
@@ -170,45 +172,45 @@ export class LocalCognitoModel<S extends User = User> implements CognitoModel<S>
     }
 
     public destroy(identity: UserIdentity) {
-        return this.nedb.destroy(identity as Identity<S, 'id', 'updatedAt'>);
+        return this.db.destroy(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
     public clear(identity: UserIdentity) {
-        return this.nedb.clear(identity as Identity<S, 'id', 'updatedAt'>);
+        return this.db.clear(identity as Identity<S, 'id', 'updatedAt'>);
     }
 
     public list<Q extends Query<S>>(query: Q) {
-        return this.nedb.list(query as any) as Promise<Page<S, Q>>;
+        return this.db.list(query as any) as Promise<Page<S, Q>>;
     }
     public scan(query?: {}): AsyncIterableIterator<S[]> {
-        return this.nedb.scan(query as any);
+        return this.db.scan(query as any);
     }
     public batchRetrieve(identities: UserIdentity[]) {
-        return this.nedb.batchRetrieve(identities as Array<Identity<S, 'id', 'updatedAt'>>);
+        return this.db.batchRetrieve(identities as Array<Identity<S, 'id', 'updatedAt'>>);
     }
 }
 
 export const users: Table<CognitoModel> = {
     name: 'Users',
-    getModel(uri: string): CognitoModel {
+    resource: user,
+    indexes: [],
+    getModel(context: ModelContext): CognitoModel {
+        const { region, environment } = context;
         // TODO: Better handling for situation where user registry is not enabled
-        if (!uri) {
-            return {} as CognitoModel;
-        }
-        if (uri.startsWith('arn:')) {
-            const {service, region, resourceType, resourceId} = parseARN(uri);
-            if (service !== 'cognito-idp') {
-                throw new Error(`Unknown AWS service "${service}" for user registry`);
+        if (region === 'local') {
+            return new LocalCognitoModel(context, user) as CognitoModel;
+        } else {
+            const userPoolId = environment.UserPoolId;
+            if (!userPoolId) {
+                throw new Error('Missing user pool ID!');
             }
-            if (resourceType !== 'userpool') {
-                throw new Error(`Unknown AWS resource type "${resourceType}" for user registry`);
-            }
-            return new UserPoolCognitoModel(resourceId, region, user);
+            return new UserPoolCognitoModel(userPoolId, region, user);
         }
-        if (uri.startsWith('file://')) {
-            const filePath = uri.slice('file://'.length);
-            return new LocalCognitoModel(filePath, user);
-        }
-        throw new Error(`Invalid database table URI ${uri}`);
+    },
+    getState() {
+        return getResourceState(localUsersTableName, this.resource, [
+            ['email'],
+            ['createdAt'],
+        ]);
     },
 };
