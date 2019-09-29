@@ -16,7 +16,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 
 import chalk from 'chalk';
-import { escapeForShell, execute } from './exec';
+import { escapeForShell, execute, spawn } from './exec';
 const { cyan, green, red, yellow } = chalk;
 
 /**
@@ -159,8 +159,12 @@ interface LocalDatabaseLaunchOptions {
     port: number;
 }
 
+function getDbDockerContainerName(name: string, stage: string) {
+    return `${name}_${stage}_postgres`.replace(/-+/g, '_');
+}
+
 export async function launchLocalDatabase({name, stage, port}: LocalDatabaseLaunchOptions): Promise<void> {
-    const containerName = escapeForShell(`${name}_${stage}_postgres`.replace(/-+/g, '_'));
+    const containerName = escapeForShell(getDbDockerContainerName(name, stage));
     try {
         // Assume that the container already exists. Restart it.
         await execute(`docker restart ${containerName}`);
@@ -168,6 +172,11 @@ export async function launchLocalDatabase({name, stage, port}: LocalDatabaseLaun
         // Assuming that the container did not exist. Start a new one.
         await execute(`docker run -d --name ${containerName} -v ${containerName}:/var/lib/postgresql/data -p ${port}:5432 postgres:10`);
     }
+}
+
+export async function openLocalDatabasePsql(name: string, stage: string): Promise<void> {
+    const containerName = getDbDockerContainerName(name, stage);
+    await spawn('docker', ['exec', '-it', '--user=postgres', containerName, 'psql']);
 }
 
 export function getDbFilePath(directoryPath: string, tableName: string): string {

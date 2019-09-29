@@ -14,7 +14,7 @@ import { BroilerConfig } from './config';
 import { ensureDirectoryExists, fileExists, readFile, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
 import { HttpMethod, HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
-import { getDbFilePath, launchLocalDatabase, serveBackEnd, serveFrontEnd } from './local';
+import { getDbFilePath, launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
@@ -444,6 +444,13 @@ export class Broiler {
             throw error;
         }
         this.log(`Successfully restored ${results.length} database tables!`);
+    }
+
+    public async openPsql(): Promise<void> {
+        const { name, stage } = this.config;
+        this.log(`Opening PostgreSQL shell...`);
+        await openLocalDatabasePsql(name, stage);
+        this.log(`PostgreSQL shell exited successfully!`);
     }
 
     /**

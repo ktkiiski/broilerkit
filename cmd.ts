@@ -228,6 +228,15 @@ yargs
                     broiler.restoreDatabase(argv.path, argv.overwrite).then(null, onError);
                 },
             })
+            .command({
+                command: 'psql [stage]',
+                describe: 'Open psql shell for local stage database',
+                builder: (subCmdYargs) => subCmdYargs.default('stage', 'local'),
+                handler: (argv: CommandOptions) => {
+                    const broiler = getBroiler(argv);
+                    broiler.openPsql().then(null, onError);
+                },
+            })
         ,
         handler: () => { /* do nothing */ },
     })

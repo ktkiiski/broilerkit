@@ -19,6 +19,29 @@ export async function execute(cmd: string): Promise<string> {
 }
 
 /**
+ * Launches a new process with the given command and arguments,
+ * returning a promise that resolves if the process exists with zero
+ * status code or rejects if the status code was non-zero.
+ * @param cmd The command to execute
+ * @param args Parameters for the command
+ */
+export async function spawn(cmd: string, args: string[] = []): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        const process = childProcess.spawn(cmd, args, { stdio: 'inherit' });
+        process.on('close', (code, signal) => {
+            if (code) {
+                reject(Object.assign(
+                    new Error(`Process exited with status code ${code}`),
+                    {code, signal},
+                ));
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
+/**
  * Executes a command synchronously, returning the output as a string,
  * with any trailing whitespace trimmed out.
  * @param cmd The command to execute
