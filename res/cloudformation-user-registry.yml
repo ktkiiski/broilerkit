@@ -1,27 +1,14 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Resources:
-  # Sub-stack for the custom resources
-  CustomResource:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL:
-        Fn::Sub: https://s3.amazonaws.com/${DeploymentManagementS3Bucket}/cloudformation-custom-resource.yml
-
-  # Policy that allows custom resource Lambda function to alter AWS service resources
+  # Extend custom resource to allow performing user-related operations
   CustomResourcePolicy:
-    Type: AWS::IAM::Policy
     Properties:
-      PolicyName: SES
-      Roles:
-        - Fn::GetAtt: CustomResource.Outputs.Role
       PolicyDocument:
-        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Resource: '*'
             Action:
-              # Add all the actions required for any used custom resources
               # The full reference is available here:
               # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
               - cognito-idp:CreateUserPool
@@ -36,11 +23,6 @@ Resources:
               - cognito-idp:CreateIdentityProvider
               - cognito-idp:UpdateIdentityProvider
               - cognito-idp:DeleteIdentityProvider
-              # TODO: Define these in cloudformation-db.yml
-              - rds:DescribeDBClusters
-              - rds:ModifyDBCluster  # TODO: Only the related DB cluster!
-              - ec2:DescribeSecurityGroups
-              - ec2:DescribeSubnets
 
   # The user pool for the registry
   UserPool:
@@ -60,7 +42,7 @@ Resources:
     - CustomResourcePolicy
     Properties:
       ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
       Service: CognitoIdentityServiceProvider
       Parameters:
         UserPoolId:
@@ -90,7 +72,7 @@ Resources:
     - CustomResourcePolicy
     Properties:
       ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
       Service: CognitoIdentityServiceProvider
       PhysicalResourceId:
         # User pool domains are physically identified by the domain name
@@ -123,7 +105,7 @@ Resources:
     - CustomResourcePolicy
     Properties:
       ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
       Service: CognitoIdentityServiceProvider
       Create:
         Action: updateUserPoolClient
@@ -151,7 +133,7 @@ Resources:
     - CustomResourcePolicy
     Properties:
       ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
       Service: CognitoIdentityServiceProvider
       Create:
         Action: describeUserPoolClient

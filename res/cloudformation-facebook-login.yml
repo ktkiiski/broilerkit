@@ -15,7 +15,7 @@ Resources:
     - CustomResourcePolicy
     Properties:
       ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
       Service: CognitoIdentityServiceProvider
       Create:
         Action: createIdentityProvider

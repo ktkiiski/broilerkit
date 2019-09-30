@@ -127,6 +127,25 @@ Resources:
         - Fn::ImportValue:
             Fn::Sub: "${VpcStackName}-private-subnet-b"
 
+  # Extend custom resource to allow performing database-related operations
+  CustomResourcePolicy:
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              # The full reference is available here:
+              # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
+              - rds:DescribeDBClusters
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+          - Effect: Allow
+            Resource:
+              Fn::Sub: "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DatabaseDBCluster}"
+            Action:
+              - rds:ModifyDBCluster
+
   # Enable the HTTP endpoint ("Data API") for the DB cluster
   DatabaseDBClusterHttpEndpoint:
     Type: Custom::DBClusterHttpEndpoint
@@ -135,7 +154,7 @@ Resources:
     - DatabaseDBCluster
     Properties:
       ServiceToken:
-        Fn::GetAtt: CustomResource.Outputs.ServiceToken
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
       Service: RDS
       Create:
         # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/RDS.html#modifyDBCluster-property

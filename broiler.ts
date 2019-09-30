@@ -11,7 +11,7 @@ import { formatS3KeyName } from './aws/utils';
 import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
-import { ensureDirectoryExists, fileExists, readFile, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
+import { ensureDirectoryExists, fileExists, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
 import { HttpMethod, HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
 import { getDbFilePath, launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
@@ -93,10 +93,9 @@ export class Broiler {
     public async deploy(): Promise<void> {
         await this.clean();
         await Promise.all([
-            this.initialize().then(() => Promise.all([
-                this.uploadCustomResource(),
-                this.uploadDatabaseTableResource(),
-            ])),
+            this.initialize().then(() => (
+                this.uploadDatabaseTableResource()
+            )),
             this.compileFrontend(false),
             this.compileBackend(false),
             this.deployVpc(),
@@ -585,10 +584,13 @@ export class Broiler {
         const assetsDomain = assetsRootUrl.hostname;
         const serverFileKey$ = this.getServerZipFileS3Key();
         const prevParams$ = auth ? this.cloudFormation.getStackParameters() : Promise.resolve(undefined);
-        const databaseName = this.getDatabaseName();
+        const tables = this.getTables();
+        const databaseName = tables.length ? this.getDatabaseName() : undefined;
         const [serverFileKey, prevParams] = await Promise.all([serverFileKey$, prevParams$]);
         const vpcStackName = vpc == null ? undefined : `${vpc}-vpc`;
-        const dbTableMigrationDeploymentPackageS3Key = `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`;
+        const dbTableMigrationDeploymentPackageS3Key = tables.length
+            ? `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`
+            : undefined;
         // Facebook client settings
         const facebookClientId = auth && auth.facebookClientId || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
@@ -674,25 +676,6 @@ export class Broiler {
                 yield next;
             }
         }
-    }
-
-    /**
-     * Uploads a CloudFormation template and a Lambda JavaScript source code
-     * required for custom CloudFormation resources. Any existing files
-     * are overwritten.
-     */
-    private async uploadCustomResource(): Promise<S3.PutObjectOutput> {
-        const templateFileName = 'cloudformation-custom-resource.yml';
-        const bucketName$ = this.cloudFormation.getStackOutput().then((output) => output.DeploymentManagementS3BucketName);
-        const templateFile$ = readFile(path.join(__dirname, 'res', templateFileName));
-        const [bucketName, templateFile] = await Promise.all([bucketName$, templateFile$]);
-        const templateUpload$ = this.createS3File$({
-            Bucket: bucketName,
-            Key: templateFileName,
-            Body: templateFile,
-            ContentType: 'application/x-yaml',
-        }, true);
-        return (await templateUpload$) as S3.PutObjectOutput;
     }
 
     /**
@@ -797,6 +780,11 @@ export class Broiler {
                 // Enable Google login
                 templateFiles.push('cloudformation-google-login.yml');
             }
+        }
+        const tables = this.getTables();
+        if (auth || tables.length) {
+            // Generic custom resource is used in user or database related items
+            templateFiles.push('cloudformation-custom-resource.yml');
         }
         const siteHash = await this.getSiteHash();
         const template$ = readTemplates(templateFiles, {
@@ -956,6 +944,7 @@ export class Broiler {
                 [logicalId]: {
                     Type: 'Custom::DatabaseTable',
                     Properties: tableProperties,
+                    DependsOn: ['DatabaseMigrationLogGroup'],
                 },
             },
         };

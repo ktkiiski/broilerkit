@@ -1,16 +1,11 @@
-# Source: https://github.com/emdgroup/cfn-custom-resource
-Description: Generic Custom::Resource for CloudFormation
-Parameters:
-  LambdaTimeout:
-    Type: Number
-    Default: 300
-
+# Based on https://github.com/emdgroup/cfn-custom-resource
 Resources:
-  CustomResource:
+  CustomResourceLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.handler
-      Role: !GetAtt CustomResourceRole.Arn
+      Role:
+        Fn::GetAtt: CustomResourceRole.Arn
       Code:
         ZipFile: |
           const AWS = require('aws-sdk'),
@@ -133,13 +128,20 @@ Resources:
               }).end(JSON.stringify(responseBody));
             },
           };
+      FunctionName:
+        Fn::Sub: "${AWS::StackName}-custom-resource"
       Runtime: nodejs8.10
-      Timeout: !Ref LambdaTimeout
+      Timeout: 300  # = 5 minutes
+
+  # Logging group for generic custom resource
   CustomResourceLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       RetentionInDays: 7
-      LogGroupName: !Sub /aws/lambda/${CustomResource}
+      LogGroupName:
+        Fn::Sub: "/aws/lambda/${CustomResourceLambdaFunction}"
+
+  # Role for the custom resource
   CustomResourceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -153,16 +155,14 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
-Outputs:
-  ServiceToken:
-    Value: !GetAtt CustomResource.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}:ServiceToken
-  Role:
-    Value: !Ref CustomResourceRole
-    Export:
-      Name: !Sub ${AWS::StackName}:Role
-  RoleArn:
-    Value: !GetAtt CustomResourceRole.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}:RoleArn
+  # Policy that allows custom resource Lambda function to alter AWS service resources
+  CustomResourcePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CustomResourcePolicy
+      Roles:
+        - Ref: CustomResourceRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        # NOTE: The statement will be extended in other templates!
+        Statement: []
