@@ -696,32 +696,22 @@ export class Broiler {
     }
 
     /**
-     * Uploads a CloudFormation template and a Lambda JavaScript source code
-     * required for database table resources. Any existing files
+     * Uploads a CloudFormation Lambda JavaScript source code
+     * required for database table migrations. Any existing files
      * are overwritten.
      */
-    private async uploadDatabaseTableResource(): Promise<S3.PutObjectOutput[]> {
-        const templateFileName = 'cloudformation-custom-table-resource.yml';
+    private async uploadDatabaseTableResource(): Promise<S3.PutObjectOutput> {
         const packageFileName = 'cloudformation-migration-lambda.zip';
         const bucketName$ = this.cloudFormation.getStackOutput().then((output) => output.DeploymentManagementS3BucketName);
         const resDir = path.join(__dirname, 'res');
-        const templateFile$ = readFile(path.join(resDir, templateFileName));
         const packageFile$ = readFileBuffer(path.join(resDir, packageFileName));
-        const templateUpload$ = Promise.all([bucketName$, templateFile$])
-            .then(([bucketName, templateFile]) => this.createS3File$({
-                Bucket: bucketName,
-                Key: templateFileName,
-                Body: templateFile,
-                ContentType: 'application/x-yaml',
-            }, true));
-        const zipUpload$ = Promise.all([bucketName$, packageFile$])
+        return Promise.all([bucketName$, packageFile$])
             .then(([bucketName, packageFile]) => this.createS3File$({
                 Bucket: bucketName,
                 Key: `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`,
                 Body: packageFile,
                 ContentType: 'application/zip',
             }, true));
-        return Promise.all([templateUpload$, zipUpload$]);
     }
 
     /**
@@ -952,7 +942,7 @@ export class Broiler {
     private generateDbTableTemplate(table: Table<any>) {
         const logicalId = `DatabaseTable${upperFirst(table.name)}`;
         const tableProperties = {
-            ServiceToken: { 'Fn::GetAtt': 'DatabaseTableResource.Outputs.ServiceToken' },
+            ServiceToken: { 'Fn::GetAtt': 'DatabaseMigrationLambdaFunction.Arn' },
             Host: { 'Fn::GetAtt': 'DatabaseDBCluster.Endpoint.Address' },
             Database: { Ref: 'DatabaseName' },
             Port: { 'Fn::GetAtt': 'DatabaseDBCluster.Endpoint.Port' },
@@ -966,7 +956,6 @@ export class Broiler {
                 [logicalId]: {
                     Type: 'Custom::DatabaseTable',
                     Properties: tableProperties,
-                    DependsOn: ['DatabaseTableResourcePolicy'],
                 },
             },
         };

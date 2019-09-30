@@ -15,46 +15,75 @@ Parameters:
     Type: String
 
 Resources:
-  # Sub-stack for the custom resources
-  DatabaseTableResource:
-    Type: AWS::CloudFormation::Stack
+  # Lambda function acting as a custom database table resource
+  DatabaseMigrationLambdaFunction:
+    Type: AWS::Lambda::Function
     Properties:
-      Parameters:
-        LambdaFunctionS3Bucket:
+      Handler: migration.handler
+      Role:
+        Fn::GetAtt: DatabaseMigrationLambdaFunctionRole.Arn
+      Code:
+        S3Bucket:
           Ref: DeploymentManagementS3Bucket
-        LambdaFunctionS3Key:
+        S3Key:
           Ref: DatabaseTableMigrationDeploymentPackageS3Key
-        VpcSecurityGroupId:
-          Fn::ImportValue:
-            Fn::Sub: "${VpcStackName}-security-group"
-        VpcSubnetIds:
-          Fn::Join:
-            - ","
-            - - Fn::ImportValue:
-                  Fn::Sub: "${VpcStackName}-private-subnet-a"
-              - Fn::ImportValue:
-                  Fn::Sub: "${VpcStackName}-private-subnet-b"
-      TemplateURL:
-        Fn::Sub: https://s3.amazonaws.com/${DeploymentManagementS3Bucket}/cloudformation-custom-table-resource.yml
+      FunctionName:
+        Fn::Sub: "${AWS::StackName}-db-table-migration"
+      Runtime: nodejs10.x
+      Timeout: 900  # = 15 minutes
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              Fn::Sub: "${VpcStackName}-security-group"
+        SubnetIds:
+          - Fn::ImportValue:
+              Fn::Sub: "${VpcStackName}-private-subnet-a"
+          - Fn::ImportValue:
+              Fn::Sub: "${VpcStackName}-private-subnet-b"
 
-  # Policy that allows custom table resource Lambda function to access the database credentials
-  DatabaseTableResourcePolicy:
-    Type: AWS::IAM::Policy
+  # Log group for the database migration operations
+  DatabaseMigrationLogGroup:
+    Type: AWS::Logs::LogGroup
     Properties:
-      PolicyName: DatabaseTableResourcePolicy
-      Roles:
-        - Fn::GetAtt: DatabaseTableResource.Outputs.Role
-      PolicyDocument:
-        Version: '2012-10-17'
+      RetentionInDays: 30
+      LogGroupName:
+        Fn::Sub: "/aws/lambda/${DatabaseMigrationLambdaFunction}"
+
+  # Policy allowing Lambda function migrations and access the database credentials
+  DatabaseMigrationLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
         Statement:
-          # Add all the actions required for any used custom resources
-          # The full reference is available here:
-          # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
           - Effect: Allow
-            Resource:
-              - Ref: DatabaseMasterSecret
-            Action:
-              - secretsmanager:GetSecretValue
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+      - PolicyName: DatabaseMigrationLambdaFunctionPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
+            - Effect: Allow
+              Resource:
+                - Ref: DatabaseMasterSecret
+              Action:
+                - secretsmanager:GetSecretValue
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:DescribeLogGroups
+              - logs:DescribeLogStreams
+              - logs:PutLogEvents
+              - logs:GetLogEvents
+              - logs:FilterLogEvents
+              Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
 
   # Aurora Serverless Database Cluster
   DatabaseDBCluster:
