@@ -13,6 +13,7 @@ Resources:
     Type: Custom::CognitoIdentityProvider
     DependsOn:
     - CustomResourcePolicy
+    - CustomResourceLogGroup
     Properties:
       ServiceToken:
         Fn::GetAtt: CustomResourceLambdaFunction.Arn

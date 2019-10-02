@@ -40,6 +40,7 @@ Resources:
     Type: Custom::CognitoUserPool
     DependsOn:
     - CustomResourcePolicy
+    - CustomResourceLogGroup
     Properties:
       ServiceToken:
         Fn::GetAtt: CustomResourceLambdaFunction.Arn
@@ -70,6 +71,7 @@ Resources:
     Type: Custom::CognitoUserPoolDomain
     DependsOn:
     - CustomResourcePolicy
+    - CustomResourceLogGroup
     Properties:
       ServiceToken:
         Fn::GetAtt: CustomResourceLambdaFunction.Arn
@@ -103,6 +105,7 @@ Resources:
     Type: Custom::CognitoUserPoolClientSettings
     DependsOn:
     - CustomResourcePolicy
+    - CustomResourceLogGroup
     Properties:
       ServiceToken:
         Fn::GetAtt: CustomResourceLambdaFunction.Arn
@@ -131,6 +134,7 @@ Resources:
     Type: Custom::CognitoClientSecret
     DependsOn:
     - CustomResourcePolicy
+    - CustomResourceLogGroup
     Properties:
       ServiceToken:
         Fn::GetAtt: CustomResourceLambdaFunction.Arn
