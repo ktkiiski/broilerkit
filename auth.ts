@@ -8,7 +8,7 @@ import { waitForClose } from './window';
 export interface AuthUser {
     id: string;
     email: string;
-    picture: string;
+    picture: string | null;
     name: string;
 }
 
