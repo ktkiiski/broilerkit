@@ -23,6 +23,7 @@ Resources:
               - cognito-idp:CreateIdentityProvider
               - cognito-idp:UpdateIdentityProvider
               - cognito-idp:DeleteIdentityProvider
+              - kms:GenerateRandom
 
   # The user pool for the registry
   UserPool:
@@ -148,6 +149,54 @@ Resources:
           ClientId:
             Ref: UserPoolClient
 
+  # Generate random bytes for the user session AES encryption key
+  # The generated value is available as base64 encoded string with
+  # Fn::GetAtt: UserSessionEncryptionKey.Plaintext
+  UserSessionEncryptionKey:
+    Type: Custom::KMSRandomBytes
+    DependsOn:
+    - CustomResourcePolicy
+    - CustomResourceLogGroup
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
+      Service: KMS
+      Create:
+        Action: generateRandom
+        Parameters:
+          NumberOfBytes: 32  # = 256 bits
+
+  # Generate a secret for encrypting user session cookies
+  UserSessionEncryptionKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::Sub: "${AWS::StackName}/sessions/encryption-key"
+      Description:
+        Fn::Sub: "User session symmetric AES encryption key for ${AWS::StackName} CloudFormation stack"
+      SecretString:
+        Fn::Join:
+          - ''
+          - - '{"kty": "oct", "alg": "A256GCM", "k": "'
+            # Convert the base64 encoded binary to base64url encoding
+            # Remove the padding ('=')
+            - Fn::Select:
+              - 0
+              - Fn::Split:
+                - '='
+                # Replace '+' with '-'
+                - Fn::Join:
+                  - '-'
+                  - Fn::Split:
+                    - '+'
+                    # Replace '/' with '_'
+                    - Fn::Join:
+                      - '_'
+                      - Fn::Split:
+                        - '/'
+                        - Fn::GetAtt: UserSessionEncryptionKey.Plaintext
+            - '"}'
+
   # Authorizer for our API to allow authentication with the user pools
   ApiGatewayUserPoolAuthorizer:
     Type: AWS::ApiGateway::Authorizer
@@ -179,6 +228,8 @@ Resources:
           Fn::Sub: "${AssetsRoot}/_oauth2_signout_complete.html"
         AuthClientId:
           Ref: UserPoolClient
+        UserSessionEncryptionKeySecretArn:
+          Ref: UserSessionEncryptionKeySecret
 
   # A lambda function that adds the 'picture' claim to the ID tokens on authentication
   UserPoolPreTokenGenerationLambdaFunction:
@@ -220,7 +271,7 @@ Resources:
       SourceArn:
         Fn::GetAtt: UserPool.Arn
 
-  # Extend LambdaExecutionIamRolePolicy to allow accessing the database secret
+  # Extend LambdaExecutionIamRolePolicy to allow operating on user pools
   LambdaExecutionIamRolePolicy:
     Properties:
       PolicyDocument:
@@ -237,6 +288,12 @@ Resources:
           - cognito-idp:UpdateUserAttributes
           Resource:
           - Fn::GetAtt: UserPool.Arn
+        # Allow access to the user session key secret
+        - Effect: Allow
+          Action:
+          - secretsmanager:GetSecretValue
+          Resource:
+          - Ref: UserSessionEncryptionKeySecret
 
 Outputs:
   UserPoolRoot:
@@ -254,3 +311,7 @@ Outputs:
   DatabaseTableUsersURI:
     Value:
       Fn::GetAtt: UserPool.Arn
+  UserSessionEncryptionKeySecretArn:
+    Description: ARN of the Secrets Manager user session encryption key
+    Value:
+      Ref: UserSessionEncryptionKeySecret
