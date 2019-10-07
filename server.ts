@@ -2,6 +2,7 @@
 import { SecretsManager } from 'aws-sdk';
 import { Pool, PoolClient, PoolConfig } from 'pg';
 import { Handler, ResponseHandler } from './api';
+import { Cache, cached } from './cache';
 import { Model, ModelContext, Table } from './db';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
@@ -48,7 +49,7 @@ export interface Controller {
      * - 501 HTTP error to indicate that the URL is not for this controller
      * - 405 HTTP error if the request method was one of the `methods`
      */
-    execute(request: HttpRequest, cache?: {[uri: string]: any}): Promise<ApiResponse | HttpResponse>;
+    execute(request: HttpRequest, cache?: Cache): Promise<ApiResponse | HttpResponse>;
 }
 
 class ImplementedOperation implements Controller {
@@ -70,7 +71,7 @@ class ImplementedOperation implements Controller {
         this.requiresAuth = authType !== 'none';
     }
 
-    public async execute(request: HttpRequest, cache: {[uri: string]: any}): Promise<ApiResponse> {
+    public async execute(request: HttpRequest, cache: Cache): Promise<ApiResponse> {
         const {tablesByName, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const input = parseRequest(operation, request);
@@ -188,7 +189,7 @@ export class ApiService {
         this.tables = Object.values(tablesByName);
     }
 
-    public execute = async (request: HttpRequest, cache?: {[uri: string]: any}) => {
+    public execute = async (request: HttpRequest, cache?: Cache) => {
         let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
         const controllers = Array.from(this.iterateForPath(request.path));
@@ -264,7 +265,7 @@ class RequestModelContext implements ModelContext {
     constructor(
         public readonly region: string,
         public readonly environment: {[key: string]: any},
-        private readonly cache: {[key: string]: any},
+        private readonly cache: Cache,
     ) {}
 
     public async connect() {
@@ -287,7 +288,7 @@ class RequestModelContext implements ModelContext {
     }
 }
 
-async function establishDatabaseConnection(region: string, environment: {[key: string]: string}, cache: {[key: string]: any}): Promise<PoolClient> {
+async function establishDatabaseConnection(region: string, environment: {[key: string]: string}, cache: Cache): Promise<PoolClient> {
     // Create a database pool
     const databaseHost = environment.DatabaseHost;
     const databasePort = environment.DatabasePort;
@@ -347,21 +348,6 @@ async function retrieveDatabaseCredentials(region: string, secretArn: string) {
         throw new Error('Secrets manager credentials are missing "password"');
     }
     return { username, password };
-}
-
-function cached<T>(cache: {[key: string]: any}, key: string, fn: () => Promise<T>): Promise<T> {
-    let promise = cache[key] as Promise<T> | undefined;
-    if (!promise || typeof promise.then !== 'function') {
-        promise = fn();
-        cache[key] = promise;
-        // Remove from cache on any error
-        promise.catch(() => {
-            if (cache[key] === promise) {
-                delete cache[key];
-            }
-        });
-    }
-    return promise;
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {
