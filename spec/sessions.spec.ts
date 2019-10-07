@@ -2,13 +2,15 @@ import * as assert from 'assert';
 import { JWK } from 'node-jose';
 import { decryptSession, encryptSession } from '../sessions';
 
-const exampleRefreshToken = `eyJjdHkiOiJKV1QiLdsfsdfsdMjU2R0NNIiwiYWxnIjoiUlNBLU9BRVAifQ.CoZZ0filEm6jYCm64Uc8MfXSGMzE7cngoFcMjr2dY9EsdfasdfadfsfadsfasdfagadczvcxzbbvbfdzvcxzvzcxczvzxvcE194dcCFD-KzSSagbTrtjKWMuhu2OVAALQes1q4jUT3Rcg4KoTETJ2RLlIJnvf4Pp_Jh34bScEWvF4sYug2PAw44sgz5TQ3Lp5EuBV_TQPru25lTzrnH7Y7vtY1-mWjY2wlSSOoobnVnxi8IUrKRNxi_OMJneTDqOOw.p-aRDfsA_y9_VgXQ.gTo7W6KfItDR6Bk7LhkP0SFMbmJz2FT5P4Cj8vMgASvSZkRIWuJfDrhsM7AwotIk8NOMc6t0daUTY8wRlRlaS3AZ8Cm2hSgPLWs1zqWOoHBGFbGBvNY9bqQZud1jM5XcLibUb1_Jqsu7LBUbBWu461d4ypwlbFSgIN53TCg6WBrfWncc7ZB4Eit9__Cyg0HmYz-jmpbzGiav76hA1Ji4oSw8aYYbrzleyh1nwAHyw4aOF6bupBgV88sgAcnH4WSocToqfB64cxrR8DSA8fvvgj2qdySTv1e6oKTWXKruzeoYJ1sF2z2a7RIHGsa3FK6XyGsHiWkcnrtV7Opl39e5iGXHJ5BRDwrA926n_kALEV4NcG4yLabiqc6SzO1YQbqkYFkJixeL4oMRSCRXyWyNoYccicFuh112Tdk6Z-3JXbV0xZoGNcWmVrIydzT-hLyaCY00P4IkeluL7sPJEsWTvB3As1F9Vx7s4bWgm4iQUfOea6M0iJu8gtd6CUtOL6SecXStayO7oGCct-9e8D9t2cwmTlp2dDikDDd86mdxlN75anoCPYi99kEslSLoj2h3isOIPhn0nnh-ZAG-ln85gbLlv07YqxlO7rlKX4N9K3Hv8Fhpl9pMLRpXgVVbYmNjYXK8Y1NLFviw0FRd10AsNshZ2Sb0rhMQ77zlfW56FoaqJva78gWEDY8ZH6mj75o5up_wJdOMhrz72TOoNvZjSwERuRUGC37aVSl4DYM5VgGR0MdQaslWGlhaQobd9lSb_5uV7ibHfaRBNVy3fDtdRXetd18OTz37yaPHDfkSXmrTCGXvPDV4pG6hg3mZpB7RyI94A5ZkCI5BAgoOfdbmce7JyymLVvOqS9o1zDJ6r2zabfFT1H00ZpNRfLDV1Q4a3n1nHLUNSzbTph3HaJ4fn7I72iKDqn-0UeObP2640qGeI5K2VsNO0AtVzvgI_t7tqNdgEfoiYtseliIJ_rYEpwzaKDt33-zh57zuwEmE86F6P_j6KN0uajcFZkVGtdtDX7dRNSJbMhjaVsWz-72Fx4QUJ0Nu0rxHcC74A8QbialN-mCwMbiZehbP6xLm65ntFAMyDUDl2AP02VrOl_P7290v9ryAPnqt1hFh0CTWnbAlTgnRReIwv5yk64YgLvsFV68ENzwwg45Z-Z7bBGADk0fTpTypWMmbGf3WThjXdjC97Iz0g8MHhsMqynSddHVHCsgI7zVZ7rxw8YhC38wM8rb9zA42E7YzRLxrmpUuCfxAtWhU-97BevU6uDBCgp2FHo8YQOmleJNwzYFh7w.3xlqUobOFP_V1a-H7-tGnQ`;
+const exampleRefreshToken = `eyJraWQiOiJwT2tMN0tyRnFPNmFVdzhxc3J0Y0RhSThwb2wxU2wyT2VyalJQK0h6YWtjPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiIyYTc2NmUzNC02NThiLTQ2YmItOGY2Zi0zMjgwZDkzNjFjYTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfMlV3VEJLVUdUX0ZhY2Vib29rIl0sInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoib3BlbmlkIiwiYXV0aF90aW1lIjoxNTcwMDQ0NTg5LCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV8yVXdUQktVR1QiLCJleHAiOjE1NzAwNDgxODksImlhdCI6MTU3MDA0NDU5MCwidmVyc2lvbiI6MiwianRpIjoiNTJhYTEyNzItZWU4NS00ZmQ5LTljMTMtMGE2NzY1ZTg1OGM0IiwiY2xpZW50X2lkIjoiNzFvM2Y1Y211bGg4Z2hzNDl2dTMydGpkZDYiLCJ1c2VybmFtZSI6IkZhY2Vib29rXzEwMTUzMTAyMTk4NDI0NzQyIn0.OVAKMqo91m5gt2DaToIzRazB1z7j1rXbLBBTHLeuM7_aMxx86jZuK9VvQSHsDvPQlxh4Pl2afA6jHIXAmlRyOnJMZ3H0tqPAG6BKO2CzQiJQ9i9PvDkSXiGv9Il7zpSkUspjJQF_i75pCUeWgD9sTD9eA6KWp58EufkWPMF4wOlD4UJIo-8WT8m0UoihrL_JPg1qA3Lubj2KAJPp4jYKynyaX-U1A0uVkNo4MleeaIxulBiZ-kg7OHe8kh197RM7JSxFPU4UPVmSmCA9zwxurgIgA_QxWdtDWdc4E7xxgppOPP3w_nLcHKL1VZKVmvpD9CBMO9-SoASSWm-QXP5rbg`;
 const exampleSession = {
     id: 'e48d7449-cc37-4886-bdbd-ff248b64d167',
     email: 'john.smith@example.com',
     name: 'John Smith',
     picture: 'https://example.com/john.smith.jpg',
+    session: '39209622-f7b1-4085-b493-d3b425fd7b94',
     expiresAt: new Date(),
+    authenticatedAt: new Date(),
     refreshToken: exampleRefreshToken,
 };
 
@@ -36,7 +38,7 @@ describe('encryptSession()', () => {
     });
     it('returns a token significantly smaller than 4096 bytes', async () => {
         const token = await encryptSession(exampleSession, secretKey);
-        assert(token.length < 4096 / 2);
+        assert(token.length < 2048, `Token length ${token.length} was larger than 2048`);
     });
 });
 describe('descryptSession()', () => {

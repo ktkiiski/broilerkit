@@ -6,8 +6,21 @@ import { serializer } from './serializers';
 import { decryptToken, encryptToken } from './tokens';
 
 interface UserSession extends AuthUser {
+    session: string;
     expiresAt: Date;
+    authenticatedAt: Date;
     refreshToken: string;
+}
+
+interface UserSessionTokenPayload {
+    sub: string;
+    name: string;
+    email: string;
+    pic: string | null;
+    auth_time: number;
+    exp: number;
+    rt: Buffer[];
+    sid: string;
 }
 
 const userSessionSerializer = serializer({
@@ -15,6 +28,8 @@ const userSessionSerializer = serializer({
     name: string(),
     email: email(),
     picture: nullable(url()),
+    session: uuid(),
+    authenticatedAt: datetime(),
     expiresAt: datetime(),
     refreshToken: string(),
 });
@@ -23,27 +38,30 @@ export async function encryptSession(session: UserSession, secretKey: JWK.Key): 
     const validSession = userSessionSerializer.validate(session);
     const tokenCmps = validSession.refreshToken.split('.')
         .map((cmp) => base64url.toBuffer(cmp));
-    const payload: {[key: string]: any} = {
-        id: validSession.id,
+    const payload: UserSessionTokenPayload = {
+        sub: validSession.id,
         name: validSession.name,
         email: validSession.email,
         pic: validSession.picture,
         exp: validSession.expiresAt.valueOf(),
+        auth_time: validSession.authenticatedAt.valueOf(),
+        sid: validSession.session,
         rt: tokenCmps,
     };
     return encryptToken(payload, secretKey);
 }
 
 export async function decryptSession(token: string, keyStore: JWK.KeyStore): Promise<UserSession> {
-    const payload = await decryptToken(token, keyStore);
-    const tokenCmps = payload.rt as string[];
-    const session: any = {
-        id: payload.id,
+    const payload: UserSessionTokenPayload = await decryptToken(token, keyStore);
+    const session: UserSession = {
+        id: payload.sub,
         name: payload.name,
         email: payload.email,
         picture: payload.pic,
         expiresAt: new Date(payload.exp),
-        refreshToken: tokenCmps.map((cmp) => base64url.encode(cmp)).join('.'),
+        authenticatedAt: new Date(payload.auth_time),
+        session: payload.sid,
+        refreshToken: payload.rt.map((cmp) => base64url.encode(cmp)).join('.'),
     };
     return userSessionSerializer.validate(session);
 }
