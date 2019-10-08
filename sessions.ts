@@ -1,11 +1,11 @@
 import base64url from 'base64url';
 import { JWK } from 'node-jose';
-import { AuthUser } from './auth';
-import { datetime, email, nullable, string, url, uuid } from './fields';
+import { datetime, email, list, nullable, string, url, uuid } from './fields';
+import { HttpAuth } from './http';
 import { serializer } from './serializers';
 import { decryptToken, encryptToken } from './tokens';
 
-interface UserSession extends AuthUser {
+export interface UserSession extends HttpAuth {
     session: string;
     expiresAt: Date;
     authenticatedAt: Date;
@@ -16,7 +16,8 @@ interface UserSessionTokenPayload {
     sub: string;
     name: string;
     email: string;
-    pic: string | null;
+    picture: string | null;
+    groups: string[];
     auth_time: number;
     exp: number;
     rt: Buffer[];
@@ -28,6 +29,7 @@ const userSessionSerializer = serializer({
     name: string(),
     email: email(),
     picture: nullable(url()),
+    groups: list(string()),
     session: uuid(),
     authenticatedAt: datetime(),
     expiresAt: datetime(),
@@ -42,7 +44,8 @@ export async function encryptSession(session: UserSession, secretKey: JWK.Key): 
         sub: validSession.id,
         name: validSession.name,
         email: validSession.email,
-        pic: validSession.picture,
+        picture: validSession.picture,
+        groups: validSession.groups,
         exp: validSession.expiresAt.valueOf(),
         auth_time: validSession.authenticatedAt.valueOf(),
         sid: validSession.session,
@@ -57,7 +60,8 @@ export async function decryptSession(token: string, keyStore: JWK.KeyStore): Pro
         id: payload.sub,
         name: payload.name,
         email: payload.email,
-        picture: payload.pic,
+        picture: payload.picture,
+        groups: payload.groups,
         expiresAt: new Date(payload.exp),
         authenticatedAt: new Date(payload.auth_time),
         session: payload.sid,

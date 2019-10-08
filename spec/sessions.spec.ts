@@ -9,6 +9,7 @@ const exampleSession = {
     name: 'John Smith',
     picture: 'https://example.com/john.smith.jpg',
     session: '39209622-f7b1-4085-b493-d3b425fd7b94',
+    groups: ['Administrators'],
     expiresAt: new Date(),
     authenticatedAt: new Date(),
     refreshToken: exampleRefreshToken,
