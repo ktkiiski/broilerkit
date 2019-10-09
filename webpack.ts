@@ -4,7 +4,6 @@ import * as webpack from 'webpack';
 
 import { BroilerConfig } from './config';
 import { executeSync } from './exec';
-import { encodeSafeJSON } from './html';
 
 // Webpack plugins
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
@@ -115,31 +114,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const entries: Record<string, string[]> = {
         app: [require.resolve(devServer ? './bootstrap/local-site' : './bootstrap/site')],
     };
-    // If running the development server, then add the dummy OAuth2 service
-    if (config.auth) {
-        plugins.push(
-            new HtmlWebpackPlugin({
-                filename: '_oauth2_signin_complete.html',
-                template: path.resolve(__dirname, `./res/_oauth2_signin_complete.ejs`),
-                templateParameters: {
-                    siteRootJson: encodeSafeJSON(serverRoot),
-                },
-                chunks: [],
-                inject: false,
-                hash: false,
-            }),
-            new HtmlWebpackPlugin({
-                filename: '_oauth2_signout_complete.html',
-                template: path.resolve(__dirname, `./res/_oauth2_signout_complete.ejs`),
-                templateParameters: {
-                    siteRootJson: encodeSafeJSON(serverRoot),
-                },
-                chunks: [],
-                inject: false,
-                hash: false,
-            }),
-        );
-    }
     /**
      * If icon source file is provided, generate icons for the app.
      * For configuration, see https://github.com/jantimon/favicons-webpack-plugin

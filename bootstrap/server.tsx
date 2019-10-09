@@ -5,6 +5,8 @@
 import { readFile } from '../fs';
 import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
 import { middleware } from '../middleware';
+import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
+import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
 import { ApiService } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 
@@ -16,6 +18,8 @@ const apiService = getApiService();
 const view: React.ComponentType<{}> = require('_site').default;
 const service = apiService.extend({
     [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, pageHtml$),
+    [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignInController(),
+    [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignOutController(),
 });
 
 const cache = {};

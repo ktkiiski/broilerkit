@@ -4,6 +4,8 @@
  */
 import * as React from 'react';
 import authLocalServer from '../auth-local-server';
+import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
+import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
 import LocalAuthRouter from '../react/components/LocalAuthRouter';
 import { ApiService } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
@@ -26,5 +28,7 @@ export default (pageHtml$: Promise<string>) => {
             () => (<LocalAuthRouter component={view} />),
             pageHtml$,
         ),
+        [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignInController(),
+        [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignOutController(),
     });
 };

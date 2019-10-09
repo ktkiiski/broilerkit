@@ -73,7 +73,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
  * Runs the REST API development server.
  */
 export async function serveBackEnd(options: BroilerConfig, params: {[param: string]: string}) {
-    const {serverRoot, assetsRoot, buildDir, projectRootPath} = options;
+    const {serverRoot, buildDir, projectRootPath} = options;
     const serverRootUrl = new URL(serverRoot);
     const serverOrigin = serverRootUrl.origin;
     const serverProtocol = serverRootUrl && serverRootUrl.protocol;
@@ -127,8 +127,8 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
                     AuthClientId: 'LOCAL_AUTH_CLIENT_ID',
                     AuthSignInUri: `${serverRoot}/_oauth2_signin`,
                     AuthSignOutUri: `${serverRoot}/_oauth2_signout`,
-                    AuthSignInRedirectUri: `${assetsRoot}/_oauth2_signin_complete.html`,
-                    AuthSignOutRedirectUri: `${assetsRoot}/_oauth2_signout_complete.html`,
+                    AuthSignInRedirectUri: `${serverRoot}/oauth2/signin`,
+                    AuthSignOutRedirectUri: `${serverRoot}/oauth2/signout`,
                     DatabaseHost: 'localhost',
                     DatabasePort: '54320',
                     DatabaseName: 'postgres',
