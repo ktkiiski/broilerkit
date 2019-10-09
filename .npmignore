@@ -13,3 +13,6 @@
 
 # Ignore packed npm packages
 *.tgz
+
+# Ignore OS X index files
+.DS_Store
