@@ -1,5 +1,6 @@
 // tslint:disable:no-shadowed-variable
 import { keys, omit } from './utils/objects';
+import { splitOnce } from './utils/strings';
 
 const encodedSlashRegexp = /%2F/g;
 const urlPlaceholderRegexp = /^\{(.+?)(\+)?\}$/;
@@ -114,7 +115,7 @@ export function parseQuery(query: string): {[key: string]: string} {
     query = query.replace(/^[#?]/, ''); // Strip any leading # or ?
     const result: {[key: string]: string} = {};
     for (const item of query.split('&')) {
-        const [key, value] = item.split('=', 2);
+        const [key, value] = splitOnce(item, '=');
         if (key && value != null) {
             result[decodeURIComponent(key)] = decodeURIComponent(value);
         }

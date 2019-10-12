@@ -49,11 +49,10 @@ export class AuthClient {
         this.signInUri = signInUri
             + '?redirect_uri=' + encodeURIComponent(signInRedirectUri)
             + '&client_id=' + encodeURIComponent(clientId)
-            + '&response_type=token';
+            + '&response_type=code';
         this.signOutUri = signOutUri
             + '?logout_uri=' + encodeURIComponent(signOutRedirectUri)
-            + '&client_id=' + encodeURIComponent(clientId)
-            + '&response_type=token';
+            + '&client_id=' + encodeURIComponent(clientId);
         const tokens = sessionStorage.getItem(this.storageKey);
         if (tokens && typeof tokens.accessToken === 'string' && typeof tokens.idToken === 'string') {
             this.setTokens(tokens);

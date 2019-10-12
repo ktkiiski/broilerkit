@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { RouteComponentProps, withRouter } from 'react-router';
 import * as api from '../../auth-local-api';
-import { parseQuery } from '../../url';
+import { buildQuery, parseQuery } from '../../url';
 import { User } from '../../users';
 import { randomize } from '../../utils/strings';
 import { useList, useOperation } from '../api';
@@ -42,7 +42,9 @@ function LocalSignInView({location}: RouteComponentProps) {
         // Create the JWT token
         const accessToken = sign(accessTokenPayload, 'LOCAL_SECRET');
         const idToken = sign(idTokenPayload, 'LOCAL_SECRET');
-        window.location.href = `${query.redirect_uri}#access_token=${accessToken}&id_token=${idToken}&state=${query.state}`;
+        const code = buildQuery({ id_token: idToken, access_token: accessToken });
+        const redirectQuery = buildQuery({code, state: query.state});
+        window.location.href = `${query.redirect_uri}?${redirectQuery}`;
     }
 
     return <>

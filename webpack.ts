@@ -18,11 +18,6 @@ export interface WebpackConfigOptions extends BroilerConfig {
     analyze: boolean;
 }
 
-export interface WebpackFrontendConfigOptions extends WebpackConfigOptions {
-    authClientId: string;
-    authRoot?: string;
-}
-
 /**
  * Creates the Webpack 2 configuration for the front-end asset compilation.
  * The options are documented at
