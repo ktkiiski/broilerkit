@@ -1,9 +1,9 @@
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { getResourceState, Identity, Model, ModelContext, PartialUpdate, Query, Table } from './db';
+import { getResourceState, Identity, Model, PartialUpdate, Query, Table } from './db';
 import { ValidationError } from './errors';
 import { HttpStatus, isResponse, NotFound } from './http';
 import { Page } from './pagination';
-import { PostgreSqlDbModel } from './postgres';
+import { PostgreSqlDbModel, SqlConnection } from './postgres';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { User, user } from './users';
@@ -132,10 +132,10 @@ class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
 
 class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
 
-    private db = new PostgreSqlDbModel(this.context, localUsersTableName, this.serializer);
+    private db = new PostgreSqlDbModel(this.sqlConnection, localUsersTableName, this.serializer);
 
     constructor(
-        private readonly context: ModelContext,
+        private readonly sqlConnection: SqlConnection,
         public readonly serializer: Resource<S, 'id', 'updatedAt'>,
     ) {}
 
@@ -194,11 +194,10 @@ export const users: Table<CognitoModel> = {
     name: 'Users',
     resource: user,
     indexes: [],
-    getModel(context: ModelContext): CognitoModel {
-        const { region, environment } = context;
+    getModel(region: string, environment: {[key: string]: string}, sqlConnection: SqlConnection): CognitoModel {
         // TODO: Better handling for situation where user registry is not enabled
         if (region === 'local') {
-            return new LocalCognitoModel(context, user) as CognitoModel;
+            return new LocalCognitoModel(sqlConnection, user) as CognitoModel;
         } else {
             const userPoolId = environment.UserPoolId;
             if (!userPoolId) {

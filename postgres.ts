@@ -1,5 +1,6 @@
 import { RDSDataService } from 'aws-sdk';
-import { Identity, ModelContext, PartialUpdate, Query, VersionedModel } from './db';
+import { Client, ClientBase, ClientConfig, Pool, PoolClient } from 'pg';
+import { Identity, PartialUpdate, Query, VersionedModel } from './db';
 import { NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { scanCursor } from './postgres-cursor';
@@ -13,22 +14,171 @@ interface SqlRequest {
     values: any[];
 }
 
-interface SqlResult<R extends Record<string, any>> {
+interface SqlResult<R> {
     rows: R[];
     rowCount: number;
 }
 
-abstract class BasePostgreSqlDbModel<S, PK extends Key<S>, V extends Key<S>, D>
+export interface SqlConnection {
+    query<R>(sql: string, params?: any[]): Promise<SqlResult<R>>;
+    scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]>;
+    disconnect(error?: any): Promise<void>;
+}
+
+abstract class BasePostgreSqlConnection {
+    public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
+        const client = await this.connect();
+        return client.query<R>(sql, params);
+    }
+    public async *scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]> {
+        const client = await this.connect();
+        yield *scanCursor<R>(client, chunkSize, sql, params);
+    }
+    public abstract disconnect(error?: any): Promise<void>;
+    protected abstract async connect(): Promise<ClientBase>;
+}
+
+export class PostgreSqlConnection extends BasePostgreSqlConnection implements SqlConnection {
+    private clientPromise?: Promise<Client>;
+    constructor(private config: string | ClientConfig) {
+        super();
+    }
+    public async disconnect(): Promise<void> {
+        const { clientPromise } = this;
+        if (!clientPromise) {
+            // Not connected -> nothing to release
+            return;
+        }
+        const client = await clientPromise;
+        if (this.clientPromise === clientPromise) {
+            await client.end();
+            delete this.clientPromise;
+        }
+    }
+    protected async connect(): Promise<Client> {
+        let { clientPromise } = this;
+        if (clientPromise) {
+            // Use a cached client
+            return clientPromise;
+        }
+        const client = new Client(this.config);
+        clientPromise = client.connect().then(() => client);
+        this.clientPromise = clientPromise;
+        clientPromise.catch(() => {
+            // Failed to connect to the database -> uncache
+            if (this.clientPromise === clientPromise) {
+                delete this.clientPromise;
+            }
+        });
+        return clientPromise;
+    }
+}
+
+export class PostgreSqlPoolConnection extends BasePostgreSqlConnection implements SqlConnection {
+    private clientPromise?: Promise<PoolClient>;
+    constructor(private readonly pool: Pool) {
+        super();
+    }
+    public async disconnect(error?: any): Promise<void> {
+        const { clientPromise } = this;
+        if (!clientPromise) {
+            // Not connected -> nothing to release
+            return;
+        }
+        const client = await clientPromise;
+        if (this.clientPromise === clientPromise) {
+            client.release(error);
+            delete this.clientPromise;
+        }
+    }
+    protected async connect(): Promise<PoolClient> {
+        let { clientPromise } = this;
+        if (clientPromise) {
+            // Use a cached client
+            return clientPromise;
+        }
+        clientPromise = this.pool.connect();
+        this.clientPromise = clientPromise;
+        clientPromise.catch(() => {
+            // Failed to connect to the database -> uncache
+            if (this.clientPromise === clientPromise) {
+                delete this.clientPromise;
+            }
+        });
+        return clientPromise;
+    }
+}
+
+export class RemotePostgreSqlConnection implements SqlConnection {
+
+    private rdsDataApi?: RDSDataService;
+
+    constructor(
+        private readonly region: string,
+        private readonly resourceArn: string,
+        private readonly secretArn: string,
+        private readonly database: string,
+    ) {}
+    public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
+        const { resourceArn, secretArn, database } = this;
+        const rdsDataApi = this.connect();
+        const parameters = buildDataApiParameters(params || []);
+        const request = rdsDataApi.executeStatement({
+            resourceArn, secretArn, database, sql, parameters,
+            includeResultMetadata: true,
+        });
+        const { columnMetadata, numberOfRecordsUpdated, records } = await request.promise();
+        const rowCount = numberOfRecordsUpdated || 0;
+        const columns = (columnMetadata || [])
+            .map(({ name }) => name)
+            .filter(isNotNully);
+        const rows = (records || []).map((fields) => {
+            const row: Record<string, any> = {};
+            columns.forEach((name, index) => {
+                row[name] = decodeDataApiFieldValue(fields[index]);
+            });
+            return row as R;
+        });
+        return { rowCount, rows };
+    }
+    public async *scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]> {
+        // The RDSDataService does not support cursors. For now, we just attempt
+        // to retrieve everything, but this will fail when the data masses increase.
+        const result = await this.query<R>(sql, params);
+        const rows = result.rows.slice();
+        while (rows.length) {
+            yield rows.splice(0, chunkSize);
+        }
+    }
+    public async disconnect(): Promise<void> {
+        delete this.rdsDataApi;
+    }
+    private connect() {
+        let { rdsDataApi } = this;
+        if (rdsDataApi) {
+            return rdsDataApi;
+        }
+        rdsDataApi = new RDSDataService({
+            apiVersion: '2018-08-01',
+            region: this.region,
+        });
+        this.rdsDataApi = rdsDataApi;
+        return rdsDataApi;
+    }
+}
+
+export class PostgreSqlDbModel<S, PK extends Key<S>, V extends Key<S>, D>
 implements VersionedModel<S, PK, V, D> {
 
-    protected readonly updateSerializer = this.serializer.partial([this.serializer.versionBy]);
-    protected readonly identitySerializer = this.serializer.pick([
+    private readonly updateSerializer = this.serializer.partial([this.serializer.versionBy]);
+    private readonly identitySerializer = this.serializer.pick([
         ...this.serializer.identifyBy,
         this.serializer.versionBy,
     ]).partial(this.serializer.identifyBy);
 
     constructor(
-        protected readonly tableName: string,
+        private readonly connection: SqlConnection,
+        private readonly tableName: string,
         public readonly serializer: Resource<S, PK, V>,
     ) {}
 
@@ -93,7 +243,7 @@ implements VersionedModel<S, PK, V, D> {
         const insertValues = serializer.validate(creation);
         const updateValues = updateSerializer.validate(update);
         const query = this.insertQuery(insertValues, updateValues);
-        const { rows } = await this.executeQuery<S>(query);
+        const { rows } = await this.executeQuery(query);
         return rows[0];
     }
 
@@ -114,8 +264,36 @@ implements VersionedModel<S, PK, V, D> {
         await this.executeQuery(query);
     }
 
-    public abstract async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>>;
-    public abstract scan(query?: Query<S>): AsyncIterableIterator<S[]>;
+    public async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>> {
+        const { ordering, direction, since, ...filters } = query;
+        const results: S[] = [];
+        const chunkSize = 100;
+        for await (const items of this.scanChunks(chunkSize, filters, ordering, direction, since)) {
+            results.push(...items);
+            if (items.length < chunkSize) {
+                return { results: items, next: null };
+            }
+            const cursor = prepareForCursor(results, ordering, direction);
+            if (cursor) {
+                return {
+                    results: cursor.results,
+                    next: { ...query, since: cursor.since as any },
+                };
+            }
+        }
+        // No more items
+        return { results, next: null };
+    }
+
+    public scan(query?: Query<S>): AsyncIterableIterator<S[]> {
+        const chunkSize = 100;
+        if (query) {
+            const { ordering, direction, since, ...filters } = query;
+            return this.scanChunks(chunkSize, filters, ordering, direction, since);
+        } else {
+            return this.scanChunks(chunkSize, {});
+        }
+    }
 
     public async batchRetrieve(identities: Array<Identity<S, PK, V>>): Promise<Array<S | null>> {
         if (!identities.length) {
@@ -131,9 +309,16 @@ implements VersionedModel<S, PK, V, D> {
         ));
     }
 
-    protected abstract async executeQuery<T = S>(queryConfig: SqlRequest): Promise<SqlResult<T>>;
+    private executeQuery({ text, values }: SqlRequest) {
+        return this.connection.query<S>(text, values);
+    }
 
-    protected selectQuery(
+    private scanChunks(chunkSize: number, filters: Record<string, any>, ordering?: string, direction?: 'asc' | 'desc', since?: any) {
+        const { text, values } = this.selectQuery(filters, undefined, ordering, direction, since);
+        return this.connection.scan<S>(chunkSize, text, values);
+    }
+
+    private selectQuery(
         filters: Record<string, any>,
         limit?: number,
         ordering?: string,
@@ -166,7 +351,7 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    protected batchSelectQuery(filtersList: Array<Record<string, any>>) {
+    private batchSelectQuery(filtersList: Array<Record<string, any>>) {
         const params: any[] = [];
         const columnNames = Object.keys(this.serializer.fields).map(escapeRef);
         let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(this.tableName)}`;
@@ -181,7 +366,7 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    protected updateQuery(
+    private updateQuery(
         filters: Record<string, any>,
         values: Record<string, any>,
     ) {
@@ -207,7 +392,7 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    protected insertQuery(
+    private insertQuery(
         insertValues: Record<string, any>,
         updateValues?: Record<string, any>,
     ) {
@@ -242,7 +427,7 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    protected deleteQuery(filters: Record<string, any>) {
+    private deleteQuery(filters: Record<string, any>) {
         const params: any[] = [];
         let sql = `DELETE FROM ${escapeRef(this.tableName)}`;
         const conditions = Object.keys(filters).map((filterKey) => {
@@ -254,140 +439,6 @@ implements VersionedModel<S, PK, V, D> {
         }
         sql += ';';
         return { text: sql, values: params };
-    }
-}
-
-export class PostgreSqlDbModel<S, PK extends Key<S>, V extends Key<S>, D>
-extends BasePostgreSqlDbModel<S, PK, V, D>
-implements VersionedModel<S, PK, V, D> {
-
-    constructor(
-        private readonly context: ModelContext,
-        tableName: string,
-        serializer: Resource<S, PK, V>,
-    ) {
-        super(tableName, serializer);
-    }
-
-    public async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>> {
-        const { ordering, direction, since, ...filters } = query;
-        const results: S[] = [];
-        const chunkSize = 100;
-        for await (const items of this.scanChunks(chunkSize, filters, ordering, direction, since)) {
-            results.push(...items);
-            if (items.length < chunkSize) {
-                return { results: items, next: null };
-            }
-            const cursor = prepareForCursor(results, ordering, direction);
-            if (cursor) {
-                return {
-                    results: cursor.results,
-                    next: { ...query, since: cursor.since as any },
-                };
-            }
-        }
-        // No more items
-        return { results, next: null };
-    }
-
-    public scan(query?: Query<S>): AsyncIterableIterator<S[]> {
-        const chunkSize = 100;
-        if (query) {
-            const { ordering, direction, since, ...filters } = query;
-            return this.scanChunks(chunkSize, filters, ordering, direction, since);
-        } else {
-            return this.scanChunks(chunkSize, {});
-        }
-    }
-
-    protected async executeQuery<T = S>(queryConfig: SqlRequest) {
-        const client = await this.context.connect();
-        return client.query<T>(queryConfig);
-    }
-
-    private async *scanChunks(chunkSize: number, filters: Record<string, any>, ordering?: string, direction?: 'asc' | 'desc', since?: any) {
-        const { text, values } = this.selectQuery(filters, undefined, ordering, direction, since);
-        const client = await this.context.connect();
-        yield *scanCursor<S>(client, chunkSize, text, values);
-    }
-}
-
-export class RemotePostgreSqlDbModel<S, PK extends Key<S>, V extends Key<S>, D>
-extends BasePostgreSqlDbModel<S, PK, V, D>
-implements VersionedModel<S, PK, V, D> {
-
-    private rdsDataApi = new RDSDataService({
-        apiVersion: '2018-08-01',
-        region: this.region,
-    });
-
-    constructor(
-        private readonly region: string,
-        private readonly resourceArn: string,
-        private readonly secretArn: string,
-        private readonly database: string,
-        tableName: string,
-        serializer: Resource<S, PK, V>,
-    ) {
-        super(tableName, serializer);
-    }
-
-    public async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>> {
-        const { ordering, direction, since, ...filters } = query;
-        let chunkSize = 100;
-        while (true) {
-            const sqlQuery = this.selectQuery(filters, chunkSize, ordering, direction, since);
-            const { rows } = await this.executeQuery(sqlQuery);
-            if (rows.length < chunkSize) {
-                return { results: rows, next: null };
-            }
-            const cursor = prepareForCursor(rows, ordering, direction);
-            if (cursor) {
-                return {
-                    results: cursor.results,
-                    next: { ...query, since: cursor.since as any },
-                };
-            }
-            // Need to increase the chunk size
-            chunkSize *= 2;
-        }
-    }
-
-    public async *scan(query?: Query<S>): AsyncIterableIterator<S[]> {
-        let cursor: Query<S> | null = query || {
-            ordering: 'id' as Key<S>,
-            direction: 'asc',
-        };
-        while (cursor) {
-            const { results, next }: Page<S, any> = await this.list(cursor as any);
-            if (results.length) {
-                yield results;
-            }
-            cursor = next;
-        }
-    }
-
-    protected async executeQuery<T = S>(queryConfig: SqlRequest) {
-        const { resourceArn, secretArn, database } = this;
-        const sql = queryConfig.text;
-        const parameters = buildDataApiParameters(queryConfig.values);
-        const request = this.rdsDataApi.executeStatement({
-            resourceArn, secretArn, database, sql, parameters,
-            includeResultMetadata: true,
-        });
-        const { columnMetadata, numberOfRecordsUpdated, records } = await request.promise();
-        const rowCount = numberOfRecordsUpdated || 0;
-        const columns = (columnMetadata || [])
-            .map(({ name }) => name)
-            .filter(isNotNully);
-        const rows = (records || []).map((fields) => {
-            const row: Record<string, any> = {};
-            columns.forEach((name, index) => {
-                row[name] = decodeDataApiFieldValue(fields[index]);
-            });
-            return row as T;
-        });
-        return { rowCount, rows };
     }
 }
 

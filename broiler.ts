@@ -38,7 +38,7 @@ import { createTable } from './migration';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
 import { askParameters } from './parameters';
-import { PostgreSqlDbModel, RemotePostgreSqlDbModel } from './postgres';
+import { PostgreSqlConnection, PostgreSqlDbModel, RemotePostgreSqlConnection, SqlConnection } from './postgres';
 import { retryWithBackoff } from './retry';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { groupBy } from './utils/groups';
@@ -346,105 +346,125 @@ export class Broiler {
     }
 
     public async printTableRows(tableName: string, pretty: boolean) {
-        const model = await this.getTableModel(tableName);
-        for await (const items of model.scan()) {
-            for (const item of items) {
-                const serializedItem = model.serializer.serialize(item);
-                this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
+        const sqlConnection = await this.getSqlConnection();
+        try {
+            const model = await this.getTableModel(sqlConnection, tableName);
+            for await (const items of model.scan()) {
+                for (const item of items) {
+                    const serializedItem = model.serializer.serialize(item);
+                    this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
+                }
             }
+        } finally {
+            await sqlConnection.disconnect();
         }
     }
 
     public async uploadTableRows(tableName: string, filePath: string) {
-        const model = await this.getTableModel(tableName);
-        let index = 0;
-        for await (const line of readLines(filePath)) {
-            index ++;
-            try {
-                const serializedItem = JSON.parse(line);
-                const item = model.serializer.deserialize(serializedItem);
-                await model.write(item);
-                this.log(`Line ${index} ${green('✔︎')}`);
-            } catch (err) {
-                this.log(`Line ${index} ${red('×')}`);
-                this.logError(err.stack);
+        const sqlConnection = await this.getSqlConnection();
+        try {
+            const model = await this.getTableModel(sqlConnection, tableName);
+            let index = 0;
+            for await (const line of readLines(filePath)) {
+                index ++;
+                try {
+                    const serializedItem = JSON.parse(line);
+                    const item = model.serializer.deserialize(serializedItem);
+                    await model.write(item);
+                    this.log(`Line ${index} ${green('✔︎')}`);
+                } catch (err) {
+                    this.log(`Line ${index} ${red('×')}`);
+                    this.logError(err.stack);
+                }
             }
+        } finally {
+            await sqlConnection.disconnect();
         }
     }
 
     public async backupDatabase(dirPath?: string | null) {
         const basePath = dirPath || generateBackupDirPath(this.config.stageDir);
-        const models = await this.getTableModels();
-        this.log(`Backing up ${models.length} database tables…`);
-        await ensureDirectoryExists(basePath);
-        const results = await Promise.all(models.map(async ({model, name}) => {
-            this.log(`${dim('Backing up')} ${name}`);
-            try {
-                const filePath = path.resolve(basePath, `${name}.jsonl`);
-                const { serializer } = model;
-                await writeAsyncIterable(filePath, mapAsync(model.scan(), (rows) => {
-                    const jsonRows = rows.map((record) => {
-                        const serializedItem = serializer.serialize(record);
-                        return JSON.stringify(serializedItem) + '\n';
-                    });
-                    return jsonRows.join('');
-                }));
-                this.log(`${name} ${green('✔︎')}`);
-                return null;
-            } catch (error) {
-                this.log(`${name} ${red('×')}`);
-                return error;
+        const sqlConnection = await this.getSqlConnection();
+        try {
+            const models = await this.getTableModels(sqlConnection);
+            this.log(`Backing up ${models.length} database tables…`);
+            await ensureDirectoryExists(basePath);
+            const results = await Promise.all(models.map(async ({model, name}) => {
+                this.log(`${dim('Backing up')} ${name}`);
+                try {
+                    const filePath = path.resolve(basePath, `${name}.jsonl`);
+                    const { serializer } = model;
+                    await writeAsyncIterable(filePath, mapAsync(model.scan(), (rows) => {
+                        const jsonRows = rows.map((record) => {
+                            const serializedItem = serializer.serialize(record);
+                            return JSON.stringify(serializedItem) + '\n';
+                        });
+                        return jsonRows.join('');
+                    }));
+                    this.log(`${name} ${green('✔︎')}`);
+                    return null;
+                } catch (error) {
+                    this.log(`${name} ${red('×')}`);
+                    return error;
+                }
+            }));
+            const error = results.find((error) => error != null);
+            if (error) {
+                throw error;
             }
-        }));
-        const error = results.find((error) => error != null);
-        if (error) {
-            throw error;
+            this.log(`Successfully backed up ${models.length} database tables to:\n${basePath}`);
+        } finally {
+            await sqlConnection.disconnect();
         }
-        this.log(`Successfully backed up ${models.length} database tables to:\n${basePath}`);
     }
 
     public async restoreDatabase(dirPath: string, overwrite: boolean = false) {
-        const models = await this.getTableModels();
-        this.log(`Restoring ${models.length} database tables…`);
-        const results = await Promise.all(models.map(async ({model, name}) => {
-            this.log(`${dim('Restoring')} ${name}`);
-            try {
-                const filePath = path.resolve(dirPath, `${name}.jsonl`);
-                const { serializer } = model;
-                let index = 0;
-                for await (const line of readLines(filePath)) {
-                    index ++;
-                    try {
-                        const serializedItem = JSON.parse(line);
-                        const item = serializer.deserialize(serializedItem);
-                        if (overwrite) {
-                            await model.write(item);
-                        } else {
-                            try {
-                                await model.create(item);
-                            } catch (error) {
-                                if (!isResponse(error, HttpStatus.PreconditionFailed)) {
-                                    throw error;
+        const sqlConnection = await this.getSqlConnection();
+        try {
+            const models = await this.getTableModels(sqlConnection);
+            this.log(`Restoring ${models.length} database tables…`);
+            const results = await Promise.all(models.map(async ({model, name}) => {
+                this.log(`${dim('Restoring')} ${name}`);
+                try {
+                    const filePath = path.resolve(dirPath, `${name}.jsonl`);
+                    const { serializer } = model;
+                    let index = 0;
+                    for await (const line of readLines(filePath)) {
+                        index ++;
+                        try {
+                            const serializedItem = JSON.parse(line);
+                            const item = serializer.deserialize(serializedItem);
+                            if (overwrite) {
+                                await model.write(item);
+                            } else {
+                                try {
+                                    await model.create(item);
+                                } catch (error) {
+                                    if (!isResponse(error, HttpStatus.PreconditionFailed)) {
+                                        throw error;
+                                    }
                                 }
                             }
+                        } catch (err) {
+                            this.log(`${name}: line ${index} ${red('×')}`);
+                            this.logError(err.stack);
                         }
-                    } catch (err) {
-                        this.log(`${name}: line ${index} ${red('×')}`);
-                        this.logError(err.stack);
                     }
+                    this.log(`${name} ${green('✔︎')}`);
+                    return null;
+                } catch (error) {
+                    this.log(`${name} ${red('×')}`);
+                    return error;
                 }
-                this.log(`${name} ${green('✔︎')}`);
-                return null;
-            } catch (error) {
-                this.log(`${name} ${red('×')}`);
-                return error;
+            }));
+            const error = results.find((error) => error != null);
+            if (error) {
+                throw error;
             }
-        }));
-        const error = results.find((error) => error != null);
-        if (error) {
-            throw error;
+            this.log(`Successfully restored ${results.length} database tables!`);
+        } finally {
+            await sqlConnection.disconnect();
         }
-        this.log(`Successfully restored ${results.length} database tables!`);
     }
 
     public async openPsql(): Promise<void> {
@@ -1142,8 +1162,7 @@ export class Broiler {
         return order(server.tables, 'name', 'asc');
     }
 
-    private async getTableModel(tableName: string) {
-        const { region } = this.config;
+    private async getTableModel(sqlConnection: SqlConnection, tableName: string) {
         const service = this.importServer();
         if (!service) {
             throw new Error(`No tables defined for the app.`);
@@ -1152,31 +1171,10 @@ export class Broiler {
         if (!table) {
             throw new Error(`Table ${tableName} not found.`);
         }
-        if (region === 'local') {
-            const context = {
-                region,
-                environment: {},
-                connect: async () => {
-                    // TODO: Close the connection!
-                    const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
-                    await client.connect();
-                    return client;
-                },
-            };
-            return new PostgreSqlDbModel(context, tableName, table.resource);
-        }
-        const output = await this.cloudFormation.getStackOutput();
-        return new RemotePostgreSqlDbModel(
-            region,
-            output.DatabaseDBClusterArn,
-            output.DatabaseMasterSecretArn,
-            this.getDatabaseName(),
-            tableName,
-            table.resource,
-        );
+        return new PostgreSqlDbModel(sqlConnection, tableName, table.resource);
     }
 
-    private async getTableModels() {
+    private async getTableModels(sqlConnection: SqlConnection) {
         const service = this.importServer();
         if (!service) {
             throw new Error(`No tables defined for the app.`);
@@ -1184,8 +1182,22 @@ export class Broiler {
         const { tables } = service;
         return Promise.all(tables.map(async (table) => ({
             name: table.name,
-            model: await this.getTableModel(table.name),
+            model: await this.getTableModel(sqlConnection, table.name),
         })));
+    }
+
+    private async getSqlConnection(): Promise<SqlConnection> {
+        const { region } = this.config;
+        if (region === 'local') {
+            return new PostgreSqlConnection(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
+        }
+        const output = await this.cloudFormation.getStackOutput();
+        return new RemotePostgreSqlConnection(
+            region,
+            output.DatabaseDBClusterArn,
+            output.DatabaseMasterSecretArn,
+            this.getDatabaseName(),
+        );
     }
 }
 

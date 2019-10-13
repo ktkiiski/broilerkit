@@ -1,14 +1,15 @@
 // tslint:disable:member-ordering
 import { SecretsManager } from 'aws-sdk';
-import { Pool, PoolClient, PoolConfig } from 'pg';
+import { Pool, PoolConfig } from 'pg';
 import { Handler, ResponseHandler } from './api';
 import { Cache, cached } from './cache';
-import { Model, ModelContext, Table } from './db';
+import { Model, Table } from './db';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
+import { PostgreSqlPoolConnection, SqlConnection } from './postgres';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
 import { transformValues } from './utils/objects';
@@ -96,9 +97,11 @@ class ImplementedOperation implements Controller {
         }
         // Handle the request
         const { region, environment } = request;
-        const context = new RequestModelContext(region, environment, cache);
+        const sqlConnection = await establishDatabaseConnection(region, environment, cache);
         try {
-            const models = transformValues(tablesByName, (table) => table.getModel(context));
+            const models = transformValues(tablesByName, (table) => (
+                table.getModel(region, environment, sqlConnection)
+            ));
             const {data, ...response} = await this.handler(input, models, request);
             if (!responseSerializer) {
                 // No response data should be available
@@ -109,7 +112,7 @@ class ImplementedOperation implements Controller {
             return {...response, data: responseSerializer.serialize(data)};
         } finally {
             // Ensure that any database connection is released to the pool
-            context.release();
+            await sqlConnection.disconnect();
         }
     }
 }
@@ -258,37 +261,7 @@ export class ApiService {
     }
 }
 
-class RequestModelContext implements ModelContext {
-
-    private client$: Promise<PoolClient> | null = null;
-
-    constructor(
-        public readonly region: string,
-        public readonly environment: {[key: string]: any},
-        private readonly cache: Cache,
-    ) {}
-
-    public async connect() {
-        let { client$ } = this;
-        if (client$) {
-            return client$;
-        }
-        const { region, environment } = this;
-        client$ = establishDatabaseConnection(region, environment, this.cache);
-        this.client$ = client$;
-        return client$;
-    }
-
-    public async release() {
-        const { client$ } = this;
-        if (client$) {
-            const client = await client$;
-            client.release();
-        }
-    }
-}
-
-async function establishDatabaseConnection(region: string, environment: {[key: string]: string}, cache: Cache): Promise<PoolClient> {
+async function establishDatabaseConnection(region: string, environment: {[key: string]: string}, cache: Cache): Promise<SqlConnection> {
     // Create a database pool
     const databaseHost = environment.DatabaseHost;
     const databasePort = environment.DatabasePort;
@@ -325,7 +298,7 @@ async function establishDatabaseConnection(region: string, environment: {[key: s
         }
         return new Pool(dbConfig);
     });
-    return pool.connect();
+    return new PostgreSqlPoolConnection(pool);
 }
 
 async function retrieveDatabaseCredentials(region: string, secretArn: string) {

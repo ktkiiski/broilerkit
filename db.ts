@@ -1,7 +1,6 @@
-import { ClientBase } from 'pg';
 import { TableState } from './migration';
 import { OrderedQuery, Page } from './pagination';
-import { PostgreSqlDbModel } from './postgres';
+import { PostgreSqlDbModel, SqlConnection } from './postgres';
 import { Resource } from './resources';
 import { Serializer } from './serializers';
 import { Exact, Key, keys, Require } from './utils/objects';
@@ -157,19 +156,6 @@ export interface TableOptions<T, PK extends Key<T>, V extends Key<T>, D extends 
     defaults?: {[P in D]: T[P]};
 }
 
-export interface ModelContext {
-    region: string;
-    environment: {[key: string]: string};
-    /**
-     * Returns a promise for an open PostgreSQL database connection.
-     * It always uses an existing connection if already opened for
-     * this request, or uses one from a collection pool if available.
-     * Note that the connection will be shared with other models during
-     * a request execution.
-     */
-    connect(): Promise<ClientBase>;
-}
-
 export interface Table<M> {
     /**
      * An identifying name for the table that distinguishes it from the
@@ -188,7 +174,7 @@ export interface Table<M> {
      * Binds the table to a execution contect, returning an actual model
      * that is used to read and write data from/to the database.
      */
-    getModel(context: ModelContext): M;
+    getModel(region: string, environment: {[key: string]: string}, sqlConnection: SqlConnection): M;
     /**
      * Returns a state representation of the table for migration.
      */
@@ -232,8 +218,9 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
         return new TableDefinition(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults);
     }
 
-    public getModel(context: ModelContext): VersionedModel<S, PK, V, D> {
-        return new PostgreSqlDbModel(context, this.name, this.resource);
+    // tslint:disable-next-line:variable-name
+    public getModel(_region: string, _environment: {[key: string]: string}, sqlConnection: SqlConnection): VersionedModel<S, PK, V, D> {
+        return new PostgreSqlDbModel(sqlConnection, this.name, this.resource);
     }
 
     public getState(): TableState {
