@@ -36,12 +36,9 @@ const executeLambda = lambdaMiddleware(middleware(
  * with the bundler. Therefore, this function can only be called from
  * the actual bundled script.
  */
-export const request: LambdaHttpHandler = (lambdaRequest, _, callback) => {
-    executeLambda(lambdaRequest).then(
-        (result) => callback(null, result),
-        (error) => callback(error),
-    );
-};
+export const request: LambdaHttpHandler = async (lambdaRequest) => (
+    executeLambda(lambdaRequest)
+);
 
 function getApiService() {
     let apiModule;

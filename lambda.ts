@@ -60,7 +60,7 @@ export interface LambdaHttpRequest {
     isBase64Encoded?: boolean;
 }
 
-export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void;
+export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void | Promise<LambdaHttpResponse>;
 
 export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequest): Promise<HttpRequest> => {
     const {httpMethod, isBase64Encoded, requestContext} = request;
