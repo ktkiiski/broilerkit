@@ -45,7 +45,7 @@ Resources:
   DatabaseMigrationLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      RetentionInDays: 30
+      RetentionInDays: 90
       LogGroupName:
         Fn::Sub: "/aws/lambda/${DatabaseMigrationLambdaFunction}"
 

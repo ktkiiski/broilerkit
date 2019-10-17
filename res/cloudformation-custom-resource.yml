@@ -137,7 +137,7 @@ Resources:
   CustomResourceLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      RetentionInDays: 7
+      RetentionInDays: 90
       LogGroupName:
         Fn::Sub: "/aws/lambda/${CustomResourceLambdaFunction}"
 

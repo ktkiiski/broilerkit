@@ -36,6 +36,7 @@ Resources:
   ServerLambdaFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
+      RetentionInDays: 90
       LogGroupName:
         Fn::Sub: "/aws/lambda/${AWS::StackName}-server"
 
