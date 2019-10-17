@@ -10,7 +10,7 @@ import { errorMiddleware } from './middleware';
 import { ClientProvider } from './react/client';
 import { MetaContextProvider } from './react/meta';
 import { Serializer } from './serializers';
-import { ApiService, Controller } from './server';
+import { ApiService, Controller, ServerContext } from './server';
 import { buildQuery, Url, UrlPattern } from './url';
 import { buildObject, mapObject, pick } from './utils/objects';
 
@@ -28,11 +28,11 @@ export class SsrController implements Controller {
         private readonly templateHtml$: Promise<string>,
     ) {}
 
-    public async execute(request: HttpRequest, cache?: {[uri: string]: any}) {
+    public async execute(request: HttpRequest, context: ServerContext) {
         // TODO: Could be awaited inside renderView for a tiny performance boost?
         const templateHtml = await this.templateHtml$;
         return renderView(request, templateHtml, this.view, (apiRequest) => (
-            this.apiService.execute(apiRequest, cache)
+            this.apiService.execute(apiRequest, context)
         ));
     }
 }

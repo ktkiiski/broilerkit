@@ -85,9 +85,20 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
 
-  # Assign the server Lambda function to VPC
+  # Assign the server Lambda function to VPC and make database information
+  # available as environment variables
   ServerLambdaFunction:
     Properties:
+      Environment:
+        Variables:
+          DATABASE_HOST:
+            Fn::GetAtt: DatabaseDBCluster.Endpoint.Address
+          DATABASE_PORT:
+            Fn::GetAtt: DatabaseDBCluster.Endpoint.Port
+          DATABASE_NAME:
+            Ref: DatabaseName
+          DATABASE_CREDENTIALS_ARN:
+            Ref: DatabaseMasterSecret
       VpcConfig:
         SecurityGroupIds:
           - Fn::ImportValue:
@@ -242,20 +253,6 @@ Resources:
           - secretsmanager:GetSecretValue
           Resource:
           - Ref: DatabaseMasterSecret
-
-  # Make the database information available for server-side Lambda function
-  # as API Gateway stage variables
-  ServerApiGatewayStage:
-    Properties:
-      Variables:
-        DatabaseHost:
-          Fn::GetAtt: DatabaseDBCluster.Endpoint.Address
-        DatabasePort:
-          Fn::GetAtt: DatabaseDBCluster.Endpoint.Port
-        DatabaseName:
-          Ref: DatabaseName
-        DatabaseCredentialsArn:
-          Ref: DatabaseMasterSecret
 
 Outputs:
   DatabaseDBClusterEndpointAddress:

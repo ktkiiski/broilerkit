@@ -1,15 +1,13 @@
 // tslint:disable:member-ordering
-import { SecretsManager } from 'aws-sdk';
-import { Pool, PoolConfig } from 'pg';
+import { Pool } from 'pg';
 import { Handler, ResponseHandler } from './api';
-import { Cache, cached } from './cache';
 import { Model, Table } from './db';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
-import { PostgreSqlPoolConnection, SqlConnection } from './postgres';
+import { PostgreSqlPoolConnection } from './postgres';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
 import { transformValues } from './utils/objects';
@@ -26,6 +24,18 @@ type Implementables<I, O, R> = (
 type OperationImplementors<I, O, D, R> = {
     [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], D, R[P]>;
 };
+
+/**
+ * Essentials the server that remain the same
+ * between requests.
+ */
+export interface ServerContext {
+    /**
+     * A pool for PostgreSQL database connections
+     * available for the requests.
+     */
+    dbConnectionPool: Pool;
+}
 
 export interface Controller {
     /**
@@ -50,7 +60,7 @@ export interface Controller {
      * - 501 HTTP error to indicate that the URL is not for this controller
      * - 405 HTTP error if the request method was one of the `methods`
      */
-    execute(request: HttpRequest, cache?: Cache): Promise<ApiResponse | HttpResponse>;
+    execute(request: HttpRequest, context: ServerContext): Promise<ApiResponse | HttpResponse>;
 }
 
 class ImplementedOperation implements Controller {
@@ -72,7 +82,7 @@ class ImplementedOperation implements Controller {
         this.requiresAuth = authType !== 'none';
     }
 
-    public async execute(request: HttpRequest, cache: Cache): Promise<ApiResponse> {
+    public async execute(request: HttpRequest, context: ServerContext): Promise<ApiResponse> {
         const {tablesByName, operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const input = parseRequest(operation, request);
@@ -97,7 +107,7 @@ class ImplementedOperation implements Controller {
         }
         // Handle the request
         const { region, environment } = request;
-        const sqlConnection = await establishDatabaseConnection(region, environment, cache);
+        const sqlConnection = new PostgreSqlPoolConnection(context.dbConnectionPool);
         try {
             const models = transformValues(tablesByName, (table) => (
                 table.getModel(region, environment, sqlConnection)
@@ -192,7 +202,7 @@ export class ApiService {
         this.tables = Object.values(tablesByName);
     }
 
-    public execute = async (request: HttpRequest, cache?: Cache) => {
+    public execute = async (request: HttpRequest, context: ServerContext) => {
         let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
         const controllers = Array.from(this.iterateForPath(request.path));
@@ -219,7 +229,7 @@ export class ApiService {
         for (const implementation of controllers) {
             try {
                 // Return response directly returned by the implementation
-                return await implementation.execute(request, cache);
+                return await implementation.execute(request, context);
             } catch (error) {
                 // Thrown 405 or 501 response errors will have a special meaning
                 if (isResponse(error)) {
@@ -259,68 +269,6 @@ export class ApiService {
             }
         }
     }
-}
-
-async function establishDatabaseConnection(region: string, environment: {[key: string]: string}, cache: Cache): Promise<SqlConnection> {
-    // Create a database pool
-    const databaseHost = environment.DatabaseHost;
-    const databasePort = environment.DatabasePort;
-    const databaseName = environment.DatabaseName;
-    if (!databaseHost) {
-        throw new Error(`Missing database host configuration!`);
-    }
-    if (!databasePort) {
-        throw new Error(`Missing database port configuration!`);
-    }
-    if (!databaseName) {
-        throw new Error(`Missing database name configuration!`);
-    }
-    const poolCacheKey = `pg:pool:${databaseHost}:${databasePort}:${databaseName}`;
-    const pool = await cached(cache, poolCacheKey, async () => {
-        const dbConfig: PoolConfig = {
-            host: databaseHost,
-            port: parseInt(databasePort, 10),
-            database: databaseName,
-            idleTimeoutMillis: 60 * 1000,
-        };
-        const databaseCredentialsArn = environment.DatabaseCredentialsArn;
-        if (databaseCredentialsArn) {
-            // Username and password are read from AWS Secrets Manager
-            const credentialsCacheKey = `pg:credentials:${databaseCredentialsArn}`;
-            const credentials = await cached(cache, credentialsCacheKey, async () => {
-                return retrieveDatabaseCredentials(region, databaseCredentialsArn);
-            });
-            dbConfig.user = credentials.username;
-            dbConfig.password = credentials.password;
-        } else {
-            // Assuming a local development environment. No password!
-            dbConfig.user = 'postgres';
-        }
-        return new Pool(dbConfig);
-    });
-    return new PostgreSqlPoolConnection(pool);
-}
-
-async function retrieveDatabaseCredentials(region: string, secretArn: string) {
-    const sdk = new SecretsManager({
-        apiVersion: '2017-10-17',
-        region,
-        httpOptions: { timeout: 5 * 1000 },
-        maxRetries: 3,
-    });
-    const response = await sdk.getSecretValue({ SecretId: secretArn }).promise();
-    const secret = response.SecretString;
-    if (!secret) {
-        throw new Error('Response does not contain a SecretString');
-    }
-    const { username, password } = JSON.parse(secret);
-    if (typeof username !== 'string' || !username) {
-        throw new Error('Secrets manager credentials are missing "username"');
-    }
-    if (typeof password !== 'string' || !password) {
-        throw new Error('Secrets manager credentials are missing "password"');
-    }
-    return { username, password };
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {

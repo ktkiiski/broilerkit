@@ -1,3 +1,4 @@
+import { Pool } from 'pg';
 import { URL } from 'url';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
@@ -83,7 +84,14 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
         throw new Error(`HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(/^https/, 'http')} instead!`);
     }
     const htmlPagePath = path.resolve(buildDir, './index.html');
-    const cache: {[uri: string]: any} = {};
+    const dbConnectionPool = new Pool({
+        host: 'localhost',
+        port: 54320,
+        database: 'postgres',
+        user: 'postgres',
+        idleTimeoutMillis: 60 * 1000,
+    });
+    const serverContext = { dbConnectionPool };
     const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
     let server: http.Server | undefined;
     try {
@@ -129,9 +137,6 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
                     AuthSignOutUri: `${serverRoot}/_oauth2_signout`,
                     AuthSignInRedirectUri: `${serverRoot}/oauth2/signin`,
                     AuthSignOutRedirectUri: `${serverRoot}/oauth2/signout`,
-                    DatabaseHost: 'localhost',
-                    DatabasePort: '54320',
-                    DatabaseName: 'postgres',
                 },
             };
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
@@ -140,7 +145,7 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             // Set up the server for the view rendering
             const executeServerRequest = nodeMiddleware(middleware(
                 localAuthenticationMiddleware(
-                    async (req) => service.execute(req, cache),
+                    async (req) => service.execute(req, serverContext),
                 ),
             ));
             server = createServer(executeServerRequest);

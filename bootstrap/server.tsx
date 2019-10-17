@@ -2,12 +2,14 @@
  * IMPORTANT: Do not import this file directly!
  * This is used as an endpoint file for a webpack bundle!
  */
+import { SecretsManager } from 'aws-sdk';
+import { Pool } from 'pg';
 import { readFile } from '../fs';
 import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
 import { middleware } from '../middleware';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
-import { ApiService } from '../server';
+import { ApiService, ServerContext } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 
 // When deployed, load the HTML base file immediately, which is expected to be located as a sibling index.html file
@@ -22,10 +24,49 @@ const service = apiService.extend({
     [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignOutController(),
 });
 
-const cache = {};
-const executeLambda = lambdaMiddleware(middleware(
-    async (req) => service.execute(req, cache),
-));
+const region = process.env.AWS_REGION;
+const databaseBaseConfig = {
+    host: process.env.DATABASE_HOST as string,
+    port: parseInt(process.env.DATABASE_PORT as string, 10),
+    database: process.env.DATABASE_NAME as string,
+    idleTimeoutMillis: 60 * 1000,
+};
+const credentialsArn = process.env.DATABASE_CREDENTIALS_ARN as string;
+const secretsManagerService = new SecretsManager({
+    apiVersion: '2017-10-17',
+    region,
+    httpOptions: { timeout: 5 * 1000 },
+    maxRetries: 3,
+});
+const databaseCredentials$ = secretsManagerService.getSecretValue({ SecretId: credentialsArn })
+    .promise()
+    .then(({ SecretString: secret }) => {
+        if (!secret) {
+            throw new Error('Response does not contain a SecretString');
+        }
+        const { username, password } = JSON.parse(secret);
+        if (typeof username !== 'string' || !username) {
+            throw new Error('Secrets manager credentials are missing "username"');
+        }
+        if (typeof password !== 'string' || !password) {
+            throw new Error('Secrets manager credentials are missing "password"');
+        }
+        return { username, password };
+    });
+
+const serverContext$ = databaseCredentials$.then((credentials): ServerContext => {
+    const dbConnectionPool = new Pool({
+        ...databaseBaseConfig,
+        user: credentials.username,
+        password: credentials.password,
+    });
+    return { dbConnectionPool };
+});
+
+const executeLambda = lambdaMiddleware(middleware(async (req) => {
+    const context = await serverContext$;
+    return service.execute(req, context);
+}));
 
 /**
  * AWS Lambda compatible handler function that processes the given
