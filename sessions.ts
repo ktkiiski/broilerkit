@@ -46,8 +46,8 @@ export async function encryptSession(session: UserSession, secretKey: JWK.Key): 
         email: validSession.email,
         picture: validSession.picture,
         groups: validSession.groups,
-        exp: validSession.expiresAt.valueOf(),
-        auth_time: validSession.authenticatedAt.valueOf(),
+        exp: validSession.expiresAt.getTime() / 1000,
+        auth_time: validSession.authenticatedAt.getTime() / 1000,
         sid: validSession.session,
         rt: tokenCmps,
     };
@@ -62,8 +62,8 @@ export async function decryptSession(token: string, keyStore: JWK.KeyStore): Pro
         email: payload.email,
         picture: payload.picture,
         groups: payload.groups,
-        expiresAt: new Date(payload.exp),
-        authenticatedAt: new Date(payload.auth_time),
+        expiresAt: new Date(payload.exp * 1000),
+        authenticatedAt: new Date(payload.auth_time * 1000),
         session: payload.sid,
         refreshToken: payload.rt.map((cmp) => base64url.encode(cmp)).join('.'),
     };
