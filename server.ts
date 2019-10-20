@@ -98,11 +98,11 @@ class ImplementedOperation implements Controller {
             if (!auth) {
                 throw new Unauthorized(`Unauthorized`);
             }
-            if (authType === 'admin' && isAdmin) {
+            if (authType === 'admin' && !isAdmin) {
                 // Not an admin!
                 throw new Unauthorized(`Administrator rights are missing.`);
             }
-            if (authType !== 'user') {
+            if (authType === 'owner') {
                 // Needs to be either owner or admin!
                 // TODO: Handle invalid configuration where auth == 'owner' && !userIdAttribute!
                 if (userIdAttribute && input[userIdAttribute] !== auth.id && !isAdmin) {
