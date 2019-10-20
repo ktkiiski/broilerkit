@@ -49,6 +49,7 @@ export class OAuth2SignInController implements Controller {
             throw new BadRequest(`Missing "state" URL parameter`);
         }
         let refreshToken: string;
+        let tokensExpireIn: number;
         let accessToken: string;
         let idToken: string;
         if (region === 'local') {
@@ -59,6 +60,7 @@ export class OAuth2SignInController implements Controller {
             accessToken = tokens.access_token;
             idToken = tokens.id_token;
             refreshToken = 'LOCAL_REFRESH_TOKEN'; // TODO: Local refresh token!
+            tokensExpireIn = 60 * 10; // Doesn't have meaning locally
         } else {
             const clientId = environment.AuthClientId;
             const clientSecret = environment.AuthClientSecret;
@@ -86,6 +88,7 @@ export class OAuth2SignInController implements Controller {
                 accessToken = tokens.access_token;
                 idToken = tokens.id_token;
                 refreshToken = tokens.refresh_token;
+                tokensExpireIn = tokens.expires_in;
             } catch (error) {
                 // tslint:disable-next-line:no-console
                 console.error('Failed to retrieve authentication tokens:', error);
@@ -101,10 +104,10 @@ export class OAuth2SignInController implements Controller {
         if (!accesTokenPayload || typeof accesTokenPayload !== 'object') {
             throw new Error('AWS token endpoint responded with invalid access token');
         }
-        const exp = Math.min(idTokenPayload.exp, accesTokenPayload.exp);
-        const timestamp = Math.floor(new Date().getTime() / 1000);
-        const expiresAt = new Date(exp * 1000);
-        const maxAge = Math.max(exp - timestamp, 0);
+        const sessionDuration = 60 * 60 * 3; // TODO: Make configurable!
+        const now = new Date();
+        const expiresAt = new Date(+now + sessionDuration * 1000);
+        const refreshAfter = new Date(+now + tokensExpireIn * 1000 / 2);
         const userId: string = idTokenPayload.sub || accesTokenPayload.sub;
         const userSession: UserSession = {
             id: userId,
@@ -113,13 +116,15 @@ export class OAuth2SignInController implements Controller {
             picture: idTokenPayload.picture,
             groups: idTokenPayload['cognito:groups'] || [],
             expiresAt,
-            authenticatedAt: new Date(),
+            authenticatedAt: now,
             session: uuid4(),
             refreshToken,
+            refreshedAt: now,
+            refreshAfter,
         };
         const secretKey = context.sessionEncryptionKey;
         const sessionToken = await encryptSession(userSession, secretKey);
-        let setCookieHeader = `session=${sessionToken}; Max-Age=${maxAge}; HttpOnly; Path=/`;
+        let setCookieHeader = `session=${sessionToken}; Max-Age=${sessionDuration}; HttpOnly; Path=/`;
         if (region !== 'local') {
             setCookieHeader = `${setCookieHeader}; Secure`;
         }

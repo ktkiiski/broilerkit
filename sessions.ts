@@ -10,6 +10,8 @@ export interface UserSession extends HttpAuth {
     expiresAt: Date;
     authenticatedAt: Date;
     refreshToken: string;
+    refreshAfter: Date;
+    refreshedAt: Date;
 }
 
 interface UserSessionTokenPayload {
@@ -21,6 +23,8 @@ interface UserSessionTokenPayload {
     auth_time: number;
     exp: number;
     rt: Buffer[];
+    ref_at: number;
+    ref_after: number;
     sid: string;
 }
 
@@ -34,6 +38,8 @@ const userSessionSerializer = serializer({
     authenticatedAt: datetime(),
     expiresAt: datetime(),
     refreshToken: string(),
+    refreshedAt: datetime(),
+    refreshAfter: datetime(),
 });
 
 export async function encryptSession(session: UserSession, secretKey: JWK.Key): Promise<string> {
@@ -50,6 +56,8 @@ export async function encryptSession(session: UserSession, secretKey: JWK.Key): 
         auth_time: validSession.authenticatedAt.getTime() / 1000,
         sid: validSession.session,
         rt: tokenCmps,
+        ref_after: session.refreshAfter.getTime() / 1000,
+        ref_at: session.refreshedAt.getTime() / 1000,
     };
     return encryptToken(payload, secretKey);
 }
@@ -66,6 +74,8 @@ export async function decryptSession(token: string, keyStore: JWK.KeyStore): Pro
         authenticatedAt: new Date(payload.auth_time * 1000),
         session: payload.sid,
         refreshToken: payload.rt.map((cmp) => base64url.encode(cmp)).join('.'),
+        refreshAfter: new Date(payload.ref_after * 1000),
+        refreshedAt: new Date(payload.ref_at * 1000),
     };
     return userSessionSerializer.validate(session);
 }
