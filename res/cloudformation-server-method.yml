@@ -9,8 +9,7 @@ Resources:
       RestApiId:
         Ref: ServerApiGatewayRestApi
       RequestParameters: {}
-      AuthorizationType: <AuthorizationType>
-      AuthorizerId: <AuthorizerId>
+      AuthorizationType: "NONE"
       Integration:
         # NOTE: Lambda execution endpoint is always called with POST
         IntegrationHttpMethod: POST

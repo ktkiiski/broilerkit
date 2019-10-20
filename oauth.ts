@@ -1,10 +1,10 @@
 import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
-import { BadRequest, HttpMethod, HttpRequest, HttpResponse } from './http';
+import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse } from './http';
 import { tmpl } from './interpolation';
 import { request } from './request';
 import { Controller, ServerContext } from './server';
-import { encryptSession, UserSession } from './sessions';
+import { decryptSession, encryptSession, UserSession } from './sessions';
 import { buildQuery, parseQuery, UrlPattern } from './url';
 import { uuid4 } from './uuid';
 
@@ -33,11 +33,12 @@ if (window.opener != null) {
 </html>
 `;
 
+const sessionDuration = 60 * 60 * 3; // TODO: Make configurable!
+
 export class OAuth2SignInController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
     public readonly pattern = new UrlPattern('/oauth2/signin');
     public readonly tables = [];
-    public readonly requiresAuth = false;
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
         const { region, queryParameters, environment } = req;
@@ -48,47 +49,31 @@ export class OAuth2SignInController implements Controller {
         if (!state) {
             throw new BadRequest(`Missing "state" URL parameter`);
         }
-        let refreshToken: string;
-        let tokensExpireIn: number;
-        let accessToken: string;
-        let idToken: string;
+        let tokens: TokenResponse;
         if (region === 'local') {
             // Dummy local sign in
             // NOTE: This branch cannot be reached by production code,
             // and even if would, the generated tokens won't be usable.
-            const tokens = parseQuery(code);
-            accessToken = tokens.access_token;
-            idToken = tokens.id_token;
-            refreshToken = 'LOCAL_REFRESH_TOKEN'; // TODO: Local refresh token!
-            tokensExpireIn = 60 * 10; // Doesn't have meaning locally
+            const parsedCode = parseQuery(code);
+            tokens = {
+                id_token: parsedCode.id_token,
+                access_token: parsedCode.access_token,
+                refresh_token: 'LOCAL_REFRESH_TOKEN', // TODO: Local refresh token!
+                expires_in: 60 * 10,
+            };
         } else {
             const clientId = environment.AuthClientId;
             const clientSecret = environment.AuthClientSecret;
             const signInRedirectUri = environment.AuthSignInRedirectUri;
             const tokenUrl = environment.AuthTokenUri;
             // Request tokens using the code
-            // https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html
-            const credentials = base64url.encode(`${clientId}:${clientSecret}`);
             try {
-                const tokenResponse = await request({
-                    method: 'POST',
-                    url: tokenUrl,
-                    headers: {
-                        'Authorization': `Basic ${credentials}`,
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: buildQuery({
-                        grant_type: 'authorization_code',
-                        client_id: clientId,
-                        redirect_uri: signInRedirectUri,
-                        code,
-                    }),
+                tokens = await requestTokens(tokenUrl, clientId, clientSecret, {
+                    grant_type: 'authorization_code',
+                    client_id: clientId,
+                    redirect_uri: signInRedirectUri,
+                    code,
                 });
-                const tokens = JSON.parse(tokenResponse.body);
-                accessToken = tokens.access_token;
-                idToken = tokens.id_token;
-                refreshToken = tokens.refresh_token;
-                tokensExpireIn = tokens.expires_in;
             } catch (error) {
                 // tslint:disable-next-line:no-console
                 console.error('Failed to retrieve authentication tokens:', error);
@@ -96,38 +81,10 @@ export class OAuth2SignInController implements Controller {
             }
         }
         // Parse user information from the ID token
-        const idTokenPayload = jwt.decode(idToken);
-        if (!idTokenPayload || typeof idTokenPayload !== 'object') {
-            throw new Error('AWS token endpoint responded with invalid ID token');
-        }
-        const accesTokenPayload = jwt.decode(accessToken);
-        if (!accesTokenPayload || typeof accesTokenPayload !== 'object') {
-            throw new Error('AWS token endpoint responded with invalid access token');
-        }
-        const sessionDuration = 60 * 60 * 3; // TODO: Make configurable!
-        const now = new Date();
-        const expiresAt = new Date(+now + sessionDuration * 1000);
-        const refreshAfter = new Date(+now + tokensExpireIn * 1000 / 2);
-        const userId: string = idTokenPayload.sub || accesTokenPayload.sub;
-        const userSession: UserSession = {
-            id: userId,
-            name: idTokenPayload.name,
-            email: idTokenPayload.email,
-            picture: idTokenPayload.picture,
-            groups: idTokenPayload['cognito:groups'] || [],
-            expiresAt,
-            authenticatedAt: now,
-            session: uuid4(),
-            refreshToken,
-            refreshedAt: now,
-            refreshAfter,
-        };
+        const userSession = parseUserSession(tokens, uuid4(), sessionDuration);
         const secretKey = context.sessionEncryptionKey;
         const sessionToken = await encryptSession(userSession, secretKey);
-        let setCookieHeader = `session=${sessionToken}; Max-Age=${sessionDuration}; HttpOnly; Path=/`;
-        if (region !== 'local') {
-            setCookieHeader = `${setCookieHeader}; Secure`;
-        }
+        const setCookieHeader = getSetSessionCookieHeader(sessionToken, sessionDuration, region);
         return {
             statusCode: 200,
             headers: {
@@ -137,8 +94,8 @@ export class OAuth2SignInController implements Controller {
             body: renderSigninCallbackHtml({
                 encodedAuthResult: buildQuery({
                     state,
-                    id_token: idToken,
-                    access_token: accessToken,
+                    id_token: tokens.id_token,
+                    access_token: tokens.access_token,
                 }),
             }),
         };
@@ -171,14 +128,10 @@ export class OAuth2SignOutController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
     public readonly pattern = new UrlPattern('/oauth2/signout');
     public readonly tables = [];
-    public readonly requiresAuth = false;
 
     public async execute(req: HttpRequest): Promise<HttpResponse> {
         const { region } = req;
-        let setCookieHeader = `session=; Path=/; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        if (region !== 'local') {
-            setCookieHeader = `${setCookieHeader}; Secure`;
-        }
+        const setCookieHeader = getSetSessionCookieHeader('', null, region);
         return {
             statusCode: 200,
             headers: {
@@ -188,4 +141,137 @@ export class OAuth2SignOutController implements Controller {
             body: signoutCallbackHtml,
         };
     }
+}
+
+export function authenticationMiddleware<P extends any[], R extends HttpResponse | ApiResponse>(handler: (request: HttpRequest, context: ServerContext, ...params: P) => Promise<R>) {
+    async function handleAuthentication(req: HttpRequest, context: ServerContext, ...params: P): Promise<R> {
+        const { region, headers, environment } = req;
+        const { sessionEncryptionKey } = context;
+        const keyStore = sessionEncryptionKey.keystore;
+        const cookieHeader = headers.Cookie;
+        const sessionTokenMatch = cookieHeader && /(?:^|;\s*)session=([^;]+)(?:$|;)/.exec(cookieHeader);
+        const sessionToken = sessionTokenMatch && sessionTokenMatch[1];
+        let cookieSession: UserSession | null = null;
+        if (sessionToken) {
+            try {
+                cookieSession = await decryptSession(sessionToken, keyStore);
+            } catch (error) {
+                // Invalid session token
+                // tslint:disable-next-line:no-console
+                console.warn(`Invalid session token: ${sessionToken}`, error);
+            }
+        }
+        let session: UserSession | null = cookieSession;
+        // Ensure that session has not yet expired
+        const now = new Date();
+        if (session && session.expiresAt <= now) {
+            // Session has expired. Delete the session token
+            session = null;
+        }
+        if (session && session.refreshAfter < now) {
+            if (region === 'local') {
+                // Dummy local renewal
+                // NOTE: This branch cannot be reached by production code,
+                // and even if would, the generated tokens won't be usable.
+                session = {
+                    ...session,
+                    refreshedAt: now,
+                    refreshAfter: new Date(+now + 1000 * 60 * 10),
+                };
+            } else {
+                const clientId = environment.AuthClientId;
+                const clientSecret = environment.AuthClientSecret;
+                const tokenUrl = environment.AuthTokenUri;
+                // Request tokens using the code
+                try {
+                    const tokens = await requestTokens(tokenUrl, clientId, clientSecret, {
+                        grant_type: 'refresh_token',
+                        client_id: clientId,
+                        refresh_token: session.refreshToken,
+                    });
+                    session = parseUserSession(tokens, session.session, sessionDuration);
+                } catch (error) {
+                    // tslint:disable-next-line:no-console
+                    console.error('Failed to renew authentication tokens:', error);
+                    // Could not renew the information, so assume not authenticated!
+                    session = null;
+                }
+            }
+        }
+        const authRequest: HttpRequest = { ...req, auth: session };
+        const response = await handler(authRequest, context, ...params);
+        if (session === cookieSession) {
+            // No change in the session
+            return response;
+        }
+        // Set a new cookie if the session has changed
+        // TODO: The Max-Age should be the actual remaining session duration!
+        const setCookieHeader = session
+            ? getSetSessionCookieHeader(await encryptSession(session, sessionEncryptionKey), sessionDuration, region)
+            : getSetSessionCookieHeader('', null, region);
+        return {
+            ...response,
+            headers: {
+                ...response.headers,
+                'Set-Cookie': setCookieHeader,
+            },
+        };
+    }
+    return handleAuthentication;
+}
+
+interface TokenResponse {
+    id_token: string;
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+}
+
+async function requestTokens(tokenUrl: string, clientId: string, clientSecret: string, query: {[key: string]: string}): Promise<TokenResponse> {
+    // https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html
+    const credentials = base64url.encode(`${clientId}:${clientSecret}`);
+    const tokenResponse = await request({
+        method: 'POST',
+        url: tokenUrl,
+        headers: {
+            'Authorization': `Basic ${credentials}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: buildQuery(query),
+    });
+    return JSON.parse(tokenResponse.body);
+}
+
+function parseUserSession(tokens: TokenResponse, sessionId: string, expiresIn: number): UserSession {
+    const idTokenPayload = jwt.decode(tokens.id_token);
+    if (!idTokenPayload || typeof idTokenPayload !== 'object') {
+        throw new Error('AWS token endpoint responded with invalid ID token');
+    }
+    const now = new Date();
+    const expiresAt = new Date(+now + expiresIn * 1000);
+    const refreshAfter = new Date(+now + tokens.expires_in * 1000 / 2);
+    const userId: string = idTokenPayload.sub;
+    return {
+        id: userId,
+        name: idTokenPayload.name,
+        email: idTokenPayload.email,
+        picture: idTokenPayload.picture,
+        groups: idTokenPayload['cognito:groups'] || [],
+        expiresAt,
+        authenticatedAt: now,
+        session: sessionId,
+        refreshToken: tokens.refresh_token,
+        refreshedAt: now,
+        refreshAfter,
+    };
+}
+
+function getSetSessionCookieHeader(token: string, maxAge: number | null, region: string): string {
+    let setCookieHeader = maxAge == null
+        ? `session=; Path=/; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
+        : `session=${token}; Max-Age=${maxAge}; HttpOnly; Path=/`;
+    if (region !== 'local') {
+        setCookieHeader = `${setCookieHeader}; Secure`;
+    }
+    return setCookieHeader;
 }

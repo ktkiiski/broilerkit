@@ -52,10 +52,6 @@ export interface Controller {
      */
     pattern: UrlPattern;
     /**
-     * Whether or not this controller requires authenticated user.
-     */
-    requiresAuth: boolean;
-    /**
      * Array of database tables required by this controller.
      */
     tables: Array<Table<any>>;
@@ -73,18 +69,16 @@ class ImplementedOperation implements Controller {
     public readonly methods: HttpMethod[];
     public readonly pattern: UrlPattern;
     public readonly tables: Array<Table<any>>;
-    public readonly requiresAuth: boolean;
 
     constructor(
         public readonly operation: Operation<any, any, AuthenticationType>,
         public readonly tablesByName: Tables<any>,
         private readonly handler: ResponseHandler<any, any, any, any>,
     ) {
-        const {methods, route, authType} = operation;
+        const {methods, route} = operation;
         this.methods = methods;
         this.pattern = route.pattern;
         this.tables = Object.values(tablesByName);
-        this.requiresAuth = authType !== 'none';
     }
 
     public async execute(request: HttpRequest, context: ServerContext): Promise<ApiResponse> {

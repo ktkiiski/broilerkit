@@ -850,15 +850,15 @@ export class Broiler {
         const controllersByName = server && server.controllersByName || {};
         const controllers = sort(
             flatMap(toPairs(controllersByName), function *([name, controller]) {
-                const { pattern, methods, requiresAuth } = controller;
+                const { pattern, methods } = controller;
                 const pathPattern = controller.pattern.pattern.replace(/^\/|\/$/g, '');
                 const path = pathPattern ? pathPattern.split('/') : [];
-                yield { name, methods, pattern, requiresAuth, path };
+                yield { name, methods, pattern, path };
                 if (path.length && /^\{.*\+\}$/.test(path[path.length - 1])) {
                     // If last path pattern is a all-matching placeholder,
                     // then this also should match when no placeholder is provided at all.
                     yield {
-                        name, methods, pattern, requiresAuth,
+                        name, methods, pattern,
                         path: path.slice(0, -1),
                     };
                 }
@@ -894,28 +894,16 @@ export class Broiler {
         }));
         // Build templates for every HTTP method, for every operation
         const apiMethods = flatMap(
-            controllers, ({methods, path, name, requiresAuth}) => methods.map(
-                (method) => ({method, path, name, requiresAuth}),
+            controllers, ({methods, path, name}) => methods.map(
+                (method) => ({method, path, name}),
             ),
         );
-        templatePromises.push(...apiMethods.filter(({requiresAuth, name, path, method}) => {
-            // Either ignore or fail if the user registry is not enabled but the operation requires one
-            const config = this.config;
-            if (config.auth || !requiresAuth) {
-                return true;
-            } else if (config.debug) {
-                this.log(yellow(`${bold('WARNING!')} The operation ${name} (${method} /${path.join('/')}) is not deployed because no user registry for authentication is configured!`));
-                return false;
-            }
-            throw new Error(`The operation ${name} (${method} /${path.join('/')}) requires user registry configured in the 'auth' property of your configuration!`);
-        }).map(
-            ({method, path, requiresAuth}) => readTemplates(['cloudformation-server-method.yml'], {
+        templatePromises.push(...apiMethods.map(
+            ({method, path}) => readTemplates(['cloudformation-server-method.yml'], {
                 ServerMethodName: getServerMethodLogicalId(path, method),
                 ServerResourceId: JSON.stringify(getServerResourceReference(path)),
                 ServerDeploymentId: serverHash.toUpperCase(),
                 ServerMethod: method,
-                AuthorizationType: requiresAuth ? '"COGNITO_USER_POOLS"' : '"NONE"',
-                AuthorizerId: JSON.stringify(requiresAuth ? {Ref: 'ApiGatewayUserPoolAuthorizer'} : ''),
             })),
         );
         // Enable CORS for every operation URL

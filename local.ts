@@ -5,14 +5,14 @@ import { watch } from './compile';
 import { BroilerConfig } from './config';
 import { escapeForShell, execute, spawn } from './exec';
 import { readFile, readStream } from './fs';
-import { HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
+import { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
 import { middleware, requestMiddleware } from './middleware';
+import { authenticationMiddleware } from './oauth';
 import { ApiService, ServerContext } from './server';
 import { transformValues } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import * as http from 'http';
-import * as jwt from 'jsonwebtoken';
 import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
@@ -153,13 +153,13 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
                 await convertNodeRequest(httpRequest, context)
             ));
-            // Set up the server for the view rendering
-            const executeServerRequest = nodeMiddleware(middleware(
-                localAuthenticationMiddleware(
-                    async (req) => service.execute(req, serverContext),
-                ),
-            ));
-            server = createServer(executeServerRequest);
+            // Set up the server
+            const executeServerRequest = middleware(
+                authenticationMiddleware(service.execute),
+            );
+            server = createServer(nodeMiddleware((req) => (
+                executeServerRequest(req, serverContext)
+            )));
             server.listen(serverPort);
         }
     } finally {
@@ -244,30 +244,6 @@ async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {s
     }
     return req;
 }
-
-const localAuthenticationMiddleware = requestMiddleware(async (req: HttpRequest) => {
-    const authHeader = req.headers.Authorization;
-    let auth: HttpAuth | null = null;
-    if (authHeader) {
-        const authTokenMatch = /^Bearer\s+(\S+)$/.exec(authHeader);
-        if (!authTokenMatch) {
-            throw new Unauthorized(`Invalid authorization header`);
-        }
-        try {
-            const payload = jwt.verify(authTokenMatch[1], 'LOCAL_SECRET') as any;
-            auth = {
-                id: payload.sub,
-                name: payload.name,
-                email: payload.email,
-                picture: payload.picture || null,
-                groups: payload['cognito:groups'] || [],
-            };
-        } catch {
-            throw new Unauthorized(`Invalid access token`);
-        }
-    }
-    return {...req, auth};
-});
 
 function colorizeStatusCode(statusCode: HttpStatus): string {
     const codeStr = String(statusCode);

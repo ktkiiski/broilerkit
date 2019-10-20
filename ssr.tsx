@@ -20,7 +20,6 @@ export class SsrController implements Controller {
     public readonly methods = ['GET' as const];
     public readonly pattern = new UrlPattern('/{path+}');
     public readonly tables = this.apiService.tables;
-    public readonly requiresAuth = false;
 
     constructor(
         private readonly apiService: ApiService,

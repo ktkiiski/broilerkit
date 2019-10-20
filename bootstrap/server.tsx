@@ -8,7 +8,7 @@ import { Pool } from 'pg';
 import { readFile } from '../fs';
 import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
 import { middleware } from '../middleware';
-import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
+import { authenticationMiddleware, OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
 import { ApiService, ServerContext } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
@@ -71,10 +71,7 @@ const serverContext$ = Promise
         return { dbConnectionPool, sessionEncryptionKey };
     });
 
-const executeLambda = lambdaMiddleware(middleware(async (req) => {
-    const context = await serverContext$;
-    return service.execute(req, context);
-}));
+const executeService = middleware(authenticationMiddleware(service.execute));
 
 /**
  * AWS Lambda compatible handler function that processes the given
@@ -85,9 +82,10 @@ const executeLambda = lambdaMiddleware(middleware(async (req) => {
  * with the bundler. Therefore, this function can only be called from
  * the actual bundled script.
  */
-export const request: LambdaHttpHandler = async (lambdaRequest) => (
-    executeLambda(lambdaRequest)
-);
+export const request: LambdaHttpHandler = lambdaMiddleware(async (req) => {
+    const context = await serverContext$;
+    return executeService(req, context);
+});
 
 function getApiService() {
     let apiModule;
