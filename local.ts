@@ -1,11 +1,13 @@
+import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { URL } from 'url';
 import { watch } from './compile';
 import { BroilerConfig } from './config';
+import { escapeForShell, execute, spawn } from './exec';
 import { readFile, readStream } from './fs';
 import { HttpAuth, HttpMethod, HttpRequest, HttpResponse, HttpStatus, Unauthorized } from './http';
 import { middleware, requestMiddleware } from './middleware';
-import { ApiService } from './server';
+import { ApiService, ServerContext } from './server';
 import { transformValues } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
@@ -17,8 +19,13 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 
 import chalk from 'chalk';
-import { escapeForShell, execute, spawn } from './exec';
 const { cyan, green, red, yellow } = chalk;
+
+const rawSessionEncryptionKey = {
+    kty: 'oct',
+    alg: 'A256GCM',
+    k: 'oiMylNiaLGsxzrHl3yjGZlaIM4P-agX8ikIlK8pp3Eo',
+};
 
 /**
  * Runs the Webpack development server.
@@ -91,7 +98,11 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
         user: 'postgres',
         idleTimeoutMillis: 60 * 1000,
     });
-    const serverContext = { dbConnectionPool };
+    const sessionEncryptionKey = await JWK.asKey(rawSessionEncryptionKey);
+    const serverContext: ServerContext = {
+        dbConnectionPool,
+        sessionEncryptionKey,
+    };
     const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
     let server: http.Server | undefined;
     try {

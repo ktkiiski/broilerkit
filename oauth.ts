@@ -1,9 +1,12 @@
 import base64url from 'base64url';
+import * as jwt from 'jsonwebtoken';
 import { BadRequest, HttpMethod, HttpRequest, HttpResponse } from './http';
 import { tmpl } from './interpolation';
 import { request } from './request';
-import { Controller } from './server';
+import { Controller, ServerContext } from './server';
+import { encryptSession, UserSession } from './sessions';
 import { buildQuery, parseQuery, UrlPattern } from './url';
+import { uuid4 } from './uuid';
 
 export const OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME = 'oauth2SignInCallback' as const;
 export const OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME = 'oauth2SignOutCallback' as const;
@@ -36,7 +39,7 @@ export class OAuth2SignInController implements Controller {
     public readonly tables = [];
     public readonly requiresAuth = false;
 
-    public async execute(req: HttpRequest): Promise<HttpResponse> {
+    public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
         const { region, queryParameters, environment } = req;
         const { code, state } = queryParameters;
         if (!code) {
@@ -45,14 +48,17 @@ export class OAuth2SignInController implements Controller {
         if (!state) {
             throw new BadRequest(`Missing "state" URL parameter`);
         }
-        const authResult: Record<string, string> = { state };
+        let refreshToken: string;
+        let accessToken: string;
+        let idToken: string;
         if (region === 'local') {
             // Dummy local sign in
             // NOTE: This branch cannot be reached by production code,
             // and even if would, the generated tokens won't be usable.
             const tokens = parseQuery(code);
-            authResult.access_token = tokens.access_token;
-            authResult.id_token = tokens.id_token;
+            accessToken = tokens.access_token;
+            idToken = tokens.id_token;
+            refreshToken = 'LOCAL_REFRESH_TOKEN'; // TODO: Local refresh token!
         } else {
             const clientId = environment.AuthClientId;
             const clientSecret = environment.AuthClientSecret;
@@ -77,21 +83,58 @@ export class OAuth2SignInController implements Controller {
                     }),
                 });
                 const tokens = JSON.parse(tokenResponse.body);
-                authResult.access_token = tokens.access_token;
-                authResult.id_token = tokens.id_token;
+                accessToken = tokens.access_token;
+                idToken = tokens.id_token;
+                refreshToken = tokens.refresh_token;
             } catch (error) {
                 // tslint:disable-next-line:no-console
                 console.error('Failed to retrieve authentication tokens:', error);
                 throw new BadRequest('Authentication failed due to invalid "code" URL parameter');
             }
         }
+        // Parse user information from the ID token
+        const idTokenPayload = jwt.decode(idToken);
+        if (!idTokenPayload || typeof idTokenPayload !== 'object') {
+            throw new Error('AWS token endpoint responded with invalid ID token');
+        }
+        const accesTokenPayload = jwt.decode(accessToken);
+        if (!accesTokenPayload || typeof accesTokenPayload !== 'object') {
+            throw new Error('AWS token endpoint responded with invalid access token');
+        }
+        const exp = Math.min(idTokenPayload.exp, accesTokenPayload.exp);
+        const timestamp = Math.floor(new Date().getTime() / 1000);
+        const expiresAt = new Date(exp * 1000);
+        const maxAge = Math.max(exp - timestamp, 0);
+        const userId: string = idTokenPayload.sub || accesTokenPayload.sub;
+        const userSession: UserSession = {
+            id: userId,
+            name: idTokenPayload.name,
+            email: idTokenPayload.email,
+            picture: idTokenPayload.picture,
+            groups: idTokenPayload['cognito:groups'] || [],
+            expiresAt,
+            authenticatedAt: new Date(),
+            session: uuid4(),
+            refreshToken,
+        };
+        const secretKey = context.sessionEncryptionKey;
+        const sessionToken = await encryptSession(userSession, secretKey);
+        let setCookieHeader = `session=${sessionToken}; Max-Age=${maxAge}; HttpOnly; Path=/`;
+        if (region !== 'local') {
+            setCookieHeader = `${setCookieHeader}; Secure`;
+        }
         return {
             statusCode: 200,
             headers: {
                 'Content-Type': 'text/html',
+                'Set-Cookie': setCookieHeader,
             },
             body: renderSigninCallbackHtml({
-                encodedAuthResult: buildQuery(authResult),
+                encodedAuthResult: buildQuery({
+                    state,
+                    id_token: idToken,
+                    access_token: accessToken,
+                }),
             }),
         };
     }
@@ -126,12 +169,16 @@ export class OAuth2SignOutController implements Controller {
     public readonly requiresAuth = false;
 
     public async execute(req: HttpRequest): Promise<HttpResponse> {
-        // tslint:disable-next-line:no-console
-        console.log(`Sign out callback:`, req.path, req.queryParameters);
+        const { region } = req;
+        let setCookieHeader = `session=; Path=/; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        if (region !== 'local') {
+            setCookieHeader = `${setCookieHeader}; Secure`;
+        }
         return {
             statusCode: 200,
             headers: {
                 'Content-Type': 'text/html',
+                'Set-Cookie': setCookieHeader,
             },
             body: signoutCallbackHtml,
         };

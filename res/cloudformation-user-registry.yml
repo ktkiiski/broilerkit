@@ -210,6 +210,15 @@ Resources:
       ProviderARNs:
         - Fn::GetAtt: UserPool.Arn
 
+  # Make authentication and user configuration information available for the server-side
+  # Lambda function as environment variables
+  ServerLambdaFunction:
+    Properties:
+      Environment:
+        Variables:
+          USER_SESSION_ENCRYPTION_KEY_SECRET_ARN:
+            Ref: UserSessionEncryptionKeySecret
+
   # Make the user pool client information available for server-side rendering Lambda function
   # as API Gateway stage variables
   ServerApiGatewayStage:
@@ -231,8 +240,6 @@ Resources:
           Ref: UserPoolClient
         AuthClientSecret:
           Fn::GetAtt: UserPoolClientSecret.ClientSecret
-        UserSessionEncryptionKeySecretArn:
-          Ref: UserSessionEncryptionKeySecret
 
   # A lambda function that adds the 'picture' claim to the ID tokens on authentication
   UserPoolPreTokenGenerationLambdaFunction:

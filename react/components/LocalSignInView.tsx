@@ -30,7 +30,7 @@ function LocalSignInView({location}: RouteComponentProps) {
     async function signInAs(user: User) {
         const accessTokenPayload = {
             sub: user.id,
-            exp: +new Date() + 1000 * 60 * 60,
+            exp: Math.floor(new Date().getTime() / 1000) + 60 * 60,
         };
         const idTokenPayload = {
             ...accessTokenPayload,

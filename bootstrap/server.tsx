@@ -3,6 +3,7 @@
  * This is used as an endpoint file for a webpack bundle!
  */
 import { SecretsManager } from 'aws-sdk';
+import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { readFile } from '../fs';
 import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
@@ -38,7 +39,7 @@ const secretsManagerService = new SecretsManager({
     httpOptions: { timeout: 5 * 1000 },
     maxRetries: 3,
 });
-const databaseCredentials$ = secretsManagerService.getSecretValue({ SecretId: credentialsArn })
+const dbConnectionPool$ = secretsManagerService.getSecretValue({ SecretId: credentialsArn })
     .promise()
     .then(({ SecretString: secret }) => {
         if (!secret) {
@@ -51,17 +52,24 @@ const databaseCredentials$ = secretsManagerService.getSecretValue({ SecretId: cr
         if (typeof password !== 'string' || !password) {
             throw new Error('Secrets manager credentials are missing "password"');
         }
-        return { username, password };
+        return new Pool({ ...databaseBaseConfig, user: username, password });
+    });
+const secretArn = process.env.USER_SESSION_ENCRYPTION_KEY_SECRET_ARN as string;
+const sessionEncryptionKey$ = secretsManagerService.getSecretValue({ SecretId: secretArn })
+    .promise()
+    .then(async ({ SecretString: secret }) => {
+        if (!secret) {
+            throw new Error('Response does not contain a SecretString');
+        }
+        const keyJson = JSON.parse(secret);
+        return JWK.asKey(keyJson);
     });
 
-const serverContext$ = databaseCredentials$.then((credentials): ServerContext => {
-    const dbConnectionPool = new Pool({
-        ...databaseBaseConfig,
-        user: credentials.username,
-        password: credentials.password,
+const serverContext$ = Promise
+    .all([dbConnectionPool$, sessionEncryptionKey$])
+    .then(([dbConnectionPool, sessionEncryptionKey]): ServerContext => {
+        return { dbConnectionPool, sessionEncryptionKey };
     });
-    return { dbConnectionPool };
-});
 
 const executeLambda = lambdaMiddleware(middleware(async (req) => {
     const context = await serverContext$;

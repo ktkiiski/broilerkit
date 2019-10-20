@@ -1,9 +1,10 @@
 // tslint:disable:member-ordering
+import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { Handler, ResponseHandler } from './api';
 import { Model, Table } from './db';
-import { ApiResponse, HttpResponse, OK } from './http';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
+import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
@@ -35,6 +36,10 @@ export interface ServerContext {
      * available for the requests.
      */
     dbConnectionPool: Pool;
+    /**
+     * Encryption key for user sessions.
+     */
+    sessionEncryptionKey: JWK.Key;
 }
 
 export interface Controller {
