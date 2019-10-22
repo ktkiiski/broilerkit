@@ -189,6 +189,7 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
                         client_id: clientId,
                         refresh_token: session.refreshToken,
                     });
+                    tokens.refresh_token = session.refreshToken;
                     session = parseUserSession(tokens, session.session, sessionDuration);
                 } catch (error) {
                     // tslint:disable-next-line:no-console
