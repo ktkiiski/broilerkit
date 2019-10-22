@@ -307,6 +307,25 @@ Resources:
           Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ServerLambdaFunction.Arn}/invocations"
       MethodResponses: []
 
+  # Enabled HTTP method for an API resource
+  ServerRootApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: ANY
+      ResourceId:
+        Fn::GetAtt: ServerApiGatewayRestApi.RootResourceId
+      RestApiId:
+        Ref: ServerApiGatewayRestApi
+      RequestParameters: {}
+      AuthorizationType: NONE
+      Integration:
+        # NOTE: Lambda execution endpoint is always called with POST
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ServerLambdaFunction.Arn}/invocations"
+      MethodResponses: []
+
   # The role that is used by the Lambda function execution
   LambdaExecutionIamRole:
     Type: AWS::IAM::Role
@@ -414,6 +433,7 @@ Resources:
         Ref: ServerApiGatewayRestApi
     DependsOn:
     - ServerProxyApiGatewayMethod
+    - ServerRootApiGatewayMethod
 
   # Stage for the API gateway
   ServerApiGatewayStage:
