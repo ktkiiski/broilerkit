@@ -63,19 +63,9 @@ export interface LambdaHttpRequest {
 export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void | Promise<LambdaHttpResponse>;
 
 export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequest): Promise<HttpRequest> => {
-    const {httpMethod, isBase64Encoded, requestContext} = request;
+    const { httpMethod, isBase64Encoded } = request;
     const queryParameters = request.queryStringParameters || {};
     const headers = request.headers || {};
-    const authorizer = requestContext && requestContext.authorizer;
-    const claims = authorizer && authorizer.claims || null;
-    const groupsStr = claims && claims['cognito:groups'];
-    const auth = claims && {
-        id: claims.sub,
-        name: claims.name,
-        email: claims.email,
-        picture: claims.picture || null,
-        groups: groupsStr ? groupsStr.split(',') : [],
-    };
     const body = isBase64Encoded && request.body
         // Decode base64 encoded body
         ? Buffer.from(request.body, 'base64').toString()
@@ -101,7 +91,8 @@ export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequ
         environment, region,
         serverRoot,
         serverOrigin,
-        auth,
+        // Auth will be set by another middleware
+        auth: null,
         // Read the directory path from environment variables
         // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
     };

@@ -12,16 +12,16 @@ import { isDoesNotExistsError } from './aws/utils';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
 import { ensureDirectoryExists, fileExists, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
-import { HttpMethod, HttpStatus, isResponse } from './http';
+import { HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
 import { getDbFilePath, launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
 import { readAnswer } from './readline';
 import { ApiService } from './server';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
-import { difference, differenceBy, order, sort } from './utils/arrays';
-import { flatMap, union } from './utils/arrays';
-import { buildObject, forEachKey, mapObject, toPairs, transformValues } from './utils/objects';
-import { capitalize, upperFirst } from './utils/strings';
+import { difference, differenceBy, order } from './utils/arrays';
+import { union } from './utils/arrays';
+import { buildObject, forEachKey, toPairs } from './utils/objects';
+import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';
 
@@ -41,7 +41,6 @@ import { askParameters } from './parameters';
 import { PostgreSqlConnection, PostgreSqlDbModel, RemotePostgreSqlConnection, SqlConnection } from './postgres';
 import { retryWithBackoff } from './retry';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
-import { groupBy } from './utils/groups';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -817,7 +816,6 @@ export class Broiler {
         }
         const templates = await Promise.all([
             template$,
-            this.generateServerTemplate(server),
             this.generateDbTemplates(),
         ]);
         if (parameters) {
@@ -844,86 +842,6 @@ export class Broiler {
             });
         }
         return templates.reduce(mergeTemplates);
-    }
-
-    private async generateServerTemplate(server: ApiService): Promise<any> {
-        const controllersByName = server && server.controllersByName || {};
-        const controllers = sort(
-            flatMap(toPairs(controllersByName), function *([name, controller]) {
-                const { pattern, methods } = controller;
-                const pathPattern = controller.pattern.pattern.replace(/^\/|\/$/g, '');
-                const path = pathPattern ? pathPattern.split('/') : [];
-                yield { name, methods, pattern, path };
-                if (path.length && /^\{.*\+\}$/.test(path[path.length - 1])) {
-                    // If last path pattern is a all-matching placeholder,
-                    // then this also should match when no placeholder is provided at all.
-                    yield {
-                        name, methods, pattern,
-                        path: path.slice(0, -1),
-                    };
-                }
-            }),
-            ({pattern}) => pattern.pattern,
-        );
-        const serverHash = await this.getSiteHash();
-        if (!serverHash) {
-            // No API to be deployed
-            return;
-        }
-        // Collect all the template promises to an array
-        const templatePromises: Array<Promise<any>> = [];
-        // Build templates for the HTTP server Lambda function
-        templatePromises.push(readTemplates(['cloudformation-server-function.yml']));
-        // Build templates for every API Gateway Resource
-        const nestedServerResources = flatMap(controllers, ({path}) => (
-            path.map((_, index) => path.slice(0, index + 1))
-        ));
-        templatePromises.push(Promise.resolve({
-            Resources: nestedServerResources.map((path) => ({
-                [getServerResourceLogicalId(path)]: {
-                    Type: 'AWS::ApiGateway::Resource',
-                    Properties: {
-                        ParentId: getServerResourceReference(path.slice(0, -1)),
-                        PathPart: path[path.length - 1],
-                        RestApiId: {
-                            Ref: 'ServerApiGatewayRestApi',
-                        },
-                    },
-                },
-            })).reduce((a, b) => ({...a, ...b}), {}), // Shallow-merge required
-        }));
-        // Build templates for every HTTP method, for every operation
-        const apiMethods = flatMap(
-            controllers, ({methods, path, name}) => methods.map(
-                (method) => ({method, path, name}),
-            ),
-        );
-        templatePromises.push(...apiMethods.map(
-            ({method, path}) => readTemplates(['cloudformation-server-method.yml'], {
-                ServerMethodName: getServerMethodLogicalId(path, method),
-                ServerResourceId: JSON.stringify(getServerResourceReference(path)),
-                ServerDeploymentId: serverHash.toUpperCase(),
-                ServerMethod: method,
-            })),
-        );
-        // Enable CORS for every operation URL
-        const methodsByPath = transformValues(
-            groupBy(controllers, ({path}) => formatPathForLogicalId(path)),
-            (controllers) => controllers.reduce((result, {path, methods}) => ({
-                ...result, path, methods: union(result.methods, methods),
-            })),
-        );
-        templatePromises.push(...mapObject(methodsByPath, ({path, methods}) => {
-            return readTemplates(['cloudformation-server-resource-cors.yml'], {
-                ServerMethodName: getServerMethodLogicalId(path, 'OPTIONS'),
-                ServerResourceId: JSON.stringify(getServerResourceReference(path)),
-                ServerResourceAllowedMethods: methods.join(','),
-                ServerDeploymentId: serverHash.toUpperCase(),
-            });
-        }));
-        // Merge everything together
-        const templates = await Promise.all(templatePromises);
-        return templates.reduce(mergeTemplates, {});
     }
 
     private async generateDbTemplates(): Promise<any> {
@@ -1218,33 +1136,6 @@ function formatResourceDelete(resource: CloudFormation.StackResource): string {
         ResourceStatus: 'DELETE_COMPLETED',
         ResourceStatusReason: undefined,
     });
-}
-
-function getServerResourceLogicalId(urlPath: string[]) {
-    return `Endpoint${formatPathForLogicalId(urlPath)}ApiGatewayResource`;
-}
-
-function getServerResourceReference(urlPath: string[]) {
-    if (urlPath.length) {
-        return {Ref: getServerResourceLogicalId(urlPath)};
-    }
-    // Refer to the root resource
-    return {'Fn::GetAtt': ['ServerApiGatewayRestApi', 'RootResourceId']};
-}
-
-function getServerMethodLogicalId(urlPath: string[], method: HttpMethod) {
-    return `Endpoint${formatPathForLogicalId(urlPath)}${capitalize(method)}ApiGatewayMethod`;
-}
-
-function formatPathForLogicalId(urlPath: string[]) {
-    return urlPath.map((path) => {
-        const match = /^{(.*)}$/.exec(path);
-        // We replace each '{xxxx}' with just 'ID', otherwise
-        // different "placeholders" would cause errors.
-        const component = match ? 'ID' : path;
-        // Convert from snake_case to CamelCase
-        return component.replace(/(?:^|[\W_]+)(\w)/g, (_, letter) => letter.toUpperCase());
-    }).join('');
 }
 
 function formatStatus(status: string): string {
