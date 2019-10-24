@@ -30,7 +30,7 @@ import * as path from 'path';
 import * as File from 'vinyl';
 
 import chalk from 'chalk';
-import { Client } from 'pg';
+import { Client, Pool } from 'pg';
 import { clean } from './clean';
 import { users } from './cognito';
 import { Table } from './db';
@@ -225,6 +225,7 @@ export class Broiler {
         if (opts.auth) {
             tables.push(users);
         }
+        let dbConnectionPool: Pool | null = null;
         if (tables.length) {
             process.stdout.write(`Connecting to the database...`);
             // Ensure that the database is running
@@ -245,10 +246,17 @@ export class Broiler {
             } finally {
                 await client.end();
             }
+            dbConnectionPool = new Pool({
+                host: 'localhost',
+                port: 54320,
+                database: 'postgres',
+                user: 'postgres',
+                idleTimeoutMillis: 60 * 1000,
+            });
         }
         await Promise.all([
             serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.serverRoot}/`)}`)),
-            serveBackEnd(opts, params),
+            serveBackEnd(opts, params, dbConnectionPool),
         ]);
     }
 

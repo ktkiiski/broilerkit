@@ -35,11 +35,11 @@ export interface ServerContext {
      * A pool for PostgreSQL database connections
      * available for the requests.
      */
-    dbConnectionPool: Pool;
+    dbConnectionPool: Pool | null;
     /**
      * Encryption key for user sessions.
      */
-    sessionEncryptionKey: JWK.Key;
+    sessionEncryptionKey: JWK.Key | null;
 }
 
 export interface Controller {
@@ -106,9 +106,10 @@ class ImplementedOperation implements Controller {
         }
         // Handle the request
         const { region, environment } = request;
-        const sqlConnection = new PostgreSqlPoolConnection(context.dbConnectionPool);
+        const { dbConnectionPool } = context;
+        const sqlConnection = dbConnectionPool && new PostgreSqlPoolConnection(dbConnectionPool);
         try {
-            const models = transformValues(tablesByName, (table) => (
+            const models = !sqlConnection ? {} : transformValues(tablesByName, (table) => (
                 table.getModel(region, environment, sqlConnection)
             ));
             const {data, ...response} = await this.handler(input, models, request);
@@ -121,7 +122,9 @@ class ImplementedOperation implements Controller {
             return {...response, data: responseSerializer.serialize(data)};
         } finally {
             // Ensure that any database connection is released to the pool
-            await sqlConnection.disconnect();
+            if (sqlConnection) {
+                await sqlConnection.disconnect();
+            }
         }
     }
 }

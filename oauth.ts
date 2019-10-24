@@ -2,7 +2,7 @@ import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
 import { authSerializer } from './auth';
 import { encodeSafeJSON } from './html';
-import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse } from './http';
+import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse, NotImplemented } from './http';
 import { tmpl } from './interpolation';
 import { request } from './request';
 import { Controller, ServerContext } from './server';
@@ -43,6 +43,10 @@ export class OAuth2SignInController implements Controller {
     public readonly tables = [];
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
+        const { sessionEncryptionKey } = context;
+        if (!sessionEncryptionKey) {
+            throw new NotImplemented(`Authentication is not enabled`);
+        }
         const { region, queryParameters, environment } = req;
         const { code, state, error, error_description } = queryParameters;
         if (error) {
@@ -96,8 +100,7 @@ export class OAuth2SignInController implements Controller {
         }
         // Parse user information from the ID token
         const userSession = parseUserSession(tokens, uuid4(), sessionDuration);
-        const secretKey = context.sessionEncryptionKey;
-        const sessionToken = await encryptSession(userSession, secretKey);
+        const sessionToken = await encryptSession(userSession, sessionEncryptionKey);
         const setCookieHeader = getSetSessionCookieHeader(sessionToken, sessionDuration, region);
         return {
             statusCode: 200,
@@ -167,6 +170,9 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
     async function handleAuthentication(req: HttpRequest, context: ServerContext, ...params: P): Promise<R> {
         const { region, headers, environment } = req;
         const { sessionEncryptionKey } = context;
+        if (!sessionEncryptionKey) {
+            throw new NotImplemented(`Authentication is not enabled`);
+        }
         const keyStore = sessionEncryptionKey.keystore;
         const cookieHeader = headers.Cookie;
         const sessionTokenMatch = cookieHeader && /(?:^|;\s*)session=([^;]+)(?:$|;)/.exec(cookieHeader);

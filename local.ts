@@ -80,8 +80,12 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
 /**
  * Runs the REST API development server.
  */
-export async function serveBackEnd(options: BroilerConfig, params: {[param: string]: string}) {
-    const {serverRoot, buildDir, projectRootPath} = options;
+export async function serveBackEnd(
+    options: BroilerConfig,
+    params: {[param: string]: string},
+    dbConnectionPool: Pool | null,
+) {
+    const { auth, serverRoot, buildDir, projectRootPath } = options;
     const serverRootUrl = new URL(serverRoot);
     const serverOrigin = serverRootUrl.origin;
     const serverProtocol = serverRootUrl && serverRootUrl.protocol;
@@ -91,14 +95,7 @@ export async function serveBackEnd(options: BroilerConfig, params: {[param: stri
         throw new Error(`HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(/^https/, 'http')} instead!`);
     }
     const htmlPagePath = path.resolve(buildDir, './index.html');
-    const dbConnectionPool = new Pool({
-        host: 'localhost',
-        port: 54320,
-        database: 'postgres',
-        user: 'postgres',
-        idleTimeoutMillis: 60 * 1000,
-    });
-    const sessionEncryptionKey = await JWK.asKey(rawSessionEncryptionKey);
+    const sessionEncryptionKey = auth ? await JWK.asKey(rawSessionEncryptionKey) : null;
     const serverContext: ServerContext = {
         dbConnectionPool,
         sessionEncryptionKey,

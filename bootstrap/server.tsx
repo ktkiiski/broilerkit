@@ -32,38 +32,34 @@ const databaseBaseConfig = {
     database: process.env.DATABASE_NAME as string,
     idleTimeoutMillis: 60 * 1000,
 };
-const credentialsArn = process.env.DATABASE_CREDENTIALS_ARN as string;
 const secretsManagerService = new SecretsManager({
     apiVersion: '2017-10-17',
     region,
     httpOptions: { timeout: 5 * 1000 },
     maxRetries: 3,
 });
-const dbConnectionPool$ = secretsManagerService.getSecretValue({ SecretId: credentialsArn })
-    .promise()
-    .then(({ SecretString: secret }) => {
-        if (!secret) {
-            throw new Error('Response does not contain a SecretString');
-        }
-        const { username, password } = JSON.parse(secret);
-        if (typeof username !== 'string' || !username) {
-            throw new Error('Secrets manager credentials are missing "username"');
-        }
-        if (typeof password !== 'string' || !password) {
-            throw new Error('Secrets manager credentials are missing "password"');
-        }
-        return new Pool({ ...databaseBaseConfig, user: username, password });
-    });
-const secretArn = process.env.USER_SESSION_ENCRYPTION_KEY_SECRET_ARN as string;
-const sessionEncryptionKey$ = secretsManagerService.getSecretValue({ SecretId: secretArn })
-    .promise()
-    .then(async ({ SecretString: secret }) => {
-        if (!secret) {
-            throw new Error('Response does not contain a SecretString');
-        }
-        const keyJson = JSON.parse(secret);
-        return JWK.asKey(keyJson);
-    });
+const dbCredentialsSecretArn = process.env.DATABASE_CREDENTIALS_ARN;
+const dbConnectionPool$ = retrieveSecret(dbCredentialsSecretArn).then((secret) => {
+    if (secret == null) {
+        return null;
+    }
+    const { username, password } = JSON.parse(secret);
+    if (typeof username !== 'string' || !username) {
+        throw new Error('Secrets manager credentials are missing "username"');
+    }
+    if (typeof password !== 'string' || !password) {
+        throw new Error('Secrets manager credentials are missing "password"');
+    }
+    return new Pool({ ...databaseBaseConfig, user: username, password });
+});
+const encryptionSecretArn = process.env.USER_SESSION_ENCRYPTION_KEY_SECRET_ARN;
+const sessionEncryptionKey$ = retrieveSecret(encryptionSecretArn).then(async (secret) => {
+    if (secret == null) {
+        return null;
+    }
+    const keyJson = JSON.parse(secret);
+    return JWK.asKey(keyJson);
+});
 
 const serverContext$ = Promise
     .all([dbConnectionPool$, sessionEncryptionKey$])
@@ -96,4 +92,13 @@ function getApiService() {
         return new ApiService({});
     }
     return new ApiService(apiModule.default);
+}
+
+async function retrieveSecret(secretArn: string | undefined) {
+    if (!secretArn) {
+        return null;
+    }
+    const secretRequest = secretsManagerService.getSecretValue({ SecretId: secretArn });
+    const secretResponse = await secretRequest.promise();
+    return secretResponse.SecretString;
 }
