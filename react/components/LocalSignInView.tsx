@@ -28,21 +28,17 @@ function LocalSignInView({location}: RouteComponentProps) {
     const query = parseQuery(location.search);
 
     async function signInAs(user: User) {
-        const accessTokenPayload = {
-            sub: user.id,
-            exp: Math.floor(new Date().getTime() / 1000) + 60 * 60,
-        };
         const idTokenPayload = {
-            ...accessTokenPayload,
+            'sub': user.id,
+            'exp': Math.floor(new Date().getTime() / 1000) + 60 * 60,
             'email': user.email,
             'name': user.name,
             'picture': user.picture,
             'cognito:groups': isAdmin ? ['Administrators'] : [],
         };
         // Create the JWT token
-        const accessToken = sign(accessTokenPayload, 'LOCAL_SECRET');
         const idToken = sign(idTokenPayload, 'LOCAL_SECRET');
-        const code = buildQuery({ id_token: idToken, access_token: accessToken });
+        const code = buildQuery({ id_token: idToken });
         const redirectQuery = buildQuery({code, state: query.state});
         window.location.href = `${query.redirect_uri}?${redirectQuery}`;
     }

@@ -1,3 +1,4 @@
+import { UserSession } from './sessions';
 import { forEachKey } from './utils/objects';
 import { capitalize, splitOnce } from './utils/strings';
 
@@ -49,14 +50,6 @@ export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 
 
 export interface HttpHeaders {
     [header: string]: string;
-}
-
-export interface HttpAuth {
-    id: string;
-    email: string;
-    name: string;
-    picture: string | null;
-    groups: string[];
 }
 
 export interface HttpRequest {
@@ -112,11 +105,11 @@ export interface HttpRequest {
      * User that has been authenticated for the request, containing basic the
      * information stored to the access or identity token.
      */
-    auth: HttpAuth | null;
+    auth: UserSession | null;
 }
 
 export interface AuthenticatedHttpRequest extends HttpRequest {
-    auth: HttpAuth;
+    auth: UserSession;
 }
 
 export interface HttpResponse {

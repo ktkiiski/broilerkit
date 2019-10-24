@@ -1,25 +1,25 @@
-import { parseJwt } from './jwt';
-import { sessionStorage } from './storage';
-import { parseQuery } from './url';
-import { pick } from './utils/objects';
+import { datetime, email, list, nullable, string, url } from './fields';
+import { serializer } from './serializers';
 import { randomize, stripPrefix } from './utils/strings';
 import { waitForClose } from './window';
 
-export interface AuthUser {
+export interface Auth {
     id: string;
-    email: string;
+    email: string | null;
     picture: string | null;
-    name: string;
-}
-
-export interface AuthTokens {
-    accessToken: string;
-    idToken: string;
-}
-
-export interface Auth extends AuthUser, AuthTokens {
+    name: string | null;
+    groups: string[];
     expiresAt: Date;
 }
+
+export const authSerializer = serializer({
+    id: string(),
+    email: nullable(email()),
+    picture: nullable(url()),
+    name: nullable(string()),
+    groups: list(string()),
+    expiresAt: datetime(),
+});
 
 export type AuthSubscriber = (auth: Auth | null) => void;
 export type AuthIdentityProvider = 'Facebook' | 'Google';
@@ -29,16 +29,44 @@ export interface AuthOptions {
     signOutUri: string;
     signInRedirectUri: string;
     signOutRedirectUri: string;
+    auth: Auth | null;
 }
 
-export class AuthClient {
+export interface AuthClient {
+    signIn(identityProvider?: AuthIdentityProvider): Promise<Auth>;
+    signOut(): Promise<void>;
+    demandAuthentication(): Promise<Auth>;
+    getAuthentication(): Auth | null;
+    subscribeAuthentication(fn: (auth: Auth | null) => void): () => void;
+}
 
-    private readonly storageKey = 'auth';
+export class DummyAuthClient implements AuthClient {
+    constructor(private readonly auth: Auth | null) {}
+    public signIn(): never {
+        throw new Error('Signing in not supported');
+    }
+    public signOut(): never {
+        throw new Error('Signing in not supported');
+    }
+    public demandAuthentication(): never {
+        throw new Error('Demanding authentication not supported');
+    }
+    public getAuthentication(): Auth | null {
+        return this.auth;
+    }
+    public subscribeAuthentication(): never {
+        throw new Error('Authentication cannot be subscribed');
+    }
+}
+
+export class BrowserAuthClient implements AuthClient {
+
     private readonly signInUri: string;
     private readonly signOutUri: string;
     private readonly signInRedirectUri: string;
     private readonly signOutRedirectUri: string;
-    private auth?: Auth | null;
+    private auth!: Auth | null;
+    private authExpirationTimeout?: any;
 
     private authListeners: Array<(auth: Auth | null) => void> = [];
 
@@ -53,10 +81,7 @@ export class AuthClient {
         this.signOutUri = signOutUri
             + '?logout_uri=' + encodeURIComponent(signOutRedirectUri)
             + '&client_id=' + encodeURIComponent(clientId);
-        const tokens = sessionStorage.getItem(this.storageKey);
-        if (tokens && typeof tokens.accessToken === 'string' && typeof tokens.idToken === 'string') {
-            this.setTokens(tokens);
-        }
+        this.setAuthentication(options.auth);
     }
 
     /**
@@ -69,7 +94,6 @@ export class AuthClient {
      *
      * When to call this:
      * - User clicks the "Sign in" button
-     * - Token has expired and the login should be refreshed
      *
      * @param identityProvider Optional name of the provider to use when logging in
      */
@@ -78,8 +102,9 @@ export class AuthClient {
         const signInUri = this.getSignInUri(state, identityProvider);
         const dialog = this.launchUri(signInUri);
         try {
-            const accessToken = await this.waitForSignInPostMessage(dialog, state);
-            return this.setTokens(accessToken);
+            const auth = await this.waitForSignInPostMessage(dialog, state);
+            this.setAuthentication(auth);
+            return auth;
         } finally {
             try {
                 dialog.close();
@@ -91,7 +116,6 @@ export class AuthClient {
 
     /**
      * Ensures that the user is logged out.
-     * Deletes any tokens from the memory and the storage.
      * Shortly opens a popup and redirects through the authorization
      * server and ensures that next time authentication attempt is made,
      * the user will be prompted to sign in again.
@@ -102,7 +126,7 @@ export class AuthClient {
      * When to call this:
      * - User clicks the "Sign out" button
      */
-    public async signOut(): Promise<null> {
+    public async signOut(): Promise<void> {
         const dialog = this.launchUri(this.signOutUri);
         // Open the dialog for signing out from the authentication service
         // NOTE: No need to wait until this is done
@@ -113,7 +137,7 @@ export class AuthClient {
                 // Maybe already closed. Ignore the error
             }
         });
-        return this.setTokens(null);
+        this.setAuthentication(null);
     }
 
     /**
@@ -130,81 +154,8 @@ export class AuthClient {
     }
 
     /**
-     * Use this method to get the access token right before making an
-     * API request to the server, to be included to the Authorization header.
-     *
-     * If the user is not authenticated, or any previous token has expired,
-     * (i.e. there is no valid access token stored), the user will be signed in.
-     * Because this may open a pop-up, only call this in a `click` event handler,
-     * to prevent pop-up blockers to prevent the window to be opened.
-     */
-    public async demandAccessToken(): Promise<string> {
-        const token = this.getAccessToken();
-        if (token) {
-            return token;
-        }
-        const auth = await this.signIn();
-        return auth.accessToken;
-    }
-
-    /**
-     * Use this method to get the identity token right before making an
-     * API request to the server, to be included to the Authorization header.
-     *
-     * If the user is not authenticated, or any previous token has expired,
-     * (i.e. there is no valid identity token stored), the user will be signed in.
-     * Because this may open a pop-up, only call this in a `click` event handler,
-     * to prevent pop-up blockers to prevent the window to be opened.
-     */
-    public async demandIdToken(): Promise<string> {
-        const token = this.getIdToken();
-        if (token) {
-            return token;
-        }
-        const auth = await this.signIn();
-        return auth.idToken;
-    }
-
-    /**
-     * Returns the current access token if the user is authenticated and the token
-     * has not expired yet. Otherwise returns null.
-     */
-    public getAccessToken(now = new Date()): string | null {
-        const {auth} = this;
-        return auth && now < auth.expiresAt && auth.accessToken || null;
-    }
-
-    /**
-     * Returns the current identity token if the user is authenticated and the token
-     * has not expired yet. Otherwise returns null.
-     */
-    public getIdToken(now = new Date()): string | null {
-        const {auth} = this;
-        return auth && now < auth.expiresAt && auth.idToken || null;
-    }
-
-    /**
-     * Returns the currently authenticated user, null if not logged in,
-     * or undefined if unknown.
-     *
-     * The returned value can be:
-     * - `null` if the user is not signed in
-     * - `undefined` if the authentication status is not yet known
-     * - an object if the user is signed in, with the following attributes:
-     *      - `id`: an unique ID of the user
-     *      - `name`: the name of the user
-     *      - `email`: email of the user
-     *      - `picture`: URL of the profile picture of the user
-     */
-    public getUser() {
-        const {auth} = this;
-        // TODO: Create the user object when setting the auth for immutability
-        return auth && pick(auth, ['id', 'name', 'email', 'picture']);
-    }
-
-    /**
      * Returns the current authentication state if the user is authenticated.
-     * The access token may or may not be expired. If not signed in, returns null.
+     * If not signed in, returns null.
      *
      * The returned value can be:
      * - `null` if the user is not signed in
@@ -214,9 +165,8 @@ export class AuthClient {
      *      - `name`: the name of the user
      *      - `email`: email of the user
      *      - `picture`: URL of the profile picture of the user
-     *      - `accessToken`: the latest access token (which may or may not be expired)
      */
-    public getAuthentication(): Auth | null | undefined {
+    public getAuthentication() {
         return this.auth;
     }
 
@@ -224,11 +174,11 @@ export class AuthClient {
      * Subscribes to the authentication, calling the callback whenever
      * the authentication changes.
      */
-    public subscribeAuthentication(fn: (auth: Auth | null | undefined) => void): () => void {
+    public subscribeAuthentication(fn: (auth: Auth | null) => void): () => void {
         const {authListeners} = this;
         // Wrap as a async function to avoid rising errors through
-        async function listener(auth: Auth | null | undefined) {
-            await (fn(auth) as any);
+        async function listener(auth: Auth | null) {
+            fn(auth);
         }
         listener(this.getAuthentication());
         authListeners.push(listener);
@@ -243,7 +193,20 @@ export class AuthClient {
     }
 
     private setAuthentication(auth: Auth | null) {
+        if (this.authExpirationTimeout != null) {
+            clearTimeout(this.authExpirationTimeout);
+            delete this.authExpirationTimeout;
+        }
         this.auth = auth;
+        if (auth) {
+            const now = new Date();
+            const { expiresAt } = auth;
+            const expiresIn = expiresAt.getTime() - now.getTime();
+            // Clear authentication once expired
+            this.authExpirationTimeout = setTimeout(() => {
+                this.setAuthentication(null);
+            }, expiresIn);
+        }
         for (const listener of this.authListeners) {
             listener(this.auth);
         }
@@ -262,8 +225,8 @@ export class AuthClient {
         return dialog;
     }
 
-    private waitForSignInPostMessage(win: Window, requiredState: string): Promise<AuthTokens> {
-        return new Promise<AuthTokens>((resolve, reject) => {
+    private async waitForSignInPostMessage(win: Window, requiredState: string): Promise<Auth> {
+        const authMessage = await new Promise<string>((resolve, reject) => {
             const listener = (event: MessageEvent) => {
                 if (this.signInRedirectUri.indexOf(`${event.origin}/`) !== 0) {
                     // Message is from unknown origin
@@ -275,33 +238,7 @@ export class AuthClient {
                 }
                 // Some result available, failed or not. No need to listen postMessages any more
                 window.removeEventListener('message', listener);
-
-                try {
-                    const {error, error_description, state, access_token, id_token} = parseQuery(resultStr.replace(/^#/, ''));
-                    // Check that no error attribute is present
-                    if (error) {
-                        if (error_description) {
-                            throw new Error(`Authentication failed: ${error_description}`);
-                        } else {
-                            throw new Error(`Authentication failed due to '${error}'`);
-                        }
-                    }
-                    // The access token must be present
-                    if (!access_token) {
-                        throw new Error(`Authentication failed due to missing access token`);
-                    }
-                    // The ID token token must be present
-                    if (!id_token) {
-                        throw new Error(`Authentication failed due to missing ID token`);
-                    }
-                    // The state parameter must equal to the original
-                    if (state !== requiredState) {
-                        throw new Error(`Authentication resulted in invalid state: suspecting a cross-site forgery attempt`);
-                    }
-                    resolve({accessToken: access_token, idToken: id_token});
-                } catch (err) {
-                    reject(err);
-                }
+                resolve(resultStr);
             };
             window.addEventListener('message', listener);
             waitForClose(win).then(() => {
@@ -309,6 +246,20 @@ export class AuthClient {
                 reject(new Error(`Authentication failed due to closed window`));
             });
         });
+        const { error, error_description, state, auth } = JSON.parse(authMessage);
+        // Check that no error attribute is present
+        if (error) {
+            if (error_description) {
+                throw new Error(`Authentication failed: ${error_description}`);
+            } else {
+                throw new Error(`Authentication failed due to '${error}'`);
+            }
+        }
+        // The state parameter must equal to the original
+        if (state !== requiredState) {
+            throw new Error(`Authentication resulted in invalid state: suspecting a cross-site forgery attempt`);
+        }
+        return authSerializer.deserialize(auth);
     }
 
     private waitForSignOutPostMessage(win: Window): Promise<void> {
@@ -339,28 +290,4 @@ export class AuthClient {
         }
         return uri;
     }
-
-    private setTokens(tokens: null): null;
-    private setTokens(tokens: AuthTokens): Auth;
-    private setTokens(tokens: AuthTokens | null): Auth | null {
-        const auth = tokens && parseAuth(tokens);
-        sessionStorage.setItem(this.storageKey, tokens);
-        this.setAuthentication(auth);
-        return auth;
-    }
-}
-
-function parseAuth(tokens: AuthTokens) {
-    const idTokenPayload = parseJwt(tokens.idToken);
-    const accesTokenPayload = parseJwt(tokens.accessToken);
-    const exp = Math.min(idTokenPayload.exp, accesTokenPayload.exp);
-    const userId = idTokenPayload.sub || accesTokenPayload.sub;
-    return {
-        id: userId,
-        name: idTokenPayload.name,
-        email: idTokenPayload.email,
-        picture: idTokenPayload.picture,
-        expiresAt: new Date(exp * 1000),
-        ...tokens,
-    };
 }

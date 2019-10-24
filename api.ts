@@ -29,17 +29,8 @@ abstract class BaseApi<T extends Operation<any, any, any>> {
     }
 
     private async getToken(): Promise<string | null> {
-        const {authClient} = this.client;
-        const {authType} = this.operation;
-        if (authType === 'none') {
-            // No authentication required, but return the token if available
-            return authClient && authClient.getIdToken() || null;
-        } else if (authClient) {
-            // Authentication required, so demand a token
-            return await authClient.demandIdToken();
-        }
-        // Authentication required but no auth client defined
-        throw new Error(`API endpoint requires authentication but no authentication client is defined.`);
+        // TODO: Remove this, as the authentication happens with a cookie
+        return null;
     }
 }
 

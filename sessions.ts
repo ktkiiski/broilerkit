@@ -1,11 +1,15 @@
 import base64url from 'base64url';
 import { JWK } from 'node-jose';
 import { datetime, email, list, nullable, string, url, uuid } from './fields';
-import { HttpAuth } from './http';
 import { serializer } from './serializers';
 import { decryptToken, encryptToken } from './tokens';
 
-export interface UserSession extends HttpAuth {
+export interface UserSession {
+    id: string;
+    email: string;
+    name: string;
+    picture: string | null;
+    groups: string[];
     session: string;
     expiresAt: Date;
     authenticatedAt: Date;

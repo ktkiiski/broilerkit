@@ -1,5 +1,7 @@
 import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
+import { authSerializer } from './auth';
+import { encodeSafeJSON } from './html';
 import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse } from './http';
 import { tmpl } from './interpolation';
 import { request } from './request';
@@ -42,7 +44,20 @@ export class OAuth2SignInController implements Controller {
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
         const { region, queryParameters, environment } = req;
-        const { code, state } = queryParameters;
+        const { code, state, error, error_description } = queryParameters;
+        if (error) {
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'text/html',
+                },
+                body: renderSigninCallbackHtml({
+                    encodedAuthResult: encodeSafeJSON({
+                        state, error, error_description,
+                    }),
+                }),
+            };
+        }
         if (!code) {
             throw new BadRequest(`Missing "code" URL parameter`);
         }
@@ -57,7 +72,6 @@ export class OAuth2SignInController implements Controller {
             const parsedCode = parseQuery(code);
             tokens = {
                 id_token: parsedCode.id_token,
-                access_token: parsedCode.access_token,
                 refresh_token: 'LOCAL_REFRESH_TOKEN', // TODO: Local refresh token!
                 expires_in: 60 * 10,
             };
@@ -92,10 +106,16 @@ export class OAuth2SignInController implements Controller {
                 'Set-Cookie': setCookieHeader,
             },
             body: renderSigninCallbackHtml({
-                encodedAuthResult: buildQuery({
+                encodedAuthResult: encodeSafeJSON({
                     state,
-                    id_token: tokens.id_token,
-                    access_token: tokens.access_token,
+                    auth: authSerializer.serialize({
+                        id: userSession.id,
+                        name: userSession.name,
+                        email: userSession.email,
+                        groups: userSession.groups,
+                        picture: userSession.picture,
+                        expiresAt: userSession.expiresAt,
+                    }),
                 }),
             }),
         };
@@ -223,7 +243,6 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
 
 interface TokenResponse {
     id_token: string;
-    access_token: string;
     refresh_token: string;
     expires_in: number;
 }

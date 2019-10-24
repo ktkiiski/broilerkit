@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
-import { AuthOptions } from './auth';
+import { Auth, AuthOptions, DummyAuthClient } from './auth';
 import { Client, CollectionCache, CollectionState, DummyClient, Listing, ResourceCache, ResourceState, Retrieval } from './client';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { ApiResponse, HttpRequest, HttpResponse, HttpStatus, Redirect } from './http';
@@ -42,7 +42,10 @@ async function renderView(
     view: React.ComponentType<{}>,
     executeApiRequest: RequestHandler,
 ): Promise<HttpResponse> {
-    const {serverOrigin, environment} = request;
+    const { serverOrigin, environment, auth } = request;
+    const clientAuth: Auth | null = auth && pick(
+        auth, ['id', 'email', 'name', 'groups', 'picture', 'expiresAt'],
+    );
     const requestQuery = buildQuery(request.queryParameters);
     const location = {
         pathname: request.path,
@@ -50,8 +53,8 @@ async function renderView(
     };
     const retrievals: Retrieval[] = [];
     const listings: Listing[] = [];
-    // TODO: Dummy auth client?
-    let client = new DummyClient(retrievals, listings, {}, {});
+    const authClient = new DummyAuthClient(clientAuth);
+    let client = new DummyClient(authClient, retrievals, listings, {}, {});
     // On the first render, we just find out which resources the view requests
     let renderResult = render(view, client, location);
     // If at least one request was made, perform it and add to cache
@@ -63,7 +66,7 @@ async function renderView(
             executeListings(execute, listings, request),
         ]);
         // Re-render, now with the cache populated in the Client
-        client = new DummyClient(null, null, resourceCache, collectionCache);
+        client = new DummyClient(authClient, null, null, resourceCache, collectionCache);
         renderResult = render(view, client, location);
     }
     const {viewHtml, meta, routerContext} = renderResult;
@@ -82,13 +85,14 @@ async function renderView(
         'document.getElementById("app")',
         encodePrettySafeJSON(serverOrigin),
         // Parameters for the AuthClient
-        encodePrettySafeJSON(
+        encodePrettyJavaScript(
             environment.AuthClientId && {
                 clientId: environment.AuthClientId,
                 signInUri: environment.AuthSignInUri,
                 signOutUri: environment.AuthSignOutUri,
                 signInRedirectUri: environment.AuthSignInRedirectUri,
                 signOutRedirectUri: environment.AuthSignOutRedirectUri,
+                auth: clientAuth,
             } as AuthOptions || null,
         ),
         // Populate the state cache for the client

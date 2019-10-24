@@ -1,12 +1,15 @@
 import * as React from 'react';
 import { useContext, useMemo } from 'react';
+import { DummyAuthClient } from '../auth';
 import { Client, DummyClient } from '../client';
 
 /**
  * Context for a API client that is used when binding to
  * API resources and actions.
  */
-export const ClientContext = React.createContext<Client>(new DummyClient(null, null, {}, {}));
+export const ClientContext = React.createContext<Client>(
+    new DummyClient(new DummyAuthClient(null), null, null, {}, {}),
+);
 
 export function useClient(): Client {
     return useContext(ClientContext);

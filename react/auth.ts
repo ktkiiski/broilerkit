@@ -3,12 +3,12 @@ import { Auth, AuthClient } from '../auth';
 import { isEqual } from '../utils/compare';
 import { useClient } from './client';
 
-export function useAuth(): Auth | null | undefined {
-    const {authClient} = useClient();
-    // TODO: Provide auth as initial value when the SSR is aware of the authentication!
-    const [auth, setAuth] = useState(undefined as Auth | null | undefined);
+export function useAuth(): Auth | null {
+    const client = useClient();
+    const authClient = validateAuthClient(client.authClient);
+    const [auth, setAuth] = useState<Auth | null>(authClient.getAuthentication());
     useEffect(() => {
-        return validateAuthClient(authClient).subscribeAuthentication((newAuth) => {
+        return authClient.subscribeAuthentication((newAuth) => {
             if (!isEqual(newAuth, auth, 1)) {
                 setAuth(newAuth);
             }
@@ -17,12 +17,13 @@ export function useAuth(): Auth | null | undefined {
     return auth;
 }
 
-export function useUserId(): string | null | undefined {
-    const {authClient} = useClient();
-    // TODO: Provide auth as initial value when the SSR is aware of the authentication!
-    const [userId, setUserId] = useState(undefined as string | null | undefined);
+export function useUserId(): string | null {
+    const client = useClient();
+    const authClient = validateAuthClient(client.authClient);
+    const initAuth = authClient.getAuthentication();
+    const [userId, setUserId] = useState<string | null>(initAuth && initAuth.id);
     useEffect(() => {
-        return validateAuthClient(authClient).subscribeAuthentication((auth) => {
+        return authClient.subscribeAuthentication((auth) => {
             const newUserId = auth && auth.id;
             if (!isEqual(newUserId, userId, 1)) {
                 setUserId(newUserId);
@@ -33,18 +34,21 @@ export function useUserId(): string | null | undefined {
 }
 
 export function useRequireAuth(): () => Promise<Auth> {
-    const {authClient} = useClient();
-    return () => validateAuthClient(authClient).demandAuthentication();
+    const client = useClient();
+    const authClient = validateAuthClient(client.authClient);
+    return () => authClient.demandAuthentication();
 }
 
 export function useSignIn(): () => Promise<Auth> {
-    const {authClient} = useClient();
-    return () => validateAuthClient(authClient).signIn();
+    const client = useClient();
+    const authClient = validateAuthClient(client.authClient);
+    return () => authClient.signIn();
 }
 
-export function useSignOut(): () => Promise<null> {
-    const {authClient} = useClient();
-    return () => validateAuthClient(authClient).signOut();
+export function useSignOut(): () => Promise<void> {
+    const client = useClient();
+    const authClient = validateAuthClient(client.authClient);
+    return () => authClient.signOut();
 }
 
 function validateAuthClient(authClient?: AuthClient | null): AuthClient {
