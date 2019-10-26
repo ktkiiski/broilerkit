@@ -143,8 +143,6 @@ export async function serveBackEnd(
                     AuthClientId: 'LOCAL_AUTH_CLIENT_ID',
                     AuthSignInUri: `${serverRoot}/_oauth2_signin`,
                     AuthSignOutUri: `${serverRoot}/_oauth2_signout`,
-                    AuthSignInRedirectUri: `${serverRoot}/oauth2/signed_in`,
-                    AuthSignOutRedirectUri: `${serverRoot}/oauth2/signed_out`,
                 },
             };
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (

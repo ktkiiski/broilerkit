@@ -202,9 +202,10 @@ export class NotImplemented extends ExceptionResponse {
     public readonly statusCode = HttpStatus.NotImplemented;
 }
 
-export class Redirect extends Error implements ApiResponse<null> {
+export class Redirect extends Error implements ApiResponse<null>, HttpResponse {
     public readonly headers = { Location: this.url };
     public readonly data = null;
+    public readonly body = '';
     constructor(
         public readonly url: string,
         public readonly statusCode: HttpStatus.Found | HttpStatus.MovedPermanently = HttpStatus.Found,
@@ -252,6 +253,25 @@ export function acceptsContentType(request: HttpRequest, contentType: string): b
         }
     }
     return false;
+}
+
+export function parseCookies(cookieHeader: string) {
+    const cookies = {} as Record<string, string>;
+    cookieHeader = cookieHeader.trim();
+    if (!cookieHeader) {
+        return cookies;
+    }
+    const parts = cookieHeader.split(/\s*;\s*/g);
+    parts.forEach((part) => {
+        let [key, value] = splitOnce(part, '=');
+        key = key.trim();
+        if (key) {
+            value = (value || '').trim();
+            cookies[key] = value;
+        }
+        return cookies;
+    });
+    return cookies;
 }
 
 export function parseHeaders(headersString: string) {

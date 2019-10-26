@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
-import { Auth, AuthOptions, DummyAuthClient } from './auth';
+import { Auth, authSerializer, DummyAuthClient } from './auth';
 import { Client, CollectionCache, CollectionState, DummyClient, Listing, ResourceCache, ResourceState, Retrieval } from './client';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { ApiResponse, HttpRequest, HttpResponse, HttpStatus, Redirect } from './http';
@@ -42,10 +42,8 @@ async function renderView(
     view: React.ComponentType<{}>,
     executeApiRequest: RequestHandler,
 ): Promise<HttpResponse> {
-    const { serverOrigin, environment, auth } = request;
-    const clientAuth: Auth | null = auth && pick(
-        auth, ['id', 'email', 'name', 'groups', 'picture', 'expiresAt'],
-    );
+    const { serverOrigin, auth } = request;
+    const clientAuth: Auth | null = auth && authSerializer.validate(auth);
     const requestQuery = buildQuery(request.queryParameters);
     const location = {
         pathname: request.path,
@@ -85,16 +83,7 @@ async function renderView(
         'document.getElementById("app")',
         encodePrettySafeJSON(serverOrigin),
         // Parameters for the AuthClient
-        encodePrettyJavaScript(
-            environment.AuthClientId && {
-                clientId: environment.AuthClientId,
-                signInUri: environment.AuthSignInUri,
-                signOutUri: environment.AuthSignOutUri,
-                signInRedirectUri: environment.AuthSignInRedirectUri,
-                signOutRedirectUri: environment.AuthSignOutRedirectUri,
-                auth: clientAuth,
-            } as AuthOptions || null,
-        ),
+        encodePrettyJavaScript(clientAuth),
         // Populate the state cache for the client
         encodePrettyJavaScript(client.resourceCache),
         encodePrettyJavaScript(client.collectionCache),

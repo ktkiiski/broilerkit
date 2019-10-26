@@ -69,8 +69,6 @@ interface ResourceListener {
 const doNothing = () => { /* Does nothing */ };
 
 abstract class BaseClient implements Client {
-    public abstract authClient?: AuthClient | null;
-
     private optimisticChanges: Array<ResourceChange<any, any>> = [];
     private resourceListeners: ListMapping<ResourceListener> = {};
     private collectionListeners: ListMapping<CollectionListener> = {};
@@ -450,7 +448,7 @@ abstract class BaseClient implements Client {
 export class BrowserClient extends BaseClient implements Client {
     constructor(
         public readonly apiRoot: string,
-        public readonly authClient?: AuthClient | null,
+        public readonly authClient: AuthClient,
         resourceCache: ResourceCache = {},
         collectionCache: CollectionCache = {},
     ) {

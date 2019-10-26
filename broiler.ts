@@ -35,6 +35,8 @@ import { clean } from './clean';
 import { users } from './cognito';
 import { Table } from './db';
 import { createTable } from './migration';
+import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
+import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from './oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from './oauth';
 import { askParameters } from './parameters';
@@ -1056,6 +1058,8 @@ export class Broiler {
             const view = siteModule.default;
             return apiService.extend({
                 [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, Promise.resolve('')),
+                [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),
+                [OAUTH2_SIGNOUT_ENDPOINT_NAME]: new OAuth2SignOutController(),
                 [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedInController(),
                 [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
             });
