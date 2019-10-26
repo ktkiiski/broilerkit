@@ -124,9 +124,9 @@ Resources:
             - openid
           AllowedOAuthFlowsUserPoolClient: true
           CallbackURLs:
-            - Fn::Sub: ${ServerRoot}/oauth2/signin
+            - Fn::Sub: ${ServerRoot}/oauth2/signed_in
           LogoutURLs:
-            - Fn::Sub: ${ServerRoot}/oauth2/signout
+            - Fn::Sub: ${ServerRoot}/oauth2/signed_out
 
   # The client secret is not available natively via CloudFormation
   # We retrieve it with the custom resource
@@ -233,9 +233,9 @@ Resources:
         AuthTokenUri:
           Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
         AuthSignInRedirectUri:
-          Fn::Sub: "${ServerRoot}/oauth2/signin"
+          Fn::Sub: "${ServerRoot}/oauth2/signed_in"
         AuthSignOutRedirectUri:
-          Fn::Sub: "${ServerRoot}/oauth2/signout"
+          Fn::Sub: "${ServerRoot}/oauth2/signed_out"
         AuthClientId:
           Ref: UserPoolClient
         AuthClientSecret:

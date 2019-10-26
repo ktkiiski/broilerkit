@@ -37,9 +37,9 @@ if (window.opener != null) {
 
 const sessionDuration = 60 * 60 * 3; // TODO: Make configurable!
 
-export class OAuth2SignInController implements Controller {
+export class OAuth2SignedInController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
-    public readonly pattern = new UrlPattern('/oauth2/signin');
+    public readonly pattern = new UrlPattern('/oauth2/signed_in');
     public readonly tables = [];
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
@@ -147,9 +147,9 @@ if (window.opener != null) {
 </html>
 `;
 
-export class OAuth2SignOutController implements Controller {
+export class OAuth2SignedOutController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
-    public readonly pattern = new UrlPattern('/oauth2/signout');
+    public readonly pattern = new UrlPattern('/oauth2/signed_out');
     public readonly tables = [];
 
     public async execute(req: HttpRequest): Promise<HttpResponse> {
