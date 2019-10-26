@@ -6,8 +6,8 @@ import { decryptToken, encryptToken } from './tokens';
 
 export interface UserSession {
     id: string;
-    email: string;
-    name: string;
+    email: string | null;
+    name: string | null;
     picture: string | null;
     groups: string[];
     session: string;
@@ -20,8 +20,8 @@ export interface UserSession {
 
 interface UserSessionTokenPayload {
     sub: string;
-    name: string;
-    email: string;
+    name: string | null;
+    email: string | null;
     picture: string | null;
     groups: string[];
     auth_time: number;
@@ -34,8 +34,8 @@ interface UserSessionTokenPayload {
 
 const userSessionSerializer = serializer({
     id: uuid(),
-    name: string(),
-    email: email(),
+    name: nullable(string()),
+    email: nullable(email()),
     picture: nullable(url()),
     groups: list(string()),
     session: uuid(),
