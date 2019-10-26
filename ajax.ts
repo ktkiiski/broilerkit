@@ -1,4 +1,4 @@
-import { ApiResponse, HttpHeaders, HttpMethod, HttpResponse, HttpStatus, parseHeaders } from './http';
+import { ApiResponse, HttpMethod, HttpRequestHeaders, HttpResponse, HttpStatus, parseHeaders } from './http';
 
 const enum AjaxState {
     UNSENT = 0,
@@ -12,7 +12,7 @@ export interface AjaxRequest {
     method: HttpMethod;
     url: string;
     payload?: any;
-    headers?: HttpHeaders;
+    headers?: HttpRequestHeaders;
 }
 
 export async function ajax(request: AjaxRequest): Promise<ApiResponse> {
@@ -87,7 +87,7 @@ export class AjaxError extends Error implements ApiResponse {
     constructor(
         public readonly request: AjaxRequest,
         public readonly statusCode: HttpStatus | 0,
-        public readonly headers: HttpHeaders,
+        public readonly headers: HttpRequestHeaders,
         public readonly data: any = null,
         public readonly error?: Error | Event,
     ) {

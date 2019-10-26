@@ -136,7 +136,8 @@ function preconditionMiddleware<P extends any[]>(handler: (request: HttpRequest,
         if (method !== 'GET' && method !== 'HEAD') {
             return response;
         }
-        const etag = response.headers.ETag;
+        const etags = response.headers.ETag;
+        const etag = Array.isArray(etags) ? etags[0] : etags;
         const ifNoneMatch = request.headers['If-None-Match'];
         if (response.statusCode !== HttpStatus.OK || !etag || !ifNoneMatch) {
             return response;

@@ -48,8 +48,12 @@ export type HttpErrorStatus = HttpClientErrorStatus | HttpServerErrorStatus;
  */
 export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
-export interface HttpHeaders {
+export interface HttpRequestHeaders {
     [header: string]: string;
+}
+
+export interface HttpResponseHeaders {
+    [header: string]: string | string[];
 }
 
 export interface HttpRequest {
@@ -70,7 +74,7 @@ export interface HttpRequest {
     /**
      * HTTP headers as an object.
      */
-    headers: HttpHeaders;
+    headers: HttpRequestHeaders;
     /**
      * Query parameters parsed from the URL. This is an empty object if
      * the URL did not contain any query. URL decoding has been already made
@@ -114,7 +118,7 @@ export interface AuthenticatedHttpRequest extends HttpRequest {
 
 export interface HttpResponse {
     statusCode: HttpStatus;
-    headers: HttpHeaders;
+    headers: HttpResponseHeaders;
     body: string;
 }
 
@@ -134,18 +138,18 @@ export function isWriteHttpMethod(method: string): method is 'POST' | 'PUT' | 'P
 export interface ApiResponse<T = any> {
     readonly statusCode: HttpStatus;
     readonly data?: T;
-    readonly headers: HttpHeaders;
+    readonly headers: HttpResponseHeaders;
 }
 
 export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
     public readonly abstract statusCode: HttpSuccessStatus;
-    constructor(public readonly data: T, public readonly headers: HttpHeaders = {}) {}
+    constructor(public readonly data: T, public readonly headers: HttpResponseHeaders = {}) {}
 }
 
 export abstract class ExceptionResponse extends Error implements ApiResponse {
     public readonly abstract statusCode: HttpRedirectStatus | HttpErrorStatus;
     public readonly data: any;
-    constructor(message: string, data?: object, public readonly headers: HttpHeaders = {}) {
+    constructor(message: string, data?: object, public readonly headers: HttpResponseHeaders = {}) {
         super(message);
         this.data = {...data, message};
     }
@@ -161,7 +165,7 @@ export class Created<T> extends SuccesfulResponse<T> {
 
 export class NoContent extends SuccesfulResponse<void> {
     public readonly statusCode = HttpStatus.NoContent;
-    constructor(headers?: HttpHeaders) {
+    constructor(headers?: HttpResponseHeaders) {
         super(undefined, headers);
     }
 }
@@ -265,9 +269,9 @@ interface RawHttpHeaders {
     [header: string]: string | string[] | undefined | null;
 }
 
-export function normalizeHeaders(rawHeaders: RawHttpHeaders): HttpHeaders {
+export function normalizeHeaders(rawHeaders: RawHttpHeaders): {[header: string]: string} {
     const wordRegex = /\w+/g;
-    const headers: HttpHeaders = {};
+    const headers: {[header: string]: string} = {};
     forEachKey(rawHeaders, (rawHeader) => {
         const rawValue = rawHeaders[rawHeader];
         const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;

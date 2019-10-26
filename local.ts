@@ -200,7 +200,8 @@ function createServer<P extends any[]>(handler: (request: http.IncomingMessage, 
     return http.createServer(async (httpRequest, httpResponse) => {
         try {
             const response = await handler(httpRequest, ...args);
-            const contentType = response.headers['Content-Type'];
+            const contentTypes = response.headers['Content-Type'];
+            const contentType = Array.isArray(contentTypes) ? contentTypes[0] : contentTypes;
             const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
             const textColor = isHtml ? chalk.cyan :
                 httpRequest.method === 'OPTIONS' ? chalk.dim :

@@ -1,7 +1,5 @@
-import { HttpHeaders, HttpMethod, HttpRequest, HttpResponse } from './http';
-import { requestMiddleware } from './middleware';
-
-export type LambdaHttpResponse = HttpResponse;
+import { HttpMethod, HttpRequest, HttpRequestHeaders, HttpResponse, HttpStatus } from './http';
+import { transformValues } from './utils/objects';
 
 export interface LambdaCallback {
     (error: null | undefined, result: LambdaHttpResponse): void;
@@ -53,47 +51,67 @@ export interface LambdaHttpRequest {
     path: string;
     queryStringParameters: {[parameter: string]: string};
     pathParameters: {[parameter: string]: string};
-    headers: HttpHeaders;
+    headers: HttpRequestHeaders;
     stageVariables: {[variable: string]: string} | void;
     requestContext: LambdaHttpRequestContext;
     body?: string;
     isBase64Encoded?: boolean;
 }
 
-export type LambdaHttpHandler = (request: LambdaHttpRequest, _: any, callback: LambdaCallback) => void | Promise<LambdaHttpResponse>;
+export interface LambdaHttpResponse {
+    statusCode: HttpStatus;
+    multiValueHeaders: { [header: string]: string[] };
+    isBase64Encoded: boolean;
+    body: string;
+}
 
-export const lambdaMiddleware = requestMiddleware(async (request: LambdaHttpRequest): Promise<HttpRequest> => {
-    const { httpMethod, isBase64Encoded } = request;
-    const queryParameters = request.queryStringParameters || {};
-    const headers = request.headers || {};
-    const body = isBase64Encoded && request.body
-        // Decode base64 encoded body
-        ? Buffer.from(request.body, 'base64').toString()
-        : request.body
-    ;
-    const environment = request.stageVariables || {};
-    const region = environment.Region;
-    if (!region) {
-        throw new Error(`The Region stage variable is missing!`);
+export type LambdaHttpHandler = (request: LambdaHttpRequest, context: LambdaHttpRequestContext) => Promise<LambdaHttpResponse>;
+
+export function lambdaMiddleware(handler: (request: HttpRequest) => Promise<HttpResponse>): LambdaHttpHandler {
+    async function handleLambdaRequest(lambdaRequest: LambdaHttpRequest): Promise<LambdaHttpResponse> {
+        const { httpMethod, isBase64Encoded } = lambdaRequest;
+        const queryParameters = lambdaRequest.queryStringParameters || {};
+        const headers = lambdaRequest.headers || {};
+        const body = isBase64Encoded && lambdaRequest.body
+            // Decode base64 encoded body
+            ? Buffer.from(lambdaRequest.body, 'base64').toString()
+            : lambdaRequest.body
+        ;
+        const environment = lambdaRequest.stageVariables || {};
+        const region = environment.Region;
+        if (!region) {
+            throw new Error(`The Region stage variable is missing!`);
+        }
+        const serverOrigin = environment.ServerOrigin;
+        if (!serverOrigin) {
+            throw new Error(`The ServerOrigin stage variable is missing!`);
+        }
+        const serverRoot = environment.ServerRoot;
+        if (!serverRoot) {
+            throw new Error(`The ServerRoot stage variable is missing!`);
+        }
+        const request = {
+            method: httpMethod,
+            path: lambdaRequest.path,
+            queryParameters, headers, body,
+            environment, region,
+            serverRoot,
+            serverOrigin,
+            // Auth will be set by another middleware
+            auth: null,
+            // Read the directory path from environment variables
+            // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
+        };
+        const response = await handler(request);
+        const responseHeaders = transformValues(response.headers, (headerValue) => (
+            Array.isArray(headerValue) ? headerValue : [headerValue]
+        ));
+        return {
+            statusCode: response.statusCode,
+            multiValueHeaders: responseHeaders,
+            isBase64Encoded: false,
+            body: response.body,
+        };
     }
-    const serverOrigin = environment.ServerOrigin;
-    if (!serverOrigin) {
-        throw new Error(`The ServerOrigin stage variable is missing!`);
-    }
-    const serverRoot = environment.ServerRoot;
-    if (!serverRoot) {
-        throw new Error(`The ServerRoot stage variable is missing!`);
-    }
-    return {
-        method: httpMethod,
-        path: request.path,
-        queryParameters, headers, body,
-        environment, region,
-        serverRoot,
-        serverOrigin,
-        // Auth will be set by another middleware
-        auth: null,
-        // Read the directory path from environment variables
-        // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
-    };
-});
+    return handleLambdaRequest;
+}

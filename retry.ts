@@ -67,7 +67,8 @@ export async function retryRequestWithBackoff<T>(maxRetryCount: number, fn: (ret
                 throw error;
             }
             // Retry
-            const { 'Retry-After': retryAfter } = error.headers;
+            const { 'Retry-After': retryAfters } = error.headers;
+            const retryAfter = Array.isArray(retryAfters) ? retryAfters[0] : retryAfters;
             retryCount += 1;
             // Wait for a random portion of the total time spent
             await wait(getRetryDelay(startTime, retryAfter));
