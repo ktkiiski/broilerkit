@@ -27,11 +27,12 @@ export interface AuthClient {
     signOut(): Promise<void>;
     demandAuthentication(): Promise<Auth>;
     getAuthentication(): Auth | null;
+    setAuthentication(auth: Auth | null): void;
     subscribeAuthentication(fn: (auth: Auth | null) => void): () => void;
 }
 
 export class DummyAuthClient implements AuthClient {
-    constructor(private readonly auth: Auth | null) {}
+    constructor(private auth: Auth | null) {}
     public signIn(): never {
         throw new Error('Signing in not supported');
     }
@@ -43,6 +44,9 @@ export class DummyAuthClient implements AuthClient {
     }
     public getAuthentication(): Auth | null {
         return this.auth;
+    }
+    public setAuthentication(auth: Auth | null) {
+        this.auth = auth;
     }
     public subscribeAuthentication(): never {
         throw new Error('Authentication cannot be subscribed');
@@ -155,7 +159,7 @@ export class BrowserAuthClient implements AuthClient {
         };
     }
 
-    private setAuthentication(auth: Auth | null) {
+    public setAuthentication(auth: Auth | null) {
         if (this.authExpirationTimeout != null) {
             clearTimeout(this.authExpirationTimeout);
             delete this.authExpirationTimeout;

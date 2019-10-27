@@ -1,7 +1,7 @@
 import { ajax } from './ajax';
 import { AuthClient, DummyAuthClient } from './auth';
 import { ResourceChange } from './collections';
-import { ApiResponse, HttpMethod, isErrorResponse, NotImplemented } from './http';
+import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
 import { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import { Cursor } from './pagination';
 import { Url } from './url';
@@ -457,10 +457,19 @@ export class BrowserClient extends BaseClient implements Client {
 
     public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null) {
         const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
-        return await ajax({
-            url: `${this.apiRoot}${url}`,
-            method, payload, headers,
-        });
+        try {
+            return await ajax({
+                url: `${this.apiRoot}${url}`,
+                method, payload, headers,
+            });
+        } catch (error) {
+            // If a request returns 401, we assume that the user session has expired,
+            // i.e. the user is no longer signed in.
+            if (isResponse(error, HttpStatus.Unauthorized)) {
+                this.authClient.setAuthentication(null);
+            }
+            throw error;
+        }
     }
 
     /**
