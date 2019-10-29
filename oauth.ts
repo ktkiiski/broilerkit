@@ -1,6 +1,6 @@
 import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
-import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse, HttpStatus, NotImplemented, parseCookies, Redirect } from './http';
+import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse, HttpStatus, NotImplemented, parseCookies } from './http';
 import { request } from './request';
 import { Controller, ServerContext } from './server';
 import { decryptSession, encryptSession, UserSession } from './sessions';
@@ -68,14 +68,7 @@ export class OAuth2SignInController implements Controller {
         }
         const redirectUri = parseUrl(signInUri).withParameters(redirectUriParams);
         const signInCookieHeader = getSetCookieHeader('signin', state, signInTimeout, region, '/oauth2');
-        return {
-            statusCode: HttpStatus.Found,
-            headers: {
-                'Location': redirectUri.toString(),
-                'Set-Cookie': [signInCookieHeader],
-            },
-            body: '',
-        };
+        return redirect(redirectUri.toString(), [signInCookieHeader]);
     }
 }
 
@@ -93,9 +86,6 @@ export class OAuth2SignedInController implements Controller {
         const { code, state, error, error_description } = queryParameters;
         const callbackUri = `${req.serverOrigin}/oauth2/signed_in`;
         const cookies = parseCookies(headers.Cookie || '');
-        if (!code) {
-            throw new BadRequest(`Missing "code" URL parameter`);
-        }
         if (!state) {
             throw new BadRequest(`Missing "state" URL parameter`);
         }
@@ -123,18 +113,30 @@ export class OAuth2SignedInController implements Controller {
             if (identityProvider) {
                 retryUrl = retryUrl.withParameters({ identity_provider: identityProvider });
             }
-            return {
-                statusCode: HttpStatus.Found,
-                headers: {
-                    'Location': retryUrl.toString(),
-                    'Set-Cookie': getSetCookieHeader('signin', '', null, region, '/oauth2'),
-                },
-                body: '',
-            };
+            const setCookieHeader = getSetCookieHeader('signin', '', null, region, '/oauth2');
+            return redirect(retryUrl.toString(), [setCookieHeader]);
         }
         if (error) {
+            const linkErrorMatch =  /^already found an entry for username (Google|Facebook)_\w+/i.exec(error_description || '');
+            if (linkErrorMatch) {
+                // The failure is due to a bug/fuckup in AWS Cognito,
+                // when linking a signup user to an existing user. See:
+                // https://forums.aws.amazon.com/thread.jspa?threadID=267154
+                // To work around this, we re-authenticate with the user with the chosen provider.
+                const providerName = linkErrorMatch[1];
+                const retryUri = new Url('/oauth2/sign_in', {
+                    identity_provider: providerName,
+                    redirect_uri: redirectUri,
+                });
+                const setCookieHeader = getSetCookieHeader('signin', '', null, region, '/oauth2');
+                return redirect(retryUri.toString(), [setCookieHeader]);
+            }
+            // Other kind of authentication error
             const errorRedirectUri = parseUrl(redirectUri).withParameters({ error, error_description });
-            return new Redirect(errorRedirectUri.toString());
+            return redirect(errorRedirectUri.toString());
+        }
+        if (!code) {
+            throw new BadRequest(`Missing "code" URL parameter`);
         }
         let tokens: TokenResponse;
         if (region === 'local') {
@@ -170,14 +172,7 @@ export class OAuth2SignedInController implements Controller {
         const sessionToken = await encryptSession(userSession, sessionEncryptionKey);
         const signInCookieHeader = getSetCookieHeader('signin', '', null, region, '/oauth2');
         const sessionCookieHeader = getSetCookieHeader('session', sessionToken, sessionDuration, region);
-        return {
-            statusCode: HttpStatus.Found,
-            headers: {
-                'Location': redirectUri,
-                'Set-Cookie': [sessionCookieHeader, signInCookieHeader],
-            },
-            body: '',
-        };
+        return redirect(redirectUri, [sessionCookieHeader, signInCookieHeader]);
     }
 }
 
@@ -219,14 +214,7 @@ export class OAuth2SignOutController implements Controller {
         });
         const signOutCookieHeader = getSetCookieHeader('signout', state, signOutTimeout, region, '/oauth2');
         const sessionCookieHeader = getSetCookieHeader('session', '', null, region);
-        return {
-            statusCode: HttpStatus.Found,
-            headers: {
-                'Location': redirectUri.toString(),
-                'Set-Cookie': [sessionCookieHeader, signOutCookieHeader],
-            },
-            body: '',
-        };
+        return redirect(redirectUri.toString(), [sessionCookieHeader, signOutCookieHeader]);
     }
 }
 
@@ -258,14 +246,7 @@ export class OAuth2SignedOutController implements Controller {
         }
         const signOutCookieHeader = getSetCookieHeader('signout', '', null, region, '/oauth2');
         const setCookieHeader = getSetCookieHeader('session', '', null, region);
-        return {
-            statusCode: HttpStatus.Found,
-            headers: {
-                'Location': redirectUri,
-                'Set-Cookie': [setCookieHeader, signOutCookieHeader],
-            },
-            body: '',
-        };
+        return redirect(redirectUri, [setCookieHeader, signOutCookieHeader]);
     }
 }
 
@@ -406,4 +387,15 @@ function getSetCookieHeader(cookie: string, value: string, maxAge: number | null
         setCookieHeader = `${setCookieHeader}; Secure`;
     }
     return setCookieHeader;
+}
+
+function redirect(redirectUri: string, setCookies?: string[]): HttpResponse {
+    return {
+        statusCode: HttpStatus.Found,
+        headers: {
+            Location: redirectUri,
+            ...setCookies ? { 'Set-Cookie': setCookies } : null,
+        },
+        body: '',
+    };
 }
