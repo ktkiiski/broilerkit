@@ -4,14 +4,16 @@ import { forEachKey } from './utils/objects';
 import * as path from 'path';
 import * as YAML from 'yamljs';
 
+export async function readTemplate(templateFile: string, placeholders: {[placeholder: string]: string} = {}) {
+    const templateFilePath = path.resolve(__dirname, './res/', templateFile);
+    const templateStr = await readFile(templateFilePath);
+    return deserializeTemplate(templateStr, placeholders);
+}
+
 export async function readTemplates(templateFiles: string[], placeholders: {[placeholder: string]: string} = {}) {
-    const promises = templateFiles.map((templateFile) => readFile(path.resolve(__dirname, './res/', templateFile)));
-    const templates: any[] = [];
-    for (const promise of promises) {
-        const templateStr = await promise;
-        const template = deserializeTemplate(templateStr, placeholders);
-        templates.push(template);
-    }
+    const templates = await Promise.all(templateFiles.map(
+        (templateFile) => readTemplate(templateFile, placeholders),
+    ));
     return templates.reduce(mergeTemplates, {});
 }
 
@@ -44,7 +46,19 @@ export function dumpTemplate(template: any): string {
     return YAML.stringify(template, 8, 2);
 }
 
-function deserializeTemplate(template: string, placeholderValues: {[placeholder: string]: string}) {
+async function evaluateTemplateIncludes(template: string): Promise<string> {
+    const parts = template.split(/\s+!Include "([^"]+?)"/g);
+    // Every 2nd item is a filename, starting at index 1
+    for (let i = 1; i < parts.length; i += 2) {
+        const includedFileName = parts[i];
+        const includedFilePath = path.resolve(__dirname, './res/', includedFileName);
+        const includedContents = await readFile(includedFilePath);
+        parts[i] = ' ' + JSON.stringify(includedContents);
+    }
+    return parts.join('');
+}
+
+async function deserializeTemplate(template: string, placeholderValues: {[placeholder: string]: string}) {
     const replacedTemplate = template.replace(/<(\w+)>/g, (match, key) => {
         const value = placeholderValues[key];
         if (value == null) {
@@ -52,7 +66,8 @@ function deserializeTemplate(template: string, placeholderValues: {[placeholder:
         }
         return value;
     });
-    return YAML.parse(replacedTemplate);
+    const evaluatedTemplate = await evaluateTemplateIncludes(replacedTemplate);
+    return YAML.parse(evaluatedTemplate);
 }
 
 function isArray(value: any): value is any[] {

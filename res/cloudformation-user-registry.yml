@@ -35,7 +35,7 @@ Resources:
       - email
 
   # We need to perform a separate update to the UserPool, so that we can
-  # add the 'PreTokenGeneration' property to 'LambdaConfig', which
+  # add the trigger functions to 'LambdaConfig', which
   # the normal UserPool does not support
   UserPoolLambdaConfig:
     Type: Custom::CognitoUserPool
@@ -52,6 +52,8 @@ Resources:
         LambdaConfig:
           PreTokenGeneration:
             Fn::GetAtt: UserPoolPreTokenGenerationLambdaFunction.Arn
+          PreSignUp:
+            Fn::GetAtt: UserPoolPreSignUpLambdaFunction.Arn
       Create:
         Action: updateUserPool
       Update:
@@ -242,28 +244,13 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.handler
+      FunctionName:
+        Fn::Sub: "${AWS::StackName}-user-pre-token-generation"
       Role:
         Fn::GetAtt: LambdaExecutionIamRole.Arn
       Code:
-        ZipFile: |
-          exports.handler = (event, context, callback) => {
-            let picture = event.request.userAttributes.picture;
-            try {
-                picture = JSON.parse(picture).data.url;
-            } catch (err) {}
-            if (typeof picture !== 'string' || !/^https?:\/\//.test(picture)) {
-                picture = null;
-            }
-            event.response = {
-              "claimsOverrideDetails": {
-                "claimsToAddOrOverride": {
-                  "picture": picture,
-                }
-              }
-            };
-            callback(null, event);
-          };
-      Runtime: nodejs8.10
+        ZipFile: !Include "./lambda-user-pre-token-generation.js"
+      Runtime: nodejs10.x
       Timeout: 3
 
   # Grant the permission for the AWS Cognito to execute the Lambda trigger function
@@ -277,6 +264,43 @@ Resources:
       SourceArn:
         Fn::GetAtt: UserPool.Arn
 
+  # A lambda function that links a newly signed up user to any existing user with the same email
+  UserPoolPreSignUpLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      FunctionName:
+        Fn::Sub: "${AWS::StackName}-user-pre-signup"
+      Role:
+        Fn::GetAtt: LambdaExecutionIamRole.Arn
+      Code:
+        ZipFile: !Include "./lambda-user-pre-signup.js"
+      Runtime: nodejs10.x
+      Timeout: 30
+      Environment:
+        Variables:
+          USER_POOL_ID:
+            Ref: UserPool
+
+  # Grant the permission for the AWS Cognito to execute the Lambda trigger function
+  UserPoolPreSignupLambdaFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt: UserPoolPreSignUpLambdaFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn:
+        Fn::GetAtt: UserPool.Arn
+
+  # CloudWatch log group for pre-signup Lambda trigger function
+  UserPoolPreSignUpLambdaFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 90
+      LogGroupName:
+        Fn::Sub: "/aws/lambda/${AWS::StackName}-user-pre-signup"
+
   # Extend LambdaExecutionIamRolePolicy to allow operating on user pools
   LambdaExecutionIamRolePolicy:
     Properties:
@@ -287,6 +311,7 @@ Resources:
           Action:
           - cognito-idp:AdminDeleteUser
           - cognito-idp:AdminGetUser
+          - cognito-idp:AdminLinkProviderForUser
           - cognito-idp:AdminUpdateUserAttributes
           - cognito-idp:DeleteUser
           - cognito-idp:GetUser
