@@ -373,21 +373,22 @@ implements VersionedModel<S, PK, V, D> {
         const { serializer, tableName } = this;
         const params: any[] = [];
         const assignments: string[] = [];
-        const { fields } = serializer;
-        const columnNames = Object.keys(fields).map(escapeRef);
+        const { fields, identifyBy } = serializer;
+        const columns = keys(fields);
+        columns.forEach((key) => {
+            const value = values[key];
+            if (typeof value !== 'undefined' && !identifyBy.includes(key as PK)) {
+                assignments.push(makeAssignment(key, value, params));
+            }
+        });
         const conditions = keys(filters).map((filterKey) => {
             const filterValue = filters[filterKey];
             return makeComparison(filterKey, filterValue, params);
         });
-        keys(fields).forEach((key) => {
-            if (!this.serializer.identifyBy.includes(key as PK)) {
-                assignments.push(makeAssignment(key, values[key], params));
-            }
-        });
         const tblSql = escapeRef(tableName);
         const valSql = assignments.join(', ');
         const condSql = conditions.join(' AND ');
-        const colSql = columnNames.join(', ');
+        const colSql = columns.map(escapeRef).join(', ');
         const sql = `UPDATE ${tblSql} SET ${valSql} WHERE ${condSql} RETURNING ${colSql};`;
         return { text: sql, values: params };
     }
