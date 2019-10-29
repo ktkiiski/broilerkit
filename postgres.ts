@@ -122,9 +122,13 @@ export class RemotePostgreSqlConnection implements SqlConnection {
     public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
         const { resourceArn, secretArn, database } = this;
         const rdsDataApi = this.connect();
-        const parameters = buildDataApiParameters(params || []);
+        const parameters: RDSDataService.SqlParameter[] = (params || [])
+            .map(encodeDataApiFieldValue)
+            .map((value, index) => ({ value, name: String(index + 1) }));
+        const placeholderSql = sql.replace(/\$(\d+)/g, (_, index) => `:${index}`);
         const request = rdsDataApi.executeStatement({
-            resourceArn, secretArn, database, sql, parameters,
+            sql: placeholderSql,
+            resourceArn, secretArn, database, parameters,
             includeResultMetadata: true,
         });
         const { columnMetadata, numberOfRecordsUpdated, records } = await request.promise();
@@ -471,10 +475,6 @@ function escapeRef(identifier: string) {
     return JSON.stringify(identifier);
 }
 
-function buildDataApiParameters(values: unknown[]): RDSDataService.SqlParameter[] {
-    return values.map(encodeDataApiFieldValue).map((value) => ({ value }));
-}
-
 function encodeDataApiFieldValue(value: unknown) {
     if (typeof value == null) {
         return { isNull: true };
@@ -496,19 +496,34 @@ function decodeDataApiFieldValue(value: RDSDataService.Field) {
         return null;
     }
     if (value.stringValue != null) {
-        return value.stringValue;
+        return value.stringValue as string;
     }
     if (value.doubleValue != null) {
-        return value.doubleValue;
+        return value.doubleValue as number;
     }
     if (value.booleanValue != null) {
-        return value.booleanValue;
+        return value.booleanValue as boolean;
     }
     if (value.longValue != null) {
-        return value.longValue;
+        return value.longValue as number;
     }
     if (value.blobValue != null) {
         return value.blobValue.toString();
+    }
+    const { arrayValue } = value as any;
+    if (arrayValue != null) {
+        if (arrayValue.stringValues) {
+            return arrayValue.stringValues as string[];
+        }
+        if (arrayValue.doubleValues) {
+            return arrayValue.doubleValues as number[];
+        }
+        if (arrayValue.longValues) {
+            return arrayValue.longValues as number[];
+        }
+        if (arrayValue.booleanValues) {
+            return arrayValue.booleanValues as boolean[];
+        }
     }
     throw new Error(`Unsupported field value: ${JSON.stringify(value)}`);
 }

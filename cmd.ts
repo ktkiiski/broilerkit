@@ -74,9 +74,9 @@ yargs
         handler: (argv: any) => {
             const broiler = getBroiler(argv);
             if (argv.init) {
-                broiler.initialize().then(null, onError);
+                broiler.initialize().catch(onError);
             } else {
-                broiler.deploy().then(null, onError);
+                broiler.deploy().catch(onError);
             }
         },
     })
@@ -85,7 +85,7 @@ yargs
         describe: 'Deletes the previously deployed web app.',
         handler: (argv: CommandOptions) => {
             const broiler = getBroiler(argv);
-            broiler.undeploy().then(null, onError);
+            broiler.undeploy().catch(onError);
         },
     })
     .command({
@@ -104,7 +104,7 @@ yargs
                 follow: argv.f,
                 since: argv.since,
                 maxCount: argv.n,
-            }).then(null, onError);
+            }).catch(onError);
         },
     })
     .command({
@@ -113,7 +113,7 @@ yargs
         describe: 'Compile the web app.',
         handler: (argv: CommandOptions) => {
             const broiler = getBroiler(argv);
-            broiler.compile().then(null, onError);
+            broiler.compile().catch(onError);
         },
     })
     .command({
@@ -126,9 +126,9 @@ yargs
         handler: (argv: any) => {
             const broiler = getBroiler(argv);
             if (argv.template) {
-                broiler.printTemplate().then(null, onError);
+                broiler.printTemplate().catch(onError);
             } else {
-                broiler.preview().then(null, onError);
+                broiler.preview().catch(onError);
             }
         },
     })
@@ -137,7 +137,7 @@ yargs
         describe: 'Describes the deployed resources.',
         handler: (argv: CommandOptions) => {
             const broiler = getBroiler(argv);
-            broiler.printStack().then(null, onError);
+            broiler.printStack().catch(onError);
         },
     })
     .command({
@@ -146,7 +146,7 @@ yargs
         builder: (cmdYargs) => cmdYargs.default('stage', 'local'),
         handler: (argv: CommandOptions) => {
             const broiler = getBroiler(argv);
-            broiler.serve().then(null, onError);
+            broiler.serve().catch(onError);
         },
     })
     .command({
@@ -158,7 +158,15 @@ yargs
                 describe: 'List database tables',
                 handler: (argv: CommandOptions) => {
                     const broiler = getBroiler(argv);
-                    broiler.printTables().then(null, onError);
+                    broiler.printTables().catch(onError);
+                },
+            })
+            .command({
+                command: 'sql <stage> <sql> [params...]',
+                describe: 'Execute an SQL statement',
+                handler: (argv: CommandOptions & { sql: string, params: string[] }) => {
+                    const broiler = getBroiler(argv);
+                    broiler.executeSql(argv.sql, argv.params).catch(onError);
                 },
             })
             .command({
@@ -170,7 +178,7 @@ yargs
                 ,
                 handler: (argv: any) => {
                     const broiler = getBroiler(argv);
-                    broiler.printTableRows(argv.table, argv.pretty).then(null, onError);
+                    broiler.printTableRows(argv.table, argv.pretty).catch(onError);
                 },
             })
             .command({
@@ -187,7 +195,7 @@ yargs
                 ,
                 handler: (argv: any) => {
                     const broiler = getBroiler(argv);
-                    broiler.uploadTableRows(argv.table, argv.file).then(null, onError);
+                    broiler.uploadTableRows(argv.table, argv.file).catch(onError);
                 },
             })
             .command({
@@ -203,7 +211,7 @@ yargs
                 ,
                 handler: (argv: any) => {
                     const broiler = getBroiler(argv);
-                    broiler.backupDatabase(argv.path).then(null, onError);
+                    broiler.backupDatabase(argv.path).catch(onError);
                 },
             })
             .command({
@@ -225,7 +233,7 @@ yargs
                 ,
                 handler: (argv: any) => {
                     const broiler = getBroiler(argv);
-                    broiler.restoreDatabase(argv.path, argv.overwrite).then(null, onError);
+                    broiler.restoreDatabase(argv.path, argv.overwrite).catch(onError);
                 },
             })
             .command({
@@ -234,7 +242,7 @@ yargs
                 builder: (subCmdYargs) => subCmdYargs.default('stage', 'local'),
                 handler: (argv: CommandOptions) => {
                     const broiler = getBroiler(argv);
-                    broiler.openPsql().then(null, onError);
+                    broiler.openPsql().catch(onError);
                 },
             })
         ,

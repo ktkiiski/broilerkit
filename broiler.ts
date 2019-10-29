@@ -427,6 +427,18 @@ export class Broiler {
         }
     }
 
+    public async executeSql(sql: string, params: any[]) {
+        const sqlConnection = await this.getSqlConnection();
+        try {
+            const result = await sqlConnection.query(sql, params);
+            for (const row of result.rows) {
+                this.log(JSON.stringify(row));
+            }
+        } finally {
+            sqlConnection.disconnect();
+        }
+    }
+
     public async restoreDatabase(dirPath: string, overwrite: boolean = false) {
         const sqlConnection = await this.getSqlConnection();
         try {
