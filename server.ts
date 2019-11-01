@@ -111,7 +111,8 @@ class ImplementedOperation implements Controller {
             if (!dbConnectionPool) {
                 throw new Error(`Database is not configured`);
             }
-            return new PostgreSqlPoolConnection(dbConnectionPool);
+            const client = await dbConnectionPool.connect();
+            return new PostgreSqlPoolConnection(client);
         });
         const userPoolId = environment.UserPoolId;
         const users = region === 'local' ? new LocalUserPool(db)

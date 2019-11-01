@@ -1,5 +1,5 @@
 import { RDSDataService } from 'aws-sdk';
-import { Client, ClientBase, ClientConfig, Pool, PoolClient } from 'pg';
+import { Client, ClientBase, PoolClient } from 'pg';
 import { Identity, PartialUpdate, Query, TableDefinition } from './db';
 import { NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
@@ -24,94 +24,43 @@ export interface SqlConnection {
     disconnect(error?: any): Promise<void>;
 }
 
-abstract class BasePostgreSqlConnection {
+abstract class BasePostgreSqlConnection<T extends ClientBase> {
+    protected abstract client: T;
     public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
-        const client = await this.connect();
+        const { client } = this;
         return client.query<R>(sql, params);
     }
     public async *scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]> {
-        const client = await this.connect();
+        const { client } = this;
         yield *scanCursor<R>(client, chunkSize, sql, params);
     }
     public abstract disconnect(error?: any): Promise<void>;
-    protected abstract async connect(): Promise<ClientBase>;
 }
 
-export class PostgreSqlConnection extends BasePostgreSqlConnection implements SqlConnection {
-    private clientPromise?: Promise<Client>;
-    constructor(private config: string | ClientConfig) {
+export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> implements SqlConnection {
+    constructor(protected client: Client) {
         super();
     }
     public async disconnect(): Promise<void> {
-        const { clientPromise } = this;
-        if (!clientPromise) {
-            // Not connected -> nothing to release
-            return;
-        }
-        const client = await clientPromise;
-        if (this.clientPromise === clientPromise) {
-            await client.end();
-            delete this.clientPromise;
-        }
-    }
-    protected async connect(): Promise<Client> {
-        let { clientPromise } = this;
-        if (clientPromise) {
-            // Use a cached client
-            return clientPromise;
-        }
-        const client = new Client(this.config);
-        clientPromise = client.connect().then(() => client);
-        this.clientPromise = clientPromise;
-        clientPromise.catch(() => {
-            // Failed to connect to the database -> uncache
-            if (this.clientPromise === clientPromise) {
-                delete this.clientPromise;
-            }
-        });
-        return clientPromise;
+        this.client.end();
     }
 }
 
-export class PostgreSqlPoolConnection extends BasePostgreSqlConnection implements SqlConnection {
-    private clientPromise?: Promise<PoolClient>;
-    constructor(private readonly pool: Pool) {
+export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClient> implements SqlConnection {
+    constructor(protected client: PoolClient) {
         super();
     }
     public async disconnect(error?: any): Promise<void> {
-        const { clientPromise } = this;
-        if (!clientPromise) {
-            // Not connected -> nothing to release
-            return;
-        }
-        const client = await clientPromise;
-        if (this.clientPromise === clientPromise) {
-            client.release(error);
-            delete this.clientPromise;
-        }
-    }
-    protected async connect(): Promise<PoolClient> {
-        let { clientPromise } = this;
-        if (clientPromise) {
-            // Use a cached client
-            return clientPromise;
-        }
-        clientPromise = this.pool.connect();
-        this.clientPromise = clientPromise;
-        clientPromise.catch(() => {
-            // Failed to connect to the database -> uncache
-            if (this.clientPromise === clientPromise) {
-                delete this.clientPromise;
-            }
-        });
-        return clientPromise;
+        this.client.release(error);
     }
 }
 
 export class RemotePostgreSqlConnection implements SqlConnection {
 
-    private rdsDataApi?: RDSDataService;
-
+    private rdsDataApi?: RDSDataService = new RDSDataService({
+        apiVersion: '2018-08-01',
+        region: this.region,
+    });
     constructor(
         private readonly region: string,
         private readonly resourceArn: string,
@@ -119,8 +68,10 @@ export class RemotePostgreSqlConnection implements SqlConnection {
         private readonly database: string,
     ) {}
     public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
-        const { resourceArn, secretArn, database } = this;
-        const rdsDataApi = this.connect();
+        const { rdsDataApi, resourceArn, secretArn, database } = this;
+        if (!rdsDataApi) {
+            throw new Error(`Already disconnected from the database`);
+        }
         const parameters: RDSDataService.SqlParameter[] = (params || [])
             .map(encodeDataApiFieldValue)
             .map((value, index) => ({ value, name: String(index + 1) }));
@@ -155,18 +106,6 @@ export class RemotePostgreSqlConnection implements SqlConnection {
     }
     public async disconnect(): Promise<void> {
         delete this.rdsDataApi;
-    }
-    private connect() {
-        let { rdsDataApi } = this;
-        if (rdsDataApi) {
-            return rdsDataApi;
-        }
-        rdsDataApi = new RDSDataService({
-            apiVersion: '2018-08-01',
-            region: this.region,
-        });
-        this.rdsDataApi = rdsDataApi;
-        return rdsDataApi;
     }
 }
 

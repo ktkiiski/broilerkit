@@ -333,7 +333,8 @@ export class Broiler {
 
     public async printTableRows(tableName: string, pretty: boolean) {
         const table = this.getTable(tableName);
-        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        const connect = await this.getDatabaseConnector();
+        const dbClient = new DatabaseClient(connect);
         for await (const items of dbClient.scan(table)) {
             for (const item of items) {
                 const serializedItem = table.resource.serialize(item);
@@ -344,7 +345,8 @@ export class Broiler {
 
     public async uploadTableRows(tableName: string, filePath: string) {
         const table = this.getTable(tableName);
-        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        const connect = await this.getDatabaseConnector();
+        const dbClient = new DatabaseClient(connect);
         let index = 0;
         for await (const line of readLines(filePath)) {
             index ++;
@@ -362,7 +364,8 @@ export class Broiler {
 
     public async backupDatabase(dirPath?: string | null) {
         const basePath = dirPath || generateBackupDirPath(this.config.stageDir);
-        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        const connect = await this.getDatabaseConnector();
+        const dbClient = new DatabaseClient(connect);
         const tables = this.getTables();
         this.log(`Backing up ${tables.length} database tables…`);
         await ensureDirectoryExists(basePath);
@@ -393,7 +396,8 @@ export class Broiler {
     }
 
     public async executeSql(sql: string, params: any[]) {
-        const sqlConnection = await this.getSqlConnection();
+        const connect = await this.getDatabaseConnector();
+        const sqlConnection = await connect();
         try {
             const result = await sqlConnection.query(sql, params);
             for (const row of result.rows) {
@@ -405,7 +409,8 @@ export class Broiler {
     }
 
     public async restoreDatabase(dirPath: string, overwrite: boolean = false) {
-        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        const connect = await this.getDatabaseConnector();
+        const dbClient = new DatabaseClient(connect);
         const tables = this.getTables();
         this.log(`Restoring ${tables.length} database tables…`);
         const results = await Promise.all(tables.map(async (table) => {
@@ -1063,13 +1068,17 @@ export class Broiler {
         return table;
     }
 
-    private async getSqlConnection(): Promise<SqlConnection> {
+    private async getDatabaseConnector(): Promise<() => Promise<SqlConnection>> {
         const { region } = this.config;
         if (region === 'local') {
-            return new PostgreSqlConnection(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
+            return async () => {
+                const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
+                await client.connect();
+                return new PostgreSqlConnection(client);
+            };
         }
         const output = await this.cloudFormation.getStackOutput();
-        return new RemotePostgreSqlConnection(
+        return async () => new RemotePostgreSqlConnection(
             region,
             output.DatabaseDBClusterArn,
             output.DatabaseMasterSecretArn,
