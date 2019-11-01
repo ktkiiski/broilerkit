@@ -1,20 +1,28 @@
 // tslint:disable:member-ordering
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
-import { Handler, ResponseHandler } from './api';
-import { Model, Table } from './db';
-import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, Unauthorized } from './http';
+import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
+import { Table } from './db';
+import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
-import { PostgreSqlPoolConnection } from './postgres';
+import { DatabaseClient, PostgreSqlPoolConnection } from './postgres';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
 import { transformValues } from './utils/objects';
 
+export interface RequestContext {
+    db: DatabaseClient;
+    users: UserPool;
+}
+
+export type Handler<I, O, R> = (input: I, request: R & RequestContext) => Promise<O>;
+export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;
+
 export type Tables<T> = {
-    [P in keyof T]: Table<T[P]>;
+    [P in keyof T]: Table;
 };
 
 type Implementables<I, O, R> = (
@@ -22,8 +30,8 @@ type Implementables<I, O, R> = (
     {[P in keyof O]: Operation<any, O[P], any>} &
     {[P in keyof R]: Operation<any, any, R[P]>}
 );
-type OperationImplementors<I, O, D, R> = {
-    [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], D, R[P]>;
+type OperationImplementors<I, O, R> = {
+    [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], R[P]>;
 };
 
 /**
@@ -52,10 +60,6 @@ export interface Controller {
      */
     pattern: UrlPattern;
     /**
-     * Array of database tables required by this controller.
-     */
-    tables: Array<Table<any>>;
-    /**
      * Respond to the given request with either an API response
      * or a raw HTTP response. The handler should THROW (not return)
      * - 501 HTTP error to indicate that the URL is not for this controller
@@ -68,25 +72,22 @@ class ImplementedOperation implements Controller {
 
     public readonly methods: HttpMethod[];
     public readonly pattern: UrlPattern;
-    public readonly tables: Array<Table<any>>;
 
     constructor(
         public readonly operation: Operation<any, any, AuthenticationType>,
-        public readonly tablesByName: Tables<any>,
-        private readonly handler: ResponseHandler<any, any, any, any>,
+        private readonly handler: ResponseHandler<any, any>,
     ) {
         const {methods, route} = operation;
         this.methods = methods;
         this.pattern = route.pattern;
-        this.tables = Object.values(tablesByName);
     }
 
     public async execute(request: HttpRequest, context: ServerContext): Promise<ApiResponse> {
-        const {tablesByName, operation} = this;
+        const {operation} = this;
         const {authType, userIdAttribute, responseSerializer} = operation;
         const input = parseRequest(operation, request);
         // Check the authentication
-        const {auth} = request;
+        const {auth, region, environment} = request;
         const isAdmin = !!auth && auth.groups.indexOf('Administrators') < 0;
         if (authType !== 'none') {
             if (!auth) {
@@ -105,42 +106,42 @@ class ImplementedOperation implements Controller {
             }
         }
         // Handle the request
-        const { region, environment } = request;
         const { dbConnectionPool } = context;
-        const sqlConnection = dbConnectionPool && new PostgreSqlPoolConnection(dbConnectionPool);
-        try {
-            const models = !sqlConnection ? {} : transformValues(tablesByName, (table) => (
-                table.getModel(region, environment, sqlConnection)
-            ));
-            const {data, ...response} = await this.handler(input, models, request);
-            if (!responseSerializer) {
-                // No response data should be available
-                return response;
+        const db = new DatabaseClient(async () => {
+            if (!dbConnectionPool) {
+                throw new Error(`Database is not configured`);
             }
-            // Serialize the response data
-            // TODO: Validation errors should result in 500 responses!
-            return {...response, data: responseSerializer.serialize(data)};
-        } finally {
-            // Ensure that any database connection is released to the pool
-            if (sqlConnection) {
-                await sqlConnection.disconnect();
-            }
+            return new PostgreSqlPoolConnection(dbConnectionPool);
+        });
+        const userPoolId = environment.UserPoolId;
+        const users = region === 'local' ? new LocalUserPool(db)
+            : userPoolId ? new CognitoUserPool(userPoolId, region)
+            : new DummyUserPool();
+        // TODO: Even though the client should always close the connection,
+        // we should here ensure that all connections are released.
+        const handlerRequest = { ...request, db, users };
+        const {data, ...response} = await this.handler(input, handlerRequest);
+        if (!responseSerializer) {
+            // No response data should be available
+            return response;
         }
+        // Serialize the response data
+        // TODO: Validation errors should result in 500 responses!
+        return {...response, data: responseSerializer.serialize(data)};
     }
 }
 
-export function implement<I, O, R, D>(
+export function implement<I, O, R>(
     operation: Operation<I, O, R>,
-    db: Tables<D>,
-    implementation: Handler<I, O, D, R>,
+    implementation: Handler<I, O, R>,
 ): Controller {
     switch (operation.type) {
         case 'list':
         return new ImplementedOperation(
-            operation, db,
-            async (input: I, models: D, request: HttpRequest): Promise<OK<Page<O, any>>> => {
+            operation,
+            async (input: I, request): Promise<OK<Page<O, any>>> => {
                 // TODO: Avoid force-typecasting of request!
-                const page: Page<any, any> = await implementation(input, models, request as unknown as R) as any;
+                const page: Page<any, any> = await implementation(input, request as unknown as R & RequestContext) as any;
                 if (!page.next) {
                     return new OK(page);
                 }
@@ -152,33 +153,35 @@ export function implement<I, O, R, D>(
         );
         case 'retrieve':
         return new ImplementedOperation(
-            operation, db,
-            async (input: I, models: D, request: R): Promise<OK<O>> => {
-                return new OK(await implementation(input, models, request));
+            operation,
+            async (input: I, request): Promise<OK<O>> => {
+                // TODO: Avoid force-typecasting of request!
+                return new OK(await implementation(input, request as unknown as R & RequestContext));
             },
         );
         case 'destroy':
         return new ImplementedOperation(
-            operation, db,
-            async (input: I, models: D, request: R): Promise<NoContent> => {
-                await implementation(input, models, request);
+            operation,
+            async (input: I, request): Promise<NoContent> => {
+                // TODO: Avoid force-typecasting of request!
+                await implementation(input, request as unknown as R & RequestContext);
                 return new NoContent();
             },
         );
         default:
         // With other methods, use implementation as-is
-        return new ImplementedOperation(operation, db, implementation as any);
+        return new ImplementedOperation(operation, implementation as any);
     }
 }
 
-export function implementAll<I, O, R, D>(
-    operations: Implementables<I, O, R>, db: Tables<D>,
+export function implementAll<I, O, R>(
+    operations: Implementables<I, O, R>,
 ) {
     function using(
-        implementors: OperationImplementors<I, O, D, R>,
+        implementors: OperationImplementors<I, O, R>,
     ): Record<keyof I & keyof O & keyof R, Controller> {
         return transformValues(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => (
-            implement(operation, db, implementors[key as keyof I & keyof O & keyof R])
+            implement(operation, implementors[key as keyof I & keyof O & keyof R])
         )) as Record<keyof I & keyof O & keyof R, Controller>;
     }
     return {using};
@@ -186,22 +189,14 @@ export function implementAll<I, O, R, D>(
 
 export class ApiService {
 
-    public readonly tables: Array<Table<Model<any, any, any, any, any>>>;
     public readonly controllers: Controller[];
 
     constructor(
         public readonly controllersByName: Record<string, Controller>,
     ) {
-        const tablesByName: Record<string, Table<Model<any, any, any, any, any>>> = {};
         // IMPORTANT: Sort controllers by pattern, because this way static path components
         // take higher priority than placeholders, e.g. `/api/foobar` comes before `/{path+}`
         this.controllers = sort(Object.values(controllersByName), ({pattern}) => pattern.pattern, 'asc');
-        this.controllers.forEach((controller) => {
-            Object.values(controller.tables).forEach((table) => {
-                tablesByName[table.name] = table;
-            });
-        });
-        this.tables = Object.values(tablesByName);
     }
 
     public execute = async (request: HttpRequest, context: ServerContext) => {
@@ -256,10 +251,6 @@ export class ApiService {
 
     public extend(controllers: Record<string, Controller>) {
         return new ApiService({...this.controllersByName, ...controllers});
-    }
-
-    public getTable(tableName: string): Table<Model<any, any, any, any, any>> | undefined {
-        return this.tables.find((table) => table.name === tableName);
     }
 
     private *iterateForPath(path: string) {

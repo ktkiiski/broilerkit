@@ -8,7 +8,7 @@ const usersCollection = endpoint(user, pattern `/_users`);
 
 export const _listUsers = listable(usersCollection, {
     auth: 'none',
-    orderingKeys: ['name'],
+    orderingKeys: ['name', 'createdAt', 'email'],
 });
 export const _createUser = creatable(usersCollection, {
     auth: 'none',

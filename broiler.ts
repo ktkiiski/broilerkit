@@ -1,48 +1,46 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, S3 } from 'aws-sdk';
+import chalk from 'chalk';
+import * as mime from 'mime';
+import * as path from 'path';
+import { Client, Pool } from 'pg';
 import { URL } from 'url';
+import * as File from 'vinyl';
 import { Stats as WebpackStats } from 'webpack';
 import { mapAsync, mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
-import { formatS3KeyName } from './aws/utils';
 import { isDoesNotExistsError } from './aws/utils';
+import { formatS3KeyName } from './aws/utils';
+import { clean } from './clean';
+import { localUsers } from './cognito';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
-import { ensureDirectoryExists, fileExists, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
+import { Table } from './db';
+import { ensureDirectoryExists, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
 import { HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
-import { getDbFilePath, launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
-import { readAnswer } from './readline';
-import { ApiService } from './server';
-import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
-import { difference, differenceBy, order } from './utils/arrays';
-import { union } from './utils/arrays';
-import { buildObject, forEachKey, toPairs } from './utils/objects';
-import { upperFirst } from './utils/strings';
-import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
-import { zipAll } from './zip';
-
-import * as mime from 'mime';
-import * as path from 'path';
-import * as File from 'vinyl';
-
-import chalk from 'chalk';
-import { Client, Pool } from 'pg';
-import { clean } from './clean';
-import { users } from './cognito';
-import { Table } from './db';
+import { launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
 import { createTable } from './migration';
-import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
 import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
+import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from './oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from './oauth';
 import { askParameters } from './parameters';
-import { PostgreSqlConnection, PostgreSqlDbModel, RemotePostgreSqlConnection, SqlConnection } from './postgres';
+import { DatabaseClient, PostgreSqlConnection, RemotePostgreSqlConnection, SqlConnection } from './postgres';
+import { readAnswer } from './readline';
 import { retryWithBackoff } from './retry';
+import { ApiService } from './server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
+import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
+import { union } from './utils/arrays';
+import { difference, differenceBy, order } from './utils/arrays';
+import { forEachKey, toPairs } from './utils/objects';
+import { upperFirst } from './utils/strings';
+import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
+import { zipAll } from './zip';
 
 const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
@@ -225,7 +223,7 @@ export class Broiler {
         }
         const tables = this.getTables();
         if (opts.auth) {
-            tables.push(users);
+            tables.push(localUsers);
         }
         let dbConnectionPool: Pool | null = null;
         if (tables.length) {
@@ -322,109 +320,76 @@ export class Broiler {
     }
 
     public async printTables() {
-        const server = this.importServer();
-        if (!server) {
-            this.log(`No database tables. Your app does not define a backend.`);
-            return;
-        }
-        const sortedTables = order(server.tables, 'name', 'asc');
-        if (!sortedTables.length) {
+        const tables = this.getTables();
+        // TODO: List database tables that have actually been created, and probably their schemas!
+        if (!tables.length) {
             this.log(`Your app does not define any database tables.`);
             return;
         }
-        const { stageDir, region } = this.config;
-        if (region === 'local') {
-            // Print local tables
-            for (const table of sortedTables) {
-                const tableFilePath = getDbFilePath(stageDir, table.name);
-                const isCreated = await fileExists(tableFilePath);
-                this.log(`${table.name} ${isCreated ? `${green('✔︎')} ${dim(tableFilePath)}` : red('×')}`);
-            }
-        } else {
-            // Print remote tables
-            const resources = await this.cloudFormation.describeStackResources();
-            const resourcesByLogicalId = buildObject(resources, (resource) => [
-                resource.LogicalResourceId, resource,
-            ]);
-            for (const table of sortedTables) {
-                const resource = resourcesByLogicalId[`DatabaseTable${upperFirst(table.name)}`];
-                const {PhysicalResourceId = ''} = resource;
-                this.log(`${table.name} ${resource == null ? red('×') : `${green('✔︎')} ${dim(PhysicalResourceId)}` }`);
-            }
+        for (const table of tables) {
+            this.log(`${table.name} ${dim('[?]')}`);
         }
     }
 
     public async printTableRows(tableName: string, pretty: boolean) {
-        const sqlConnection = await this.getSqlConnection();
-        try {
-            const model = await this.getTableModel(sqlConnection, tableName);
-            for await (const items of model.scan()) {
-                for (const item of items) {
-                    const serializedItem = model.serializer.serialize(item);
-                    this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
-                }
+        const table = this.getTable(tableName);
+        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        for await (const items of dbClient.scan(table)) {
+            for (const item of items) {
+                const serializedItem = table.resource.serialize(item);
+                this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
             }
-        } finally {
-            await sqlConnection.disconnect();
         }
     }
 
     public async uploadTableRows(tableName: string, filePath: string) {
-        const sqlConnection = await this.getSqlConnection();
-        try {
-            const model = await this.getTableModel(sqlConnection, tableName);
-            let index = 0;
-            for await (const line of readLines(filePath)) {
-                index ++;
-                try {
-                    const serializedItem = JSON.parse(line);
-                    const item = model.serializer.deserialize(serializedItem);
-                    await model.write(item);
-                    this.log(`Line ${index} ${green('✔︎')}`);
-                } catch (err) {
-                    this.log(`Line ${index} ${red('×')}`);
-                    this.logError(err.stack);
-                }
+        const table = this.getTable(tableName);
+        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        let index = 0;
+        for await (const line of readLines(filePath)) {
+            index ++;
+            try {
+                const serializedItem = JSON.parse(line);
+                const item = table.resource.deserialize(serializedItem);
+                await dbClient.write(table, item);
+                this.log(`Line ${index} ${green('✔︎')}`);
+            } catch (err) {
+                this.log(`Line ${index} ${red('×')}`);
+                this.logError(err.stack);
             }
-        } finally {
-            await sqlConnection.disconnect();
         }
     }
 
     public async backupDatabase(dirPath?: string | null) {
         const basePath = dirPath || generateBackupDirPath(this.config.stageDir);
-        const sqlConnection = await this.getSqlConnection();
-        try {
-            const models = await this.getTableModels(sqlConnection);
-            this.log(`Backing up ${models.length} database tables…`);
-            await ensureDirectoryExists(basePath);
-            const results = await Promise.all(models.map(async ({model, name}) => {
-                this.log(`${dim('Backing up')} ${name}`);
-                try {
-                    const filePath = path.resolve(basePath, `${name}.jsonl`);
-                    const { serializer } = model;
-                    await writeAsyncIterable(filePath, mapAsync(model.scan(), (rows) => {
-                        const jsonRows = rows.map((record) => {
-                            const serializedItem = serializer.serialize(record);
-                            return JSON.stringify(serializedItem) + '\n';
-                        });
-                        return jsonRows.join('');
-                    }));
-                    this.log(`${name} ${green('✔︎')}`);
-                    return null;
-                } catch (error) {
-                    this.log(`${name} ${red('×')}`);
-                    return error;
-                }
-            }));
-            const error = results.find((error) => error != null);
-            if (error) {
-                throw error;
+        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        const tables = this.getTables();
+        this.log(`Backing up ${tables.length} database tables…`);
+        await ensureDirectoryExists(basePath);
+        const results = await Promise.all(tables.map(async (table) => {
+            const { resource, name } = table;
+            this.log(`${dim('Backing up')} ${name}`);
+            try {
+                const filePath = path.resolve(basePath, `${name}.jsonl`);
+                await writeAsyncIterable(filePath, mapAsync(dbClient.scan(table), (rows) => {
+                    const jsonRows = rows.map((record) => {
+                        const serializedItem = resource.serialize(record);
+                        return JSON.stringify(serializedItem) + '\n';
+                    });
+                    return jsonRows.join('');
+                }));
+                this.log(`${name} ${green('✔︎')}`);
+                return null;
+            } catch (error) {
+                this.log(`${name} ${red('×')}`);
+                return error;
             }
-            this.log(`Successfully backed up ${models.length} database tables to:\n${basePath}`);
-        } finally {
-            await sqlConnection.disconnect();
+        }));
+        const error = results.find((error) => error != null);
+        if (error) {
+            throw error;
         }
+        this.log(`Successfully backed up ${tables.length} database tables to:\n${basePath}`);
     }
 
     public async executeSql(sql: string, params: any[]) {
@@ -440,52 +405,48 @@ export class Broiler {
     }
 
     public async restoreDatabase(dirPath: string, overwrite: boolean = false) {
-        const sqlConnection = await this.getSqlConnection();
-        try {
-            const models = await this.getTableModels(sqlConnection);
-            this.log(`Restoring ${models.length} database tables…`);
-            const results = await Promise.all(models.map(async ({model, name}) => {
-                this.log(`${dim('Restoring')} ${name}`);
-                try {
-                    const filePath = path.resolve(dirPath, `${name}.jsonl`);
-                    const { serializer } = model;
-                    let index = 0;
-                    for await (const line of readLines(filePath)) {
-                        index ++;
-                        try {
-                            const serializedItem = JSON.parse(line);
-                            const item = serializer.deserialize(serializedItem);
-                            if (overwrite) {
-                                await model.write(item);
-                            } else {
-                                try {
-                                    await model.create(item);
-                                } catch (error) {
-                                    if (!isResponse(error, HttpStatus.PreconditionFailed)) {
-                                        throw error;
-                                    }
+        const dbClient = new DatabaseClient(() => this.getSqlConnection());
+        const tables = this.getTables();
+        this.log(`Restoring ${tables.length} database tables…`);
+        const results = await Promise.all(tables.map(async (table) => {
+            const { name, resource } = table;
+            this.log(`${dim('Restoring')} ${name}`);
+            try {
+                const filePath = path.resolve(dirPath, `${name}.jsonl`);
+                let index = 0;
+                for await (const line of readLines(filePath)) {
+                    index ++;
+                    try {
+                        const serializedItem = JSON.parse(line);
+                        const item = resource.deserialize(serializedItem);
+                        if (overwrite) {
+                            await dbClient.write(table, item);
+                        } else {
+                            try {
+                                await dbClient.create(table, item);
+                            } catch (error) {
+                                if (!isResponse(error, HttpStatus.PreconditionFailed)) {
+                                    throw error;
                                 }
                             }
-                        } catch (err) {
-                            this.log(`${name}: line ${index} ${red('×')}`);
-                            this.logError(err.stack);
                         }
+                    } catch (err) {
+                        this.log(`${name}: line ${index} ${red('×')}`);
+                        this.logError(err.stack);
                     }
-                    this.log(`${name} ${green('✔︎')}`);
-                    return null;
-                } catch (error) {
-                    this.log(`${name} ${red('×')}`);
-                    return error;
                 }
-            }));
-            const error = results.find((error) => error != null);
-            if (error) {
-                throw error;
+                this.log(`${name} ${green('✔︎')}`);
+                return null;
+            } catch (error) {
+                this.log(`${name} ${red('×')}`);
+                return error;
             }
-            this.log(`Successfully restored ${results.length} database tables!`);
-        } finally {
-            await sqlConnection.disconnect();
+        }));
+        const error = results.find((error) => error != null);
+        if (error) {
+            throw error;
         }
+        this.log(`Successfully restored ${results.length} database tables!`);
     }
 
     public async openPsql(): Promise<void> {
@@ -877,7 +838,7 @@ export class Broiler {
             .reduce(mergeTemplates, dbSetupTemplate);
     }
 
-    private generateDbTableTemplate(table: Table<any>) {
+    private generateDbTableTemplate(table: Table) {
         const logicalId = `DatabaseTable${upperFirst(table.name)}`;
         const tableProperties = {
             ServiceToken: { 'Fn::GetAtt': 'DatabaseMigrationLambdaFunction.Arn' },
@@ -1085,35 +1046,21 @@ export class Broiler {
     }
 
     private getTables() {
-        const server = this.importServer();
-        if (!server) {
+        const { databaseFile, projectRootPath, sourceDir } = this.config;
+        if (!databaseFile) {
             return [];
         }
-        return order(server.tables, 'name', 'asc');
+        const dbModulePath = path.resolve(projectRootPath, sourceDir, databaseFile);
+        const dbModule = require(dbModulePath) as {[key: string]: Table};
+        return order(Object.values(dbModule), 'name', 'asc');
     }
 
-    private async getTableModel(sqlConnection: SqlConnection, tableName: string) {
-        const service = this.importServer();
-        if (!service) {
-            throw new Error(`No tables defined for the app.`);
-        }
-        const table = service.getTable(tableName);
+    private getTable(tableName: string) {
+        const table = this.getTables().find(({ name }) => name === tableName);
         if (!table) {
             throw new Error(`Table ${tableName} not found.`);
         }
-        return new PostgreSqlDbModel(sqlConnection, tableName, table.resource);
-    }
-
-    private async getTableModels(sqlConnection: SqlConnection) {
-        const service = this.importServer();
-        if (!service) {
-            throw new Error(`No tables defined for the app.`);
-        }
-        const { tables } = service;
-        return Promise.all(tables.map(async (table) => ({
-            name: table.name,
-            model: await this.getTableModel(sqlConnection, table.name),
-        })));
+        return table;
     }
 
     private async getSqlConnection(): Promise<SqlConnection> {

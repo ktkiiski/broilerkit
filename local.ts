@@ -190,10 +190,6 @@ export async function openLocalDatabasePsql(name: string, stage: string): Promis
     await spawn('docker', ['exec', '-it', '--user=postgres', containerName, 'psql']);
 }
 
-export function getDbFilePath(directoryPath: string, tableName: string): string {
-    return path.resolve(directoryPath, `./db/${tableName}.db`);
-}
-
 function createServer<P extends any[]>(handler: (request: http.IncomingMessage, ...args: P) => Promise<HttpResponse>, ...args: P) {
     return http.createServer(async (httpRequest, httpResponse) => {
         try {

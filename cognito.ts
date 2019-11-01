@@ -1,119 +1,78 @@
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { getResourceState, Identity, Model, PartialUpdate, Query, Table } from './db';
-import { ValidationError } from './errors';
+import { Identity, PartialUpdate, table } from './db';
 import { HttpStatus, isResponse, NotFound } from './http';
-import { Page } from './pagination';
-import { PostgreSqlDbModel, SqlConnection } from './postgres';
-import { Resource } from './resources';
+import { DatabaseClient } from './postgres';
 import { Serializer } from './serializers';
 import { User, user } from './users';
-import { mapCached, order } from './utils/arrays';
-import { Key } from './utils/objects';
+import { mapCached } from './utils/arrays';
 
-export type UserCreateAttributes<S extends User> = Omit<S, 'updatedAt' | 'createdAt'>;
-export type UserMutableAttributes<S extends User> = Omit<S, 'id' | 'email' | 'updatedAt' | 'createdAt'>;
-export interface UserIdentity {
-    id: string;
+interface UserIdentity { id: string; }
+type UserPartialUpdate = Partial<Omit<User, 'id' | 'email' | 'updatedAt' | 'createdAt'>>;
+
+export interface UserPool {
+    retrieve(query: UserIdentity): Promise<User>;
+    update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User>;
+    destroy(identity: UserIdentity): Promise<void>;
+    scan(): AsyncIterableIterator<User[]>;
+    batchRetrieve(identities: UserIdentity[]): Promise<Array<User | null>>;
 }
-export type UserPartialUpdate<S extends User> = Partial<UserMutableAttributes<S>>;
-export type CognitoModel<S extends User = User> = Model<S, UserIdentity, UserCreateAttributes<S>, UserPartialUpdate<S>, Query<S>>;
 
-const localUsersTableName = '_users';
+export class DummyUserPool implements UserPool {
+    public retrieve(): never {
+        throw new Error('User pool is not configured');
+    }
+    public update(): never {
+        throw new Error('User pool is not configured');
+    }
+    public destroy(): never {
+        throw new Error('User pool is not configured');
+    }
+    public scan(): never {
+        throw new Error('User pool is not configured');
+    }
+    public batchRetrieve(): never {
+        throw new Error('User pool is not configured');
+    }
+}
 
-class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
+export class CognitoUserPool implements UserPool {
 
-    private updateSerializer = this.serializer.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<UserPartialUpdate<S>>;
-    private identitySerializer = this.serializer.pick(['id']);
+    private updateSerializer = user
+        .omit(['id', 'email', 'updatedAt', 'createdAt'])
+        .fullPartial() as Serializer<UserPartialUpdate>;
+    private identitySerializer = user.pick(['id']);
 
-    constructor(private userPoolId: string, private region: string, public serializer: Resource<S, 'id', 'updatedAt'>) {}
+    constructor(private userPoolId: string, private region: string) {}
 
-    public async retrieve(query: UserIdentity): Promise<S> {
+    public async retrieve(query: UserIdentity): Promise<User> {
         const {identitySerializer} = this;
         const serializedQuery = identitySerializer.serialize(query);
-        const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
+        const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
         const cognitoUser = await cognito.getUserById(serializedQuery.id, new NotFound(`User not found.`));
         // No deserialization needed
         return cognitoUser;
     }
 
-    public create(_: UserCreateAttributes<S>): Promise<S> {
-        throw new Error(`Creating users is not supported. They need to sign up`);
-    }
-
-    // tslint:disable-next-line:variable-name
-    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>): Promise<S> {
-        throw new Error(`Replacing a user is not supported. Use an update instead.`);
-    }
-
-    public async update(identity: UserIdentity, changes: UserPartialUpdate<S>): Promise<S> {
+    public async update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
         const {identitySerializer, updateSerializer} = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedChanges = updateSerializer.serialize(changes);
-        const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
+        const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
         const cognitoUser = await cognito.updateUserById(serializedIdentity.id, serializedChanges, new NotFound(`User not found.`));
         // No deserialization needed
         return cognitoUser;
-    }
-
-    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C): Promise<C> {
-        await this.update(identity, changes);
-        return changes;
-    }
-
-    public async upsert(): Promise<S> {
-        throw new Error(`Not yet implemented!`);
-    }
-
-    public async write(_: S): Promise<S> {
-        throw new Error(`Not yet implemented!`);
     }
 
     public async destroy(identity: UserIdentity) {
         const {identitySerializer} = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedId = serializedIdentity.id;
-        const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
+        const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
         await cognito.deleteUserById(serializedId, new NotFound(`User not found.`));
     }
 
-    public async clear(identity: UserIdentity) {
-        try {
-            return await this.destroy(identity);
-        } catch (error) {
-            if (!isResponse(error, HttpStatus.NotFound)) {
-                throw error;
-            }
-        }
-    }
-
-    public async list<Q extends Query<S>>({ direction, ordering, since, ...filters }: Q) {
-        // TODO: Improve the query possibilities!
-        const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
-        const results: S[] = [];
-        const filterKeys = Object.keys(filters);
-        if (filterKeys.length > 1) {
-            throw new ValidationError(`Only one filtering key supported when listing users`);
-        }
-        const options: {filterKey?: string, filterValue?: string} = {};
-        if (filterKeys.length) {
-            const filterKey = filterKeys[0] as Key<S>;
-            const { serializer } = this;
-            const field = serializer.fields[filterKey];
-            options.filterKey = filterKey;
-            options.filterValue = field.encode((filters as any)[filterKey]);
-        }
-        for await (const cognitoUsers of cognito.listUsers(options)) {
-            results.push(...cognitoUsers);
-        }
-        return {
-            results: order(results, ordering, direction, since),
-            next: null,
-        };
-    }
-
-    public scan(_: {} = {}): AsyncIterableIterator<S[]> {
-        // TODO: Improve
-        const cognito = new AmazonCognitoIdentity<S>(this.region, this.userPoolId);
+    public scan(): AsyncIterableIterator<User[]> {
+        const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
         return cognito.listUsers();
     }
 
@@ -130,86 +89,35 @@ class UserPoolCognitoModel<S extends User = User> implements CognitoModel<S> {
     }
 }
 
-class LocalCognitoModel<S extends User = User> implements CognitoModel<S> {
-
-    private db = new PostgreSqlDbModel(this.sqlConnection, localUsersTableName, this.serializer);
+export class LocalUserPool implements UserPool {
 
     constructor(
-        private readonly sqlConnection: SqlConnection,
-        public readonly serializer: Resource<S, 'id', 'updatedAt'>,
+        private readonly db: DatabaseClient,
     ) {}
 
-    public retrieve(query: UserIdentity): Promise<S> {
-        return this.db.retrieve(query as Identity<S, 'id', 'updatedAt'>);
+    public retrieve(query: UserIdentity): Promise<User> {
+        return this.db.retrieve(localUsers, query as Identity<User, 'id', 'updatedAt'>);
     }
 
-    public create(attrs: UserCreateAttributes<S>): Promise<S> {
-        const now = new Date();
-        return this.db.create({...attrs, updatedAt: now, createdAt: now} as any);
-    }
-
-    // tslint:disable-next-line:variable-name
-    public replace(_identity: UserIdentity, _item: UserCreateAttributes<S>): Promise<S> {
-        throw new Error(`Replacing a user is not supported. Use an update instead.`);
-    }
-
-    public update(identity: UserIdentity, changes: UserPartialUpdate<S>): Promise<S> {
+    public update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
         const update = {...changes, updatedAt: new Date()};
-        return this.db.update(identity as Identity<S, 'id', 'updatedAt'>, update as PartialUpdate<S, 'updatedAt'>);
-    }
-
-    public async amend<C extends UserPartialUpdate<S>>(identity: UserIdentity, changes: C): Promise<C> {
-        await this.update(identity, changes);
-        return changes;
-    }
-
-    public async upsert(): Promise<S> {
-        throw new Error(`Not yet implemented!`);
-    }
-
-    public async write(_: S): Promise<S> {
-        throw new Error(`Not yet implemented!`);
+        return this.db.update(localUsers, identity as Identity<User, 'id', 'updatedAt'>, update as PartialUpdate<User, 'updatedAt'>);
     }
 
     public destroy(identity: UserIdentity) {
-        return this.db.destroy(identity as Identity<S, 'id', 'updatedAt'>);
+        return this.db.destroy(localUsers, identity as Identity<User, 'id', 'updatedAt'>);
     }
 
-    public clear(identity: UserIdentity) {
-        return this.db.clear(identity as Identity<S, 'id', 'updatedAt'>);
+    public scan(query?: {}): AsyncIterableIterator<User[]> {
+        return this.db.scan(localUsers, query as any);
     }
 
-    public list<Q extends Query<S>>(query: Q) {
-        return this.db.list(query as any) as Promise<Page<S, Q>>;
-    }
-    public scan(query?: {}): AsyncIterableIterator<S[]> {
-        return this.db.scan(query as any);
-    }
     public batchRetrieve(identities: UserIdentity[]) {
-        return this.db.batchRetrieve(identities as Array<Identity<S, 'id', 'updatedAt'>>);
+        return this.db.batchRetrieve(localUsers, identities as Array<Identity<User, 'id', 'updatedAt'>>);
     }
 }
 
-export const users: Table<CognitoModel> = {
-    name: 'Users',
-    resource: user,
-    indexes: [],
-    getModel(region: string, environment: {[key: string]: string}, sqlConnection: SqlConnection): CognitoModel {
-        // TODO: Better handling for situation where user registry is not enabled
-        if (region === 'local') {
-            return new LocalCognitoModel(sqlConnection, user) as CognitoModel;
-        } else {
-            const userPoolId = environment.UserPoolId;
-            if (!userPoolId) {
-                throw new Error('Missing user pool ID!');
-            }
-            return new UserPoolCognitoModel(userPoolId, region, user);
-        }
-    },
-    getState() {
-        return getResourceState(localUsersTableName, this.resource, [
-            ['email'],
-            ['createdAt'],
-        ]);
-    },
-};
+export const localUsers = table(user, '_users')
+    .index('name')
+    .index('email')
+    .index('createdAt');

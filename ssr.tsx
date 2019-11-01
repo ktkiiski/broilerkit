@@ -19,7 +19,6 @@ export const RENDER_WEBSITE_ENDPOINT_NAME = 'renderWebsite' as const;
 export class SsrController implements Controller {
     public readonly methods = ['GET' as const];
     public readonly pattern = new UrlPattern('/{path+}');
-    public readonly tables = this.apiService.tables;
 
     constructor(
         private readonly apiService: ApiService,

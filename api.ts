@@ -1,14 +1,11 @@
 import { Client } from './client';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { ValidationError } from './errors';
-import { HttpMethod, SuccesfulResponse } from './http';
+import { HttpMethod } from './http';
 import { CreateOperation, DestroyOperation, Operation, UpdateOperation, UploadOperation } from './operations';
 import { OptionalInput, OptionalOutput } from './serializers';
 import { Url } from './url';
 import { Key, pick } from './utils/objects';
-
-export type Handler<I, O, D, R> = (input: I, db: D, request: R) => Promise<O>;
-export type ResponseHandler<I, O, D, R> = Handler<I, SuccesfulResponse<O>, D, R>;
 
 export interface IntermediateCollection<O> {
     isComplete: boolean;

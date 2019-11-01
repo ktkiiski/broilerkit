@@ -100,6 +100,12 @@ export interface AppConfig {
      */
     auth?: AuthConfig;
     /**
+     * Relative path to the module that exports all the database tables.
+     * The path must be relative to the source directory.
+     * Should be defined if your app is using a database.
+     */
+    databaseFile?: string;
+    /**
      * Additional parameters the backend requires to work.
      * These will be asked when deploying each environment.
      */

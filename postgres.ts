@@ -1,10 +1,9 @@
 import { RDSDataService } from 'aws-sdk';
 import { Client, ClientBase, ClientConfig, Pool, PoolClient } from 'pg';
-import { Identity, PartialUpdate, Query, VersionedModel } from './db';
+import { Identity, PartialUpdate, Query, TableDefinition } from './db';
 import { NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { scanCursor } from './postgres-cursor';
-import { Resource } from './resources';
 import { nestedList } from './serializers';
 import { hasProperties, isNotNully } from './utils/compare';
 import { Exact, Key, keys } from './utils/objects';
@@ -171,108 +170,243 @@ export class RemotePostgreSqlConnection implements SqlConnection {
     }
 }
 
-export class PostgreSqlDbModel<S, PK extends Key<S>, V extends Key<S>, D>
-implements VersionedModel<S, PK, V, D> {
-
-    private readonly updateSerializer = this.serializer.partial([this.serializer.versionBy]);
-    private readonly identitySerializer = this.serializer.pick([
-        ...this.serializer.identifyBy,
-        this.serializer.versionBy,
-    ]).partial(this.serializer.identifyBy);
+export class DatabaseClient {
 
     constructor(
-        private readonly connection: SqlConnection,
-        private readonly tableName: string,
-        public readonly serializer: Resource<S, PK, V>,
+        private readonly connect: () => Promise<SqlConnection>,
     ) {}
 
-    public async retrieve(query: Identity<S, PK, V>) {
-        const { identitySerializer } = this;
+    /**
+     * Gets an item from the database table using the given identity
+     * object, containing all the identifying attributes.
+     *
+     * It results to an error if the item is not found.
+     * Optionally the error object may be given as an attribute.
+     *
+     * Results to the item object, with all of its attributes,
+     * if found successfully.
+     */
+    public async retrieve<S, PK extends Key<S>, V extends Key<S>, D>(table: TableDefinition<S, PK, V, D>, query: Identity<S, PK, V>) {
+        const { resource } = table;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
         const filters = identitySerializer.validate(query);
-        const queryConfig = this.selectQuery(filters, 1);
-        const { rows } = await this.executeQuery(queryConfig);
+        const queryConfig = this.selectQuery(table, filters, 1);
+        const { rows } = await this.executeQuery<S>(queryConfig);
         if (rows.length) {
             return rows[0];
         }
         throw new NotFound(`Item was not found.`);
     }
 
-    public async create(item: S) {
-        const { serializer } = this;
-        const values = serializer.validate(item);
-        const query = this.insertQuery(values);
-        const { rows } = await this.executeQuery(query);
+    /**
+     * Inserts an item with the given ID to the database table,
+     * The given item must contain all resource attributes, including
+     * the identifying attributes and the version attribute.
+     *
+     * It results to an error if an item with the same identifying
+     * attributes already exists in the database.
+     *
+     * Results to the given item object if inserted successfully.
+     */
+    public async create<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        item: S,
+    ) {
+        const values = table.resource.validate(item);
+        const query = this.insertQuery(table, values);
+        const { rows } = await this.executeQuery<S>(query);
         if (!rows.length) {
             throw new PreconditionFailed(`Item already exists.`);
         }
         return rows[0];
     }
 
-    public async replace(identity: Identity<S, PK, V>, item: S) {
-        const { identitySerializer, serializer } = this;
+    /**
+     * Replaces an existing item in the database table, identified by the given
+     * identity object. The given item object must contain all model attributes,
+     * including the identifying attributes and the new version attribute.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * It results to an error if an item does not exist. Also fails if the
+     * existing item's version does not match any given version.
+     *
+     * Results to the updated item object if inserted successfully.
+     */
+    public async replace<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        identity: Identity<S, PK, V>,
+        item: S,
+    ) {
+        const { resource } = table;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
-        const values = serializer.validate(item);
-        const query = this.updateQuery(filters, values);
-        const { rows } = await this.executeQuery(query);
+        const values = resource.validate(item);
+        const query = this.updateQuery(table, filters, values);
+        const { rows } = await this.executeQuery<S>(query);
         if (!rows.length) {
             throw new NotFound(`Item was not found.`);
         }
         return rows[0];
     }
 
-    public async update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): Promise<S> {
-        const { identitySerializer, updateSerializer } = this;
+    /**
+     * Updates some of the attributes of an existing item in the database,
+     * identified by the given identity object. The changes must contain
+     * the version attribute, and any sub-set of the other attributes.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * Fails if the item does not exist. Also fails if the
+     * existing item's version does not match any given version.
+     *
+     * Results to the updated item object with all up-to-date attributes,
+     * if updated successfully.
+     */
+    public async update<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        identity: Identity<S, PK, V>,
+        changes: PartialUpdate<S, V>,
+    ): Promise<S> {
+        const { resource } = table;
+        const updateSerializer = resource.partial([resource.versionBy]);
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
         const values = updateSerializer.validate(changes);
-        const query = this.updateQuery(filters, values);
-        const { rows } = await this.executeQuery(query);
+        const query = this.updateQuery(table, filters, values);
+        const { rows } = await this.executeQuery<S>(query);
         if (!rows.length) {
             throw new NotFound(`Item was not found.`);
         }
         return rows[0];
     }
 
-    public async amend<C extends PartialUpdate<S, V>>(identity: Identity<S, PK, V>, changes: C): Promise<C> {
+    /**
+     * Same than update, but instead resulting to the whole updated object,
+     * only results to the changes given as parameter. Prefer this instead
+     * of patch if you do not need to know all the up-to-date attributes of the
+     * object after a successful patch, as this is more efficient.
+     */
+    public async amend<S, PK extends Key<S>, V extends Key<S>, D, C extends PartialUpdate<S, V>>(
+        table: TableDefinition<S, PK, V, D>,
+        identity: Identity<S, PK, V>,
+        changes: C,
+    ): Promise<C> {
         // TODO: Better performing implementation
-        await this.update(identity, changes);
+        await this.update(table, identity, changes);
         return changes;
     }
 
-    public async write(item: S): Promise<S> {
-        return this.upsert(item, item);
-    }
-
-    public async upsert(creation: S, update: PartialUpdate<S, V>): Promise<S> {
-        const { serializer, updateSerializer } = this;
-        const insertValues = serializer.validate(creation);
+    /**
+     * Inserts a new item to the database, or updates an existing item
+     * if one already exists with the same identity.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * Results to the created/updated item.
+     */
+    public async upsert<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        creation: S,
+        update: PartialUpdate<S, V>,
+    ): Promise<S> {
+        const { resource } = table;
+        const updateSerializer = resource.partial([resource.versionBy]);
+        const insertValues = resource.validate(creation);
         const updateValues = updateSerializer.validate(update);
-        const query = this.insertQuery(insertValues, updateValues);
-        const { rows } = await this.executeQuery(query);
+        const query = this.insertQuery(table, insertValues, updateValues);
+        const { rows } = await this.executeQuery<S>(query);
         return rows[0];
     }
 
-    public async destroy(identity: Identity<S, PK, V>): Promise<void> {
-        const { identitySerializer } = this;
+    /**
+     * Either creates an item or replaces an existing one.
+     * Use this instead of create/put method if you don't care if the
+     * item already existed in the database.
+     *
+     * Results to the given item object if written successfully.
+     */
+    public async write<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        item: S,
+    ): Promise<S> {
+        return this.upsert(table, item, item);
+    }
+
+    /**
+     * Deletes an item from the database, identified by the given
+     * identity object. Fails if the item does not exists.
+     */
+    public async destroy<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        identity: Identity<S, PK, V>,
+    ): Promise<void> {
+        const { resource } = table;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
-        const query = this.deleteQuery(filters);
-        const result = await this.executeQuery(query);
+        const query = this.deleteQuery(table, filters);
+        const result = await this.executeQuery<S>(query);
         if (!result.rowCount) {
             throw new NotFound(`Item was not found.`);
         }
     }
 
-    public async clear(identity: Identity<S, PK, V>) {
-        const { identitySerializer } = this;
+    /**
+     * Deletes an item from the database if it exists in the database.
+     * Unlike destroy, this does not fail if the item didn't exists.
+     */
+    public async clear<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        identity: Identity<S, PK, V>,
+    ) {
+        const { resource } = table;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
-        const query = this.deleteQuery(filters);
-        await this.executeQuery(query);
+        const query = this.deleteQuery(table, filters);
+        await this.executeQuery<S>(query);
     }
 
-    public async list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): Promise<Page<S, Q>> {
+    /**
+     * Queries and finds the first/next batch of items from the table
+     * matching the given criteria.
+     *
+     * The return value is a page object containing an array of items,
+     * and the `query` parameter for retrieving the next batch, or null
+     * if no more items are expected to be found.
+     */
+    public async list<S, PK extends Key<S>, V extends Key<S>, D, Q extends D & OrderedQuery<S, Key<S>>>(
+        table: TableDefinition<S, PK, V, D>,
+        query: Exact<Q, D>,
+    ): Promise<Page<S, Q>> {
         const { ordering, direction, since, ...filters } = query;
         const results: S[] = [];
         const chunkSize = 100;
-        for await (const items of this.scanChunks(chunkSize, filters, ordering, direction, since)) {
+        for await (const items of this.scanChunks(table, chunkSize, filters, ordering, direction, since)) {
             results.push(...items);
             if (items.length < chunkSize) {
                 return { results: items, next: null };
@@ -289,40 +423,76 @@ implements VersionedModel<S, PK, V, D> {
         return { results, next: null };
     }
 
-    public scan(query?: Query<S>): AsyncIterableIterator<S[]> {
+    /**
+     * Iterate over batches of items from the table matching the given criteria.
+     *
+     * Without parameters should scan the whole table, in no particular order.
+     */
+    public scan<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>, query?: Query<S>,
+    ): AsyncIterableIterator<S[]> {
         const chunkSize = 100;
         if (query) {
             const { ordering, direction, since, ...filters } = query;
-            return this.scanChunks(chunkSize, filters, ordering, direction, since);
+            return this.scanChunks(table, chunkSize, filters, ordering, direction, since);
         } else {
-            return this.scanChunks(chunkSize, {});
+            return this.scanChunks(table, chunkSize, {});
         }
     }
 
-    public async batchRetrieve(identities: Array<Identity<S, PK, V>>): Promise<Array<S | null>> {
+    /**
+     * Retrieves item for each of the identity given objects, or null values if no
+     * matching item is found, in the most efficient way possible. The results
+     * from the returned promise are in the same order than the identities.
+     */
+    public async batchRetrieve<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        identities: Array<Identity<S, PK, V>>,
+    ): Promise<Array<S | null>> {
         if (!identities.length) {
             return [];
         }
-        const { identitySerializer } = this;
+        const { resource } = table;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
         const identityListSerializer = nestedList(identitySerializer);
         const filtersList = identityListSerializer.validate(identities);
-        const query = this.batchSelectQuery(filtersList);
-        const { rows } = await this.executeQuery(query);
+        const query = this.batchSelectQuery(table, filtersList);
+        const { rows } = await this.executeQuery<S>(query);
         return filtersList.map((identity) => (
             rows.find((item) => hasProperties(item, identity)) || null
         ));
     }
 
-    private executeQuery({ text, values }: SqlRequest) {
-        return this.connection.query<S>(text, values);
+    private async executeQuery<S>({ text, values }: SqlRequest) {
+        const connection = await this.connect();
+        try {
+            return connection.query<S>(text, values);
+        } finally {
+            connection.disconnect();
+        }
     }
 
-    private scanChunks(chunkSize: number, filters: Record<string, any>, ordering?: string, direction?: 'asc' | 'desc', since?: any) {
-        const { text, values } = this.selectQuery(filters, undefined, ordering, direction, since);
-        return this.connection.scan<S>(chunkSize, text, values);
+    private async *scanChunks<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        chunkSize: number,
+        filters: Record<string, any>,
+        ordering?: string,
+        direction?: 'asc' | 'desc',
+        since?: any,
+    ) {
+        const { text, values } = this.selectQuery(table, filters, undefined, ordering, direction, since);
+        const connection = await this.connect();
+        try {
+            yield *connection.scan<S>(chunkSize, text, values);
+        } finally {
+            connection.disconnect();
+        }
     }
 
-    private selectQuery(
+    private selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
         filters: Record<string, any>,
         limit?: number,
         ordering?: string,
@@ -330,8 +500,8 @@ implements VersionedModel<S, PK, V, D> {
         since?: any,
     ) {
         const params: any[] = [];
-        const columnNames = Object.keys(this.serializer.fields).map(escapeRef);
-        let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(this.tableName)}`;
+        const columnNames = Object.keys(table.resource.fields).map(escapeRef);
+        let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(table.name)}`;
         const conditions = Object.keys(filters).map((filterKey) => {
             const filterValue = filters[filterKey];
             return makeComparison(filterKey, filterValue, params);
@@ -355,10 +525,13 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    private batchSelectQuery(filtersList: Array<Record<string, any>>) {
+    private batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        filtersList: Array<Record<string, any>>,
+    ) {
         const params: any[] = [];
-        const columnNames = Object.keys(this.serializer.fields).map(escapeRef);
-        let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(this.tableName)}`;
+        const columnNames = Object.keys(table.resource.fields).map(escapeRef);
+        let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(table.name)}`;
         const orConditions = filtersList.map((filters) => {
             const andConditions = keys(filters).map((filterKey) => {
                 const filterValue = filters[filterKey];
@@ -370,14 +543,14 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    private updateQuery(
+    private updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
         filters: Record<string, any>,
         values: Record<string, any>,
     ) {
-        const { serializer, tableName } = this;
         const params: any[] = [];
         const assignments: string[] = [];
-        const { fields, identifyBy } = serializer;
+        const { fields, identifyBy } = table.resource;
         const columns = keys(fields);
         columns.forEach((key) => {
             const value = values[key];
@@ -389,7 +562,7 @@ implements VersionedModel<S, PK, V, D> {
             const filterValue = filters[filterKey];
             return makeComparison(filterKey, filterValue, params);
         });
-        const tblSql = escapeRef(tableName);
+        const tblSql = escapeRef(table.name);
         const valSql = assignments.join(', ');
         const condSql = conditions.join(' AND ');
         const colSql = columns.map(escapeRef).join(', ');
@@ -397,7 +570,8 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    private insertQuery(
+    private insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
         insertValues: Record<string, any>,
         updateValues?: Record<string, any>,
     ) {
@@ -405,8 +579,7 @@ implements VersionedModel<S, PK, V, D> {
         const columns: string[] = [];
         const placeholders: string[] = [];
         const updates: string[] = [];
-        const { serializer, tableName } = this;
-        const { fields, identifyBy } = serializer;
+        const { fields, identifyBy } = table.resource;
         keys(fields).forEach((key) => {
             columns.push(escapeRef(key));
             params.push(insertValues[key]);
@@ -417,7 +590,7 @@ implements VersionedModel<S, PK, V, D> {
                 updates.push(makeAssignment(key, updateValues[key], params));
             });
         }
-        const tblSql = escapeRef(tableName);
+        const tblSql = escapeRef(table.name);
         const colSql = columns.join(', ');
         const valSql = placeholders.join(', ');
         let sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql})`;
@@ -432,9 +605,12 @@ implements VersionedModel<S, PK, V, D> {
         return { text: sql, values: params };
     }
 
-    private deleteQuery(filters: Record<string, any>) {
+    private deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+        table: TableDefinition<S, PK, V, D>,
+        filters: Record<string, any>,
+    ) {
         const params: any[] = [];
-        let sql = `DELETE FROM ${escapeRef(this.tableName)}`;
+        let sql = `DELETE FROM ${escapeRef(table.name)}`;
         const conditions = Object.keys(filters).map((filterKey) => {
             const filterValue = filters[filterKey];
             return makeComparison(filterKey, filterValue, params);
