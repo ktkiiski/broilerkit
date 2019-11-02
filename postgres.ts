@@ -6,7 +6,7 @@ import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { scanCursor } from './postgres-cursor';
 import { nestedList } from './serializers';
 import { hasProperties, isNotNully } from './utils/compare';
-import { Exact, Key, keys } from './utils/objects';
+import { Exact, Key, keys, Nullable } from './utils/objects';
 
 interface SqlRequest {
     text: string;
@@ -133,10 +133,7 @@ export class DatabaseClient {
         const filters = identitySerializer.validate(query);
         const queryConfig = this.selectQuery(table, filters, 1);
         const { rows } = await this.executeQuery<S>(queryConfig);
-        if (rows.length) {
-            return rows[0];
-        }
-        throw new NotFound(`Item was not found.`);
+        return this.getValidatedRow(table, rows);
     }
 
     /**
@@ -159,7 +156,7 @@ export class DatabaseClient {
         if (!rows.length) {
             throw new PreconditionFailed(`Item already exists.`);
         }
-        return rows[0];
+        return this.getValidatedRow(table, rows);
     }
 
     /**
@@ -192,10 +189,7 @@ export class DatabaseClient {
         const values = resource.validate(item);
         const query = this.updateQuery(table, filters, values);
         const { rows } = await this.executeQuery<S>(query);
-        if (!rows.length) {
-            throw new NotFound(`Item was not found.`);
-        }
-        return rows[0];
+        return this.getValidatedRow(table, rows);
     }
 
     /**
@@ -230,10 +224,7 @@ export class DatabaseClient {
         const values = updateSerializer.validate(changes);
         const query = this.updateQuery(table, filters, values);
         const { rows } = await this.executeQuery<S>(query);
-        if (!rows.length) {
-            throw new NotFound(`Item was not found.`);
-        }
-        return rows[0];
+        return this.getValidatedRow(table, rows);
     }
 
     /**
@@ -276,7 +267,7 @@ export class DatabaseClient {
         const updateValues = updateSerializer.validate(update);
         const query = this.insertQuery(table, insertValues, updateValues);
         const { rows } = await this.executeQuery<S>(query);
-        return rows[0];
+        return this.getValidatedRow(table, rows);
     }
 
     /**
@@ -346,9 +337,9 @@ export class DatabaseClient {
         const results: S[] = [];
         const chunkSize = 100;
         for await (const items of this.scanChunks(table, chunkSize, filters, ordering, direction, since)) {
-            results.push(...items);
+            results.push(...items.filter(isNotNully));
             if (items.length < chunkSize) {
-                return { results: items, next: null };
+                return { results, next: null };
             }
             const cursor = prepareForCursor(results, ordering, direction);
             if (cursor) {
@@ -367,15 +358,19 @@ export class DatabaseClient {
      *
      * Without parameters should scan the whole table, in no particular order.
      */
-    public scan<S, PK extends Key<S>, V extends Key<S>, D>(
+    public async *scan<S, PK extends Key<S>, V extends Key<S>, D>(
         table: TableDefinition<S, PK, V, D>, query?: Query<S>,
     ): AsyncIterableIterator<S[]> {
         const chunkSize = 100;
+        let iterator;
         if (query) {
             const { ordering, direction, since, ...filters } = query;
-            return this.scanChunks(table, chunkSize, filters, ordering, direction, since);
+            iterator = this.scanChunks(table, chunkSize, filters, ordering, direction, since);
         } else {
-            return this.scanChunks(table, chunkSize, {});
+            iterator = this.scanChunks(table, chunkSize, {});
+        }
+        for await (const chunk of iterator) {
+            yield chunk.filter(isNotNully);
         }
     }
 
@@ -399,8 +394,9 @@ export class DatabaseClient {
         const filtersList = identityListSerializer.validate(identities);
         const query = this.batchSelectQuery(table, filtersList);
         const { rows } = await this.executeQuery<S>(query);
+        const items = rows.map((row) => validateRow(table, row));
         return filtersList.map((identity) => (
-            rows.find((item) => hasProperties(item, identity)) || null
+            items.find((item) => item && hasProperties(item, identity)) || null
         ));
     }
 
@@ -420,11 +416,13 @@ export class DatabaseClient {
         ordering?: string,
         direction?: 'asc' | 'desc',
         since?: any,
-    ) {
+    ): AsyncIterableIterator<Array<null | S>> {
         const { text, values } = this.selectQuery(table, filters, undefined, ordering, direction, since);
         const connection = await this.connect();
         try {
-            yield *connection.scan<S>(chunkSize, text, values);
+            for await (const chunk of connection.scan<Nullable<S>>(chunkSize, text, values)) {
+                yield chunk.map((row) => validateRow(table, row));
+            }
         } finally {
             connection.disconnect();
         }
@@ -559,6 +557,43 @@ export class DatabaseClient {
         }
         sql += ';';
         return { text: sql, values: params };
+    }
+
+    private getValidatedRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, rows: S[]) {
+        if (!rows.length) {
+            throw new NotFound(`Item was not found.`);
+        }
+        const row = validateRow(table, rows[0]);
+        if (!row) {
+            throw new NotFound(`Item found but was corrupted.`);
+        }
+        return row;
+    }
+}
+
+function validateRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, item: Nullable<S>): S | null {
+    const { defaults, resource } = table;
+    const result = Object.keys(defaults).reduce(
+        (obj, key) => {
+            const defaultValue = defaults[key];
+            if (obj[key as keyof S] == null && defaultValue != null) {
+                return { ...obj, [key]: defaultValue };
+            }
+            return obj;
+        },
+        item,
+    );
+    try {
+        return resource.validate(result as S);
+    } catch (error) {
+        // The database entry is not valid!
+        const identity: {[key: string]: any} = {};
+        resource.identifyBy.forEach((key) => {
+            identity[key] = result[key];
+        });
+        // tslint:disable-next-line:no-console
+        console.error(`Failed to load invalid record ${JSON.stringify(identity)} from the database:`, error);
+        return null;
     }
 }
 

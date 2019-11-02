@@ -31,7 +31,7 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
          */
         public readonly name: string,
         private readonly indexTree: IndexTree<S>,
-        private readonly defaults?: {[P in any]: S[any]},
+        public readonly defaults: {[P in any]: S[any]} = {},
     ) {
         this.indexes = flattenIndexes(indexTree);
     }
