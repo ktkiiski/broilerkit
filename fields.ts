@@ -106,7 +106,7 @@ class NumberField implements Field<number> {
     public readonly type: string = 'double precision';
     constructor(private options: NumberFieldOptions) {}
     public validate(value: number): number {
-        if (isFinite(value)) {
+        if (typeof value === 'number' && isFinite(value)) {
             const {min = NEGATIVE_INFINITY, max = POSITIVE_INFINITY} = this.options;
             if (value < min) {
                 throw new ValidationError(`Value cannot be less than ${min}`);
@@ -168,14 +168,14 @@ const MIN_INTEGER = Math.max(Number.MIN_SAFE_INTEGER, -2147483648);
 class IntegerField extends NumberField implements Field<number> {
     public readonly type: string = 'integer';
     public validate(value: number): number {
-        if (isFinite(value)) {
+        if (typeof value === 'number' && isFinite(value)) {
             if (value > MAX_INTEGER) {
                 throw new ValidationError(`Integer value cannot be greater than ${MAX_INTEGER}`);
             }
             if (value < MIN_INTEGER) {
                 throw new ValidationError(`Integer value cannot be less than ${MIN_INTEGER}`);
             }
-            return Math.floor(super.validate(value));
+            return Math.trunc(super.validate(value));
         }
         throw new ValidationError(`Invalid integer value`);
     }
