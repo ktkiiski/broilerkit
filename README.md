@@ -1,6 +1,6 @@
 # BroilerKit
 
-**BroilerKit** is a framework for quickly developing web apps with modern technologies and deploying them to a scalable, production-ready environment! You can write your scripts in [TypeScript](http://www.typescriptlang.org/) and stylesheets in [SASS](http://sass-lang.com/), and they will be compiled into ES5 JavaScript and CSS using [Webpack](https://webpack.js.org/).
+**BroilerKit** is a framework for quickly developing web apps with modern technologies and deploying them to a scalable, production-ready environment! You can write both frontend and backend in [TypeScript](http://www.typescriptlang.org/) (powered by [Webpack](https://webpack.js.org/)). You write your front-end with [React framework](https://reactjs.org), and server-side rendering (SSR) is supported by default!
 
 You deploy your production-ready web app to [Amazon Web Services cloud platform](https://aws.amazon.com/), with minimal setup and very low costs! The hosting is almost free (but not free) on low-traffic sites.
 
@@ -10,6 +10,7 @@ You deploy your production-ready web app to [Amazon Web Services cloud platform]
 
 - Write all your code, both front-end and backend, in [TypeScript](http://www.typescriptlang.org/)
 - Easily create a full-featured REST API as your backend and database models
+- Your React-based front-end is rendered on server-side by default
 - Easily add the user log in to your app with **Facebook and Google authentication**
 - Write your stylesheets in [SASS](http://sass-lang.com/)
 - No server maintenance: everything will run on [AWS platform](https://aws.amazon.com/) serverless solutions
@@ -26,7 +27,9 @@ You deploy your production-ready web app to [Amazon Web Services cloud platform]
 
 ### Deployment features
 
-- Deploy your compressed, production-ready web app to [AWS platform](https://aws.amazon.com/), hosted on [S3](https://aws.amazon.com/s3/), served globally through [CloudFront](https://aws.amazon.com/cloudfront/), and managed with [CloudFormation](https://aws.amazon.com/cloudformation/)
+- Host your backend on serverless [AWS Lambda functions](https://aws.amazon.com/lambda/) through [AWS API Gateway](https://aws.amazon.com/api-gateway/)
+- Deploy your compressed, production-ready React front-end to [AWS platform](https://aws.amazon.com/), hosted on [S3](https://aws.amazon.com/s3/), served globally through [CloudFront](https://aws.amazon.com/cloudfront/), and managed with [CloudFormation](https://aws.amazon.com/cloudformation/)
+- Server-side rendering of the React front-end
 - Make your app available on your **custom domain** (_required_)
 - Your app is served using **HTTPS**! Creation of required certificates are done automatically with [Amazon Certificate Manager](https://aws.amazon.com/certificate-manager/)
 - Host static assets on separate cookieless domain with infinite caching, for maximum performance scoring and reliability
@@ -57,6 +60,7 @@ Commands:
   broilerkit preview <stage>       Preview the changes that would be deployed.
   broilerkit describe <stage>      Describes the deployed resources.
   broilerkit serve [stage]         Run the local development server.
+  broilerkit db <command>          Manage database tables
 
 Options:
   --appConfigPath  Path to the app configuration                        [string] [default: "app.ts"]
@@ -88,10 +92,10 @@ If installing fails on OSX [you may try to install libpng with Homebrew](https:/
 
 Remember to add your project metadata to the `package.json`, for example, `name`, `author`, `description`.
 
-You should change the configuration in `app.config.ts` according to your web app's needs.
+You should change the configuration in `app.ts` according to your web app's needs.
 
 - `name`: A distinct name of your app. Recommended to be in lower case and separate words with dashes, because the name will be used in Amazon resource names and internal host names.
-- `stages`: Configuration for each different stage that your app has. By default there are `dev` stage for a development version and `prod` stage for the production version. You should change the `serverDomain` and `assetsDomain` to the domain names that you would like to use for each stage. There is also a special stage `local` that is used for the locally run development server.
+- `stages`: Configuration for each different stage that your app has. By default there are `dev` stage for a development version and `prod` stage for the production version. You should change the `serverRoot` and `assetsRoot` to the domain names that you would like to use for each stage. There is also a special stage `local` that is used for the locally run development server.
 
 
 ## Running locally
@@ -155,7 +159,3 @@ The deployment will build your app files, and then upload them to Amazon S3 buck
 The assets (JavaScript, CSS, images) are uploaded with their names containing hashes, so they won't conflict with existing files.
 They will be cached infinitely with HTTP headers for maximum performance.
 The uploaded HTML files are cached for a shorter time.
-
-## Tips
-
-Pro-tip: Use [`npm-check-updates`](https://github.com/tjunnone/npm-check-updates) command line utility to upgrade the npm packages.
