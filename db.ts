@@ -1,7 +1,7 @@
 import { TableState } from './migration';
 import { OrderedQuery } from './pagination';
 import { Resource } from './resources';
-import { Key, keys, Require } from './utils/objects';
+import { FilteredKeys, Key, keys, Require } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -13,6 +13,13 @@ export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 export type Table = TableDefinition<any, Key<any>, Key<any>, any>;
 
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
+
+interface Aggregation<S> {
+    target: Table;
+    type: 'count' | 'sum';
+    field: string;
+    by: {[pk: string]: Key<S>};
+}
 
 export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implements Table {
 
@@ -31,7 +38,8 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
          */
         public readonly name: string,
         private readonly indexTree: IndexTree<S>,
-        public readonly defaults: {[P in any]: S[any]} = {},
+        public readonly defaults: {[P in any]: S[any]},
+        public readonly aggregations: Array<Aggregation<S>>,
     ) {
         this.indexes = flattenIndexes(indexTree);
     }
@@ -44,7 +52,7 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
      * from the database that lack required attributes.
      */
     public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): TableDefinition<S, PK, V, D> {
-        return new TableDefinition(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults});
+        return new TableDefinition(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults}, this.aggregations);
     }
 
     public index<K1 extends keyof S>(key: K1): TableDefinition<S, PK, V, D | IndexQuery<S, never, K1>>;
@@ -56,7 +64,17 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
             const key = index.pop() as K;
             newIndexes = {[key]: newIndexes} as IndexTree<S>;
         }
-        return new TableDefinition(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults);
+        return new TableDefinition(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults, this.aggregations);
+    }
+
+    public aggregate<T, TPK extends Key<T>>(target: TableDefinition<T, TPK, any, any>) {
+        const count = (countField: string & FilteredKeys<T, number>, by: {[P in TPK]: string & FilteredKeys<S, T[P]>}) => {
+            const aggregations = this.aggregations.concat([{
+                target, type: 'count', field: countField, by,
+            }]);
+            return new TableDefinition<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
+        };
+        return { count };
     }
 
     /**
@@ -73,7 +91,7 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
  * @param name An unique name for the table
  */
 export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string) {
-    return new TableDefinition<S, PK, V, never>(resource, name, {});
+    return new TableDefinition<S, PK, V, never>(resource, name, {}, {}, []);
 }
 
 export function getResourceState(name: string, resource: Resource<any, Key<any>, Key<any>>, indexes: string[][]): TableState {

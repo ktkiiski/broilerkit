@@ -7,6 +7,17 @@ export type Key<T> = keyof T & string;
 export type Exact<T, R, E = 'Object must only have allowed properties'> = T & (Exclude<keyof T, keyof R> extends never ? T : E);
 
 /**
+ * Resolves to keys of an object that match the given Condition type.
+ * Source: https://medium.com/dailyjs/typescript-create-a-condition-based-subset-types-9d902cea5b8c
+ */
+export type FilteredKeys<T, Condition> = { [P in keyof T]: T[P] extends Condition ? P : never }[keyof T];
+/**
+ * Filters keys of an object so that they must match the given Condition type.
+ * Source: https://medium.com/dailyjs/typescript-create-a-condition-based-subset-types-9d902cea5b8c
+ */
+export type FilteredValues<T, Condition> = Pick<T, FilteredKeys<T, Condition>>;
+
+/**
  * Iterates through each own enumerable property of the given
  * object and calls the given callback for each of them.
  * @param obj Object to iterate
