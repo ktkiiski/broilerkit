@@ -1,18 +1,14 @@
 import { RDSDataService } from 'aws-sdk';
 import { Client, ClientBase, PoolClient } from 'pg';
 import { Identity, PartialUpdate, Query, TableDefinition } from './db';
-import { HttpStatus, isResponse, NotFound, PreconditionFailed } from './http';
+import { NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { scanCursor } from './postgres-cursor';
 import { nestedList } from './serializers';
+import { batchSelectQuery, deleteQuery, increment, insertQuery, selectQuery, SqlQuery, updateQuery } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
-import { Exact, Key, keys, Nullable, transformValues } from './utils/objects';
-
-interface SqlRequest {
-    text: string;
-    values: any[];
-}
+import { Exact, Key, Nullable, transformValues } from './utils/objects';
 
 interface SqlResult<R> {
     rows: R[];
@@ -132,7 +128,7 @@ export class DatabaseClient {
             .pick([...resource.identifyBy, resource.versionBy])
             .partial(resource.identifyBy);
         const filters = identitySerializer.validate(query);
-        const queryConfig = this.selectQuery(table, filters, 1);
+        const queryConfig = selectQuery(table, filters, 1);
         const { rows } = await this.executeQuery<S>(queryConfig);
         return this.getValidatedRow(table, rows);
     }
@@ -152,19 +148,17 @@ export class DatabaseClient {
         item: S,
     ) {
         const insertedValues = table.resource.validate(item);
-        const query = this.insertQuery(table, insertedValues);
+        const query = insertQuery(table, insertedValues);
         const aggregationQueries = this.getAggregationQueries(table, insertedValues, 1);
         const result = aggregationQueries.length
             ? await this.withTransaction(async (connection) => {
-                const res = await connection.query<S>(query.text, query.values);
+                const res = await connection.query<S>(query.sql, query.params);
                 if (!res.rows.length) {
                     // Fail and abort the transaction
                     throw new PreconditionFailed(`Item already exists.`);
                 }
                 // Update aggregations
-                for (const { text, values } of aggregationQueries) {
-                    await connection.query(text, values);
-                }
+                await queryAll(connection, aggregationQueries);
                 return res;
             })
             : await this.executeQuery<S>(query);
@@ -200,7 +194,7 @@ export class DatabaseClient {
         const filters = identitySerializer.validate(identity);
         const values = resource.validate(item);
         // TODO: Update aggregations!
-        const query = this.updateQuery(table, filters, values);
+        const query = updateQuery(table, filters, values);
         const { rows } = await this.executeQuery<S>(query);
         return this.getValidatedRow(table, rows);
     }
@@ -236,25 +230,9 @@ export class DatabaseClient {
         const filters = identitySerializer.validate(identity);
         const values = updateSerializer.validate(changes);
         // TODO: Update aggregations!
-        const query = this.updateQuery(table, filters, values);
+        const query = updateQuery(table, filters, values);
         const { rows } = await this.executeQuery<S>(query);
         return this.getValidatedRow(table, rows);
-    }
-
-    /**
-     * Same than update, but instead resulting to the whole updated object,
-     * only results to the changes given as parameter. Prefer this instead
-     * of patch if you do not need to know all the up-to-date attributes of the
-     * object after a successful patch, as this is more efficient.
-     */
-    public async amend<S, PK extends Key<S>, V extends Key<S>, D, C extends PartialUpdate<S, V>>(
-        table: TableDefinition<S, PK, V, D>,
-        identity: Identity<S, PK, V>,
-        changes: C,
-    ): Promise<C> {
-        // TODO: Better performing implementation
-        await this.update(table, identity, changes);
-        return changes;
     }
 
     /**
@@ -280,17 +258,15 @@ export class DatabaseClient {
         const insertValues = resource.validate(creation);
         const updateValues = updateSerializer.validate(update);
         const aggregationQueries = this.getAggregationQueries(table, insertValues, 1);
-        const query = this.insertQuery(table, insertValues, updateValues);
+        const query = insertQuery(table, insertValues, updateValues);
         const result = aggregationQueries.length
             ? await this.withTransaction(async (connection) => {
-                const res = await connection.query<S & {xmax: number}>(query.text, query.values);
+                const res = await connection.query<S & {xmax: number}>(query.sql, query.params);
                 const { rows } = res;
                 if (rows.length && rows[0].xmax === 0) {
                     // Row was actually inserted
                     // Update aggregations
-                    for (const { text, values } of aggregationQueries) {
-                        await connection.query(text, values);
-                    }
+                    await queryAll(connection, aggregationQueries);
                 }
                 return res;
             })
@@ -325,41 +301,22 @@ export class DatabaseClient {
             .pick([...resource.identifyBy, resource.versionBy])
             .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
-        const query = this.deleteQuery(table, filters);
+        const query = deleteQuery(table, filters);
         const result = table.aggregations.length
             ? await this.withTransaction(async (connection) => {
-                const res = await connection.query<S>(query.text, query.values);
+                const res = await connection.query<S>(query.sql, query.params);
                 const { rows } = res;
                 if (rows.length) {
                     // Row was actually deleted
                     // Update aggregations
                     const aggregationQueries = this.getAggregationQueries(table, rows[0], -1);
-                    for (const { text, values } of aggregationQueries) {
-                        await connection.query(text, values);
-                    }
+                    await queryAll(connection, aggregationQueries);
                 }
                 return res;
             })
             : await this.executeQuery<S>(query);
         if (!result.rowCount) {
             throw new NotFound(`Item was not found.`);
-        }
-    }
-
-    /**
-     * Deletes an item from the database if it exists in the database.
-     * Unlike destroy, this does not fail if the item didn't exists.
-     */
-    public async clear<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>,
-        identity: Identity<S, PK, V>,
-    ) {
-        try {
-            return await this.destroy(table, identity);
-        } catch (error) {
-            if (!isResponse(error, HttpStatus.NotFound)) {
-                throw error;
-            }
         }
     }
 
@@ -434,7 +391,7 @@ export class DatabaseClient {
             .partial(resource.identifyBy);
         const identityListSerializer = nestedList(identitySerializer);
         const filtersList = identityListSerializer.validate(identities);
-        const query = this.batchSelectQuery(table, filtersList);
+        const query = batchSelectQuery(table, filtersList);
         const { rows } = await this.executeQuery<S>(query);
         const items = rows.map((row) => validateRow(table, row));
         return filtersList.map((identity) => (
@@ -451,8 +408,8 @@ export class DatabaseClient {
         }
     }
 
-    private async executeQuery<S>({ text, values }: SqlRequest) {
-        return this.withConnection((connection) => connection.query<S>(text, values));
+    private async executeQuery<S>({ sql, params }: SqlQuery) {
+        return this.withConnection((connection) => connection.query<S>(sql, params));
     }
 
     private async withTransaction<R>(callback: (connection: SqlConnection) => Promise<R>): Promise<R> {
@@ -480,148 +437,15 @@ export class DatabaseClient {
         direction?: 'asc' | 'desc',
         since?: any,
     ): AsyncIterableIterator<Array<null | S>> {
-        const { text, values } = this.selectQuery(table, filters, undefined, ordering, direction, since);
+        const { sql, params } = selectQuery(table, filters, undefined, ordering, direction, since);
         const connection = await this.connect();
         try {
-            for await (const chunk of connection.scan<Nullable<S>>(chunkSize, text, values)) {
+            for await (const chunk of connection.scan<Nullable<S>>(chunkSize, sql, params)) {
                 yield chunk.map((row) => validateRow(table, row));
             }
         } finally {
             connection.disconnect();
         }
-    }
-
-    private selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>,
-        filters: Record<string, any>,
-        limit?: number,
-        ordering?: string,
-        direction?: 'asc' | 'desc',
-        since?: any,
-    ) {
-        const params: any[] = [];
-        const columnNames = Object.keys(table.resource.fields).map(escapeRef);
-        let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(table.name)}`;
-        const conditions = Object.keys(filters).map((filterKey) => {
-            const filterValue = filters[filterKey];
-            return makeComparison(filterKey, filterValue, params);
-        });
-        if (ordering && direction && since != null) {
-            params.push(since);
-            const dirOp = direction === 'asc' ? '>' : '<';
-            conditions.push(`${escapeRef(ordering)} ${dirOp} $${params.length}`);
-        }
-        if (conditions.length) {
-            sql += ` WHERE ${conditions.join(' AND ')}`;
-        }
-        if (ordering && direction) {
-            sql += ` ORDER BY ${escapeRef(ordering)} ${direction.toUpperCase()}`;
-        }
-        if (limit != null) {
-            params.push(limit);
-            sql += ` LIMIT $${params.length}`;
-        }
-        sql += ';';
-        return { text: sql, values: params };
-    }
-
-    private batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>,
-        filtersList: Array<Record<string, any>>,
-    ) {
-        const params: any[] = [];
-        const columnNames = Object.keys(table.resource.fields).map(escapeRef);
-        let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(table.name)}`;
-        const orConditions = filtersList.map((filters) => {
-            const andConditions = keys(filters).map((filterKey) => {
-                const filterValue = filters[filterKey];
-                return makeComparison(filterKey, filterValue, params);
-            });
-            return `(${andConditions.join(' AND ')})`;
-        });
-        sql += ` WHERE ${orConditions.join(' OR ')};`;
-        return { text: sql, values: params };
-    }
-
-    private updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>,
-        filters: Record<string, any>,
-        values: Record<string, any>,
-    ) {
-        const params: any[] = [];
-        const assignments: string[] = [];
-        const { fields, identifyBy } = table.resource;
-        const columns = keys(fields);
-        columns.forEach((key) => {
-            const value = values[key];
-            if (typeof value !== 'undefined' && !identifyBy.includes(key as PK)) {
-                assignments.push(makeAssignment(key, value, params));
-            }
-        });
-        const conditions = keys(filters).map((filterKey) => {
-            const filterValue = filters[filterKey];
-            return makeComparison(filterKey, filterValue, params);
-        });
-        const tblSql = escapeRef(table.name);
-        const valSql = assignments.join(', ');
-        const condSql = conditions.join(' AND ');
-        const colSql = columns.map(escapeRef).join(', ');
-        const sql = `UPDATE ${tblSql} SET ${valSql} WHERE ${condSql} RETURNING ${colSql};`;
-        return { text: sql, values: params };
-    }
-
-    private insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>,
-        insertValues: Record<string, any>,
-        updateValues?: Record<string, any>,
-    ) {
-        const params: any[] = [];
-        const columns: string[] = [];
-        const placeholders: string[] = [];
-        const updates: string[] = [];
-        const { fields, identifyBy } = table.resource;
-        keys(fields).forEach((key) => {
-            columns.push(escapeRef(key));
-            params.push(insertValues[key]);
-            placeholders.push(`$${params.length}`);
-        });
-        if (updateValues) {
-            keys(updateValues).forEach((key) => {
-                updates.push(makeAssignment(key, updateValues[key], params));
-            });
-        }
-        const tblSql = escapeRef(table.name);
-        const colSql = columns.join(', ');
-        const valSql = placeholders.join(', ');
-        let sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql})`;
-        if (updates.length) {
-            const pkSql = identifyBy.map(escapeRef).join(',');
-            const upSql = updates.join(', ');
-            sql += ` ON CONFLICT (${pkSql}) DO UPDATE SET ${upSql}`;
-        } else {
-            sql += ` ON CONFLICT DO NOTHING`;
-        }
-        sql += ` RETURNING ${colSql}, xmax::text::int;`;
-        return { text: sql, values: params };
-    }
-
-    private deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>,
-        filters: Record<string, any>,
-    ) {
-        const { fields } = table.resource;
-        const params: any[] = [];
-        const colSql = keys(fields).map(escapeRef).join(', ');
-        let sql = `DELETE FROM ${escapeRef(table.name)}`;
-        const conditions = Object.keys(filters).map((filterKey) => {
-            const filterValue = filters[filterKey];
-            return makeComparison(filterKey, filterValue, params);
-        });
-        if (conditions.length) {
-            sql += ` WHERE ${conditions.join(' AND ')}`;
-        }
-        sql += ` RETURNING ${colSql};`;
-        return { text: sql, values: params };
     }
 
     private getValidatedRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, rows: S[]) {
@@ -642,7 +466,7 @@ export class DatabaseClient {
         // order that minimizes possibility for deadlocks.
         const aggregations = sort(table.aggregations, (agg) => agg.target.name);
         return aggregations.map((aggregation) => (
-            this.updateQuery(
+            updateQuery(
                 aggregation.target,
                 transformValues(aggregation.by, (field) => values[field]),
                 {[aggregation.field]: increment(diff)},
@@ -651,12 +475,12 @@ export class DatabaseClient {
     }
 }
 
-class Increment {
-    constructor(public readonly diff: number) {}
-}
-
-function increment(diff: number) {
-    return new Increment(diff);
+async function queryAll<S = unknown>(connection: SqlConnection, queries: SqlQuery[]): Promise<Array<SqlResult<S>>> {
+    const results: Array<SqlResult<S>> = [];
+    for (const query of queries) {
+        results.push(await connection.query<S>(query.sql, query.params));
+    }
+    return results;
 }
 
 function validateRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, item: Nullable<S>): S | null {
@@ -683,39 +507,6 @@ function validateRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, an
         console.error(`Failed to load invalid record ${JSON.stringify(identity)} from the database:`, error);
         return null;
     }
-}
-
-function makeAssignment(field: string, value: any, params: any[]): string {
-    if (value instanceof Increment) {
-        // Make an increment statement
-        params.push(value.diff);
-        return `${escapeRef(field)} = COALESCE(${escapeRef(field)}, 0) + $${params.length}`;
-    }
-    params.push(value);
-    return `${escapeRef(field)} = $${params.length}`;
-}
-
-function makeComparison(field: string, value: any, params: any[]): string {
-    if (value == null) {
-        return `${escapeRef(field)} IS NULL`;
-    }
-    if (Array.isArray(value)) {
-        if (!value.length) {
-            // would result in `xxxx IN ()` which won't work
-            return `FALSE`;
-        }
-        const placeholders = value.map((item) => {
-            params.push(item);
-            return `$${params.length}`;
-        });
-        return `${escapeRef(field)} IN (${placeholders.join(',')})`;
-    }
-    params.push(value);
-    return `${escapeRef(field)} = $${params.length}`;
-}
-
-function escapeRef(identifier: string) {
-    return JSON.stringify(identifier);
 }
 
 function encodeDataApiFieldValue(value: unknown) {
