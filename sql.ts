@@ -1,4 +1,5 @@
 import { TableDefinition } from './db';
+import { Resource } from './resources';
 import { Key, keys } from './utils/objects';
 
 export interface SqlQuery {
@@ -15,22 +16,22 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     since?: any,
 ): SqlQuery {
     const params: any[] = [];
-    const columnNames = Object.keys(table.resource.fields).map(escapeRef);
-    let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(table.name)}`;
+    const { name, resource } = table;
+    let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
     const conditions = Object.keys(filters).map((filterKey) => {
         const filterValue = filters[filterKey];
-        return makeComparison(filterKey, filterValue, params);
+        return filterSql(name, filterKey, filterValue, params);
     });
     if (ordering && direction && since != null) {
         params.push(since);
         const dirOp = direction === 'asc' ? '>' : '<';
-        conditions.push(`${escapeRef(ordering)} ${dirOp} $${params.length}`);
+        conditions.push(`${ref(ordering)} ${dirOp} $${params.length}`);
     }
     if (conditions.length) {
         sql += ` WHERE ${conditions.join(' AND ')}`;
     }
     if (ordering && direction) {
-        sql += ` ORDER BY ${escapeRef(ordering)} ${direction.toUpperCase()}`;
+        sql += ` ORDER BY ${ref(ordering)} ${direction.toUpperCase()}`;
     }
     if (limit != null) {
         params.push(limit);
@@ -44,13 +45,13 @@ export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     filtersList: Array<Record<string, any>>,
 ): SqlQuery {
+    const { name, resource } = table;
     const params: any[] = [];
-    const columnNames = Object.keys(table.resource.fields).map(escapeRef);
-    let sql = `SELECT ${columnNames.join(', ')} FROM ${escapeRef(table.name)}`;
+    let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
     const orConditions = filtersList.map((filters) => {
         const andConditions = keys(filters).map((filterKey) => {
             const filterValue = filters[filterKey];
-            return makeComparison(filterKey, filterValue, params);
+            return filterSql(name, filterKey, filterValue, params);
         });
         return `(${andConditions.join(' AND ')})`;
     });
@@ -65,23 +66,24 @@ export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
 ): SqlQuery {
     const params: any[] = [];
     const assignments: string[] = [];
+    const { name, resource } = table;
     const { fields, identifyBy } = table.resource;
     const columns = keys(fields);
     columns.forEach((key) => {
         const value = values[key];
         if (typeof value !== 'undefined' && !identifyBy.includes(key as PK)) {
-            assignments.push(makeAssignment(key, value, params));
+            assignments.push(assignmentSql(name, key, value, params));
         }
     });
     const conditions = keys(filters).map((filterKey) => {
         const filterValue = filters[filterKey];
-        return makeComparison(filterKey, filterValue, params);
+        return filterSql(name, filterKey, filterValue, params);
     });
-    const tblSql = escapeRef(table.name);
+    const tblSql = ref(name);
     const valSql = assignments.join(', ');
     const condSql = conditions.join(' AND ');
-    const colSql = columns.map(escapeRef).join(', ');
-    const sql = `UPDATE ${tblSql} SET ${valSql} WHERE ${condSql} RETURNING ${colSql};`;
+    const returningSql = returnColumnsSql(name, resource);
+    const sql = `UPDATE ${tblSql} SET ${valSql} WHERE ${condSql} RETURNING ${returningSql};`;
     return { sql, params };
 }
 
@@ -94,29 +96,31 @@ export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     const columns: string[] = [];
     const placeholders: string[] = [];
     const updates: string[] = [];
-    const { fields, identifyBy } = table.resource;
+    const { name, resource } = table;
+    const { fields, identifyBy } = resource;
     keys(fields).forEach((key) => {
-        columns.push(escapeRef(key));
+        columns.push(ref(key));
         params.push(insertValues[key]);
         placeholders.push(`$${params.length}`);
     });
     if (updateValues) {
         keys(updateValues).forEach((key) => {
-            updates.push(makeAssignment(key, updateValues[key], params));
+            const value = updateValues[key];
+            updates.push(assignmentSql(name, key, value, params));
         });
     }
-    const tblSql = escapeRef(table.name);
+    const tblSql = ref(name);
     const colSql = columns.join(', ');
     const valSql = placeholders.join(', ');
     let sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql})`;
     if (updates.length) {
-        const pkSql = identifyBy.map(escapeRef).join(',');
+        const pkSql = identifyBy.map(ref).join(',');
         const upSql = updates.join(', ');
         sql += ` ON CONFLICT (${pkSql}) DO UPDATE SET ${upSql}`;
     } else {
         sql += ` ON CONFLICT DO NOTHING`;
     }
-    sql += ` RETURNING ${colSql}, xmax::text::int;`;
+    sql += ` RETURNING ${returnColumnsSql(name, resource)}, xmax::text::int;`;
     return { sql, params };
 }
 
@@ -124,18 +128,16 @@ export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     filters: Record<string, any>,
 ): SqlQuery {
-    const { fields } = table.resource;
     const params: any[] = [];
-    const colSql = keys(fields).map(escapeRef).join(', ');
-    let sql = `DELETE FROM ${escapeRef(table.name)}`;
+    let sql = `DELETE FROM ${ref(table.name)}`;
     const conditions = Object.keys(filters).map((filterKey) => {
         const filterValue = filters[filterKey];
-        return makeComparison(filterKey, filterValue, params);
+        return filterSql(table.name, filterKey, filterValue, params);
     });
     if (conditions.length) {
         sql += ` WHERE ${conditions.join(' AND ')}`;
     }
-    sql += ` RETURNING ${colSql};`;
+    sql += ` RETURNING ${returnColumnsSql(table.name, table.resource)};`;
     return { sql, params };
 }
 
@@ -147,19 +149,20 @@ export function increment(diff: number) {
     return new Increment(diff);
 }
 
-function makeAssignment(field: string, value: any, params: any[]): string {
+function assignmentSql(tableName: string, field: string, value: any, params: any[]): string {
     if (value instanceof Increment) {
         // Make an increment statement
         params.push(value.diff);
-        return `${escapeRef(field)} = COALESCE(${escapeRef(field)}, 0) + $${params.length}`;
+        return `${ref(field)} = COALESCE(${ref(tableName)}.${ref(field)}, 0) + $${params.length}`;
     }
     params.push(value);
-    return `${escapeRef(field)} = $${params.length}`;
+    return `${ref(field)} = $${params.length}`;
 }
 
-function makeComparison(field: string, value: any, params: any[]): string {
+function filterSql(tableName: string, field: string, value: any, params: any[]): string {
+    const colRef = ref(tableName) + '.' + ref(field);
     if (value == null) {
-        return `${escapeRef(field)} IS NULL`;
+        return `${colRef} IS NULL`;
     }
     if (Array.isArray(value)) {
         if (!value.length) {
@@ -170,12 +173,19 @@ function makeComparison(field: string, value: any, params: any[]): string {
             params.push(item);
             return `$${params.length}`;
         });
-        return `${escapeRef(field)} IN (${placeholders.join(',')})`;
+        return `${colRef} IN (${placeholders.join(',')})`;
     }
     params.push(value);
-    return `${escapeRef(field)} = $${params.length}`;
+    return `${colRef} = $${params.length}`;
 }
 
-function escapeRef(identifier: string) {
+function returnColumnsSql(tableName: string, resource: Resource<any, any, any>): string {
+    const columnSqls = keys(resource.fields).map((column) => (
+        `${ref(tableName)}.${ref(column)} AS ${ref(tableName + '.' + column)}`
+    ));
+    return columnSqls.join(', ');
+}
+
+function ref(identifier: string) {
     return JSON.stringify(identifier);
 }

@@ -8,28 +8,33 @@ import { nestedList } from './serializers';
 import { batchSelectQuery, deleteQuery, increment, insertQuery, selectQuery, SqlQuery, updateQuery } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
-import { Exact, Key, Nullable, transformValues } from './utils/objects';
+import { Exact, Key, transformValues } from './utils/objects';
+import { stripPrefix } from './utils/strings';
 
-interface SqlResult<R> {
-    rows: R[];
+interface Row {
+    [key: string]: any;
+}
+
+interface SqlResult {
+    rows: Row[];
     rowCount: number;
 }
 
 export interface SqlConnection {
-    query<R>(sql: string, params?: any[]): Promise<SqlResult<R>>;
-    scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]>;
+    query(sql: string, params?: any[]): Promise<SqlResult>;
+    scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<Row[]>;
     disconnect(error?: any): Promise<void>;
 }
 
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
-    public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
+    public async query(sql: string, params?: any[]): Promise<SqlResult> {
         const { client } = this;
-        return client.query<R>(sql, params);
+        return client.query(sql, params);
     }
-    public async *scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]> {
+    public async *scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<Row[]> {
         const { client } = this;
-        yield *scanCursor<R>(client, chunkSize, sql, params);
+        yield *scanCursor(client, chunkSize, sql, params);
     }
     public abstract disconnect(error?: any): Promise<void>;
 }
@@ -64,7 +69,7 @@ export class RemotePostgreSqlConnection implements SqlConnection {
         private readonly secretArn: string,
         private readonly database: string,
     ) {}
-    public async query<R>(sql: string, params?: any[]): Promise<SqlResult<R>> {
+    public async query(sql: string, params?: any[]): Promise<SqlResult> {
         const { rdsDataApi, resourceArn, secretArn, database } = this;
         if (!rdsDataApi) {
             throw new Error(`Already disconnected from the database`);
@@ -84,18 +89,18 @@ export class RemotePostgreSqlConnection implements SqlConnection {
             .map(({ name }) => name)
             .filter(isNotNully);
         const rows = (records || []).map((fields) => {
-            const row: Record<string, any> = {};
+            const row: Row = {};
             columns.forEach((name, index) => {
                 row[name] = decodeDataApiFieldValue(fields[index]);
             });
-            return row as R;
+            return row;
         });
         return { rowCount, rows };
     }
-    public async *scan<R>(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<R[]> {
+    public async *scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<Row[]> {
         // The RDSDataService does not support cursors. For now, we just attempt
         // to retrieve everything, but this will fail when the data masses increase.
-        const result = await this.query<R>(sql, params);
+        const result = await this.query(sql, params);
         const rows = result.rows.slice();
         while (rows.length) {
             yield rows.splice(0, chunkSize);
@@ -129,7 +134,7 @@ export class DatabaseClient {
             .partial(resource.identifyBy);
         const filters = identitySerializer.validate(query);
         const queryConfig = selectQuery(table, filters, 1);
-        const { rows } = await this.executeQuery<S>(queryConfig);
+        const { rows } = await this.executeQuery(queryConfig);
         return this.getValidatedRow(table, rows);
     }
 
@@ -152,7 +157,7 @@ export class DatabaseClient {
         const aggregationQueries = this.getAggregationQueries(table, insertedValues, 1);
         const result = aggregationQueries.length
             ? await this.withTransaction(async (connection) => {
-                const res = await connection.query<S>(query.sql, query.params);
+                const res = await connection.query(query.sql, query.params);
                 if (!res.rows.length) {
                     // Fail and abort the transaction
                     throw new PreconditionFailed(`Item already exists.`);
@@ -161,7 +166,7 @@ export class DatabaseClient {
                 await queryAll(connection, aggregationQueries);
                 return res;
             })
-            : await this.executeQuery<S>(query);
+            : await this.executeQuery(query);
         return this.getValidatedRow(table, result.rows);
     }
 
@@ -195,7 +200,7 @@ export class DatabaseClient {
         const values = resource.validate(item);
         // TODO: Update aggregations!
         const query = updateQuery(table, filters, values);
-        const { rows } = await this.executeQuery<S>(query);
+        const { rows } = await this.executeQuery(query);
         return this.getValidatedRow(table, rows);
     }
 
@@ -231,7 +236,7 @@ export class DatabaseClient {
         const values = updateSerializer.validate(changes);
         // TODO: Update aggregations!
         const query = updateQuery(table, filters, values);
-        const { rows } = await this.executeQuery<S>(query);
+        const { rows } = await this.executeQuery(query);
         return this.getValidatedRow(table, rows);
     }
 
@@ -261,7 +266,7 @@ export class DatabaseClient {
         const query = insertQuery(table, insertValues, updateValues);
         const result = aggregationQueries.length
             ? await this.withTransaction(async (connection) => {
-                const res = await connection.query<S & {xmax: number}>(query.sql, query.params);
+                const res = await connection.query(query.sql, query.params);
                 const { rows } = res;
                 if (rows.length && rows[0].xmax === 0) {
                     // Row was actually inserted
@@ -270,7 +275,7 @@ export class DatabaseClient {
                 }
                 return res;
             })
-            : await this.executeQuery<S>(query);
+            : await this.executeQuery(query);
         return this.getValidatedRow(table, result.rows);
     }
 
@@ -304,17 +309,20 @@ export class DatabaseClient {
         const query = deleteQuery(table, filters);
         const result = table.aggregations.length
             ? await this.withTransaction(async (connection) => {
-                const res = await connection.query<S>(query.sql, query.params);
+                const res = await connection.query(query.sql, query.params);
                 const { rows } = res;
                 if (rows.length) {
                     // Row was actually deleted
                     // Update aggregations
-                    const aggregationQueries = this.getAggregationQueries(table, rows[0], -1);
-                    await queryAll(connection, aggregationQueries);
+                    const item = parseRow(table.name, table, rows[0]);
+                    if (item) {
+                        const aggregationQueries = this.getAggregationQueries(table, item, -1);
+                        await queryAll(connection, aggregationQueries);
+                    }
                 }
                 return res;
             })
-            : await this.executeQuery<S>(query);
+            : await this.executeQuery(query);
         if (!result.rowCount) {
             throw new NotFound(`Item was not found.`);
         }
@@ -392,8 +400,8 @@ export class DatabaseClient {
         const identityListSerializer = nestedList(identitySerializer);
         const filtersList = identityListSerializer.validate(identities);
         const query = batchSelectQuery(table, filtersList);
-        const { rows } = await this.executeQuery<S>(query);
-        const items = rows.map((row) => validateRow(table, row));
+        const { rows } = await this.executeQuery(query);
+        const items = rows.map((row) => parseRow(table.name, table, row));
         return filtersList.map((identity) => (
             items.find((item) => item && hasProperties(item, identity)) || null
         ));
@@ -408,8 +416,8 @@ export class DatabaseClient {
         }
     }
 
-    private async executeQuery<S>({ sql, params }: SqlQuery) {
-        return this.withConnection((connection) => connection.query<S>(sql, params));
+    private async executeQuery({ sql, params }: SqlQuery) {
+        return this.withConnection((connection) => connection.query(sql, params));
     }
 
     private async withTransaction<R>(callback: (connection: SqlConnection) => Promise<R>): Promise<R> {
@@ -440,19 +448,19 @@ export class DatabaseClient {
         const { sql, params } = selectQuery(table, filters, undefined, ordering, direction, since);
         const connection = await this.connect();
         try {
-            for await (const chunk of connection.scan<Nullable<S>>(chunkSize, sql, params)) {
-                yield chunk.map((row) => validateRow(table, row));
+            for await (const chunk of connection.scan(chunkSize, sql, params)) {
+                yield chunk.map((row) => parseRow(table.name, table, row));
             }
         } finally {
             connection.disconnect();
         }
     }
 
-    private getValidatedRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, rows: S[]) {
+    private getValidatedRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, rows: Row[]) {
         if (!rows.length) {
             throw new NotFound(`Item was not found.`);
         }
-        const row = validateRow(table, rows[0]);
+        const row = parseRow(table.name, table, rows[0]);
         if (!row) {
             throw new NotFound(`Item found but was corrupted.`);
         }
@@ -475,16 +483,24 @@ export class DatabaseClient {
     }
 }
 
-async function queryAll<S = unknown>(connection: SqlConnection, queries: SqlQuery[]): Promise<Array<SqlResult<S>>> {
-    const results: Array<SqlResult<S>> = [];
+async function queryAll(connection: SqlConnection, queries: SqlQuery[]): Promise<SqlResult[]> {
+    const results: SqlResult[] = [];
     for (const query of queries) {
-        results.push(await connection.query<S>(query.sql, query.params));
+        results.push(await connection.query(query.sql, query.params));
     }
     return results;
 }
 
-function validateRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, any>, item: Nullable<S>): S | null {
+function parseRow<S, PK extends Key<S>>(tableName: string, table: TableDefinition<S, PK, any, any>, row: Row): S | null {
     const { defaults, resource } = table;
+    const propertyPrefix = tableName + '.';
+    const item: Row = {};
+    Object.keys(row).forEach((key) => {
+        const propertyName = stripPrefix(key, propertyPrefix);
+        if (propertyName != null) {
+            item[propertyName] = row[key];
+        }
+    });
     const result = Object.keys(defaults).reduce(
         (obj, key) => {
             const defaultValue = defaults[key];
@@ -493,7 +509,7 @@ function validateRow<S, PK extends Key<S>>(table: TableDefinition<S, PK, any, an
             }
             return obj;
         },
-        item,
+        item as S,
     );
     try {
         return resource.validate(result as S);
