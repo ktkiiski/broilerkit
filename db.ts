@@ -19,6 +19,7 @@ interface Aggregation<S> {
     type: 'count' | 'sum';
     field: string;
     by: {[pk: string]: Key<S>};
+    filters: Partial<S>;
 }
 
 export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implements Table {
@@ -68,9 +69,13 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
     }
 
     public aggregate<T, TPK extends Key<T>>(target: TableDefinition<T, TPK, any, any>) {
-        const count = (countField: string & FilteredKeys<T, number>, by: {[P in TPK]: string & FilteredKeys<S, T[P]>}) => {
+        const count = (
+            countField: string & FilteredKeys<T, number>,
+            by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
+            filters: Partial<S> = {},
+        ) => {
             const aggregations = this.aggregations.concat([{
-                target, type: 'count', field: countField, by,
+                target, type: 'count', field: countField, by, filters,
             }]);
             return new TableDefinition<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
         };

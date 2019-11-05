@@ -18,10 +18,8 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     const params: any[] = [];
     const { name, resource } = table;
     let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
-    const conditions = Object.keys(filters).map((filterKey) => {
-        const filterValue = filters[filterKey];
-        return filterSql(name, filterKey, filterValue, params);
-    });
+    const filtersSql = filterConditionSql(name, filters, params);
+    const conditions = filtersSql ? [filtersSql] : [];
     if (ordering && direction && since != null) {
         params.push(since);
         const dirOp = direction === 'asc' ? '>' : '<';
@@ -48,13 +46,9 @@ export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     const { name, resource } = table;
     const params: any[] = [];
     let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
-    const orConditions = filtersList.map((filters) => {
-        const andConditions = keys(filters).map((filterKey) => {
-            const filterValue = filters[filterKey];
-            return filterSql(name, filterKey, filterValue, params);
-        });
-        return `(${andConditions.join(' AND ')})`;
-    });
+    const orConditions = filtersList.map((filters) => (
+        `(${filterConditionSql(name, filters, params)})`
+    ));
     sql += ` WHERE ${orConditions.join(' OR ')};`;
     return { sql, params };
 }
@@ -63,6 +57,7 @@ export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     filters: Record<string, any>,
     values: Record<string, any>,
+    returnPrevious: boolean = false,
 ): SqlQuery {
     const params: any[] = [];
     const assignments: string[] = [];
@@ -75,16 +70,28 @@ export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
             assignments.push(assignmentSql(name, key, value, params));
         }
     });
-    const conditions = keys(filters).map((filterKey) => {
-        const filterValue = filters[filterKey];
-        return filterSql(name, filterKey, filterValue, params);
-    });
-    const tblSql = ref(name);
+    const tblRef = ref(name);
     const valSql = assignments.join(', ');
-    const condSql = conditions.join(' AND ');
-    const returningSql = returnColumnsSql(name, resource);
-    const sql = `UPDATE ${tblSql} SET ${valSql} WHERE ${condSql} RETURNING ${returningSql};`;
-    return { sql, params };
+    const condSql = filterConditionSql(name, filters, params);
+    const returnSql = returnColumnsSql(name, resource);
+    if (returnPrevious) {
+        // Join the current state to the query in order to return the previous state
+        const columnSql = keys(resource.fields).map(ref).join(', ');
+        const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql} FOR UPDATE`;
+        const prevAlias = '_previous';
+        const prevRef = ref(prevAlias);
+        const joinConditions = identifyBy.map((pk) => (
+            `${prevRef}.${ref(pk)} = ${tblRef}.${ref(pk)}`
+        ));
+        const joinSql = joinConditions.join(' AND ');
+        const prevReturnSql = returnColumnsSql(prevAlias, resource);
+        const sql = `UPDATE ${tblRef} SET ${valSql} FROM (${prevSelect}) ${prevRef} WHERE ${joinSql} RETURNING ${prevReturnSql}, ${returnSql};`;
+        return { sql, params };
+    } else {
+        // Normal update, without joining the previous state
+        const sql = `UPDATE ${tblRef} SET ${valSql} WHERE ${condSql} RETURNING ${returnSql};`;
+        return { sql, params };
+    }
 }
 
 export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
@@ -130,12 +137,9 @@ export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
 ): SqlQuery {
     const params: any[] = [];
     let sql = `DELETE FROM ${ref(table.name)}`;
-    const conditions = Object.keys(filters).map((filterKey) => {
-        const filterValue = filters[filterKey];
-        return filterSql(table.name, filterKey, filterValue, params);
-    });
-    if (conditions.length) {
-        sql += ` WHERE ${conditions.join(' AND ')}`;
+    const conditionSql = filterConditionSql(table.name, filters, params);
+    if (conditionSql) {
+        sql += ` WHERE ${conditionSql}`;
     }
     sql += ` RETURNING ${returnColumnsSql(table.name, table.resource)};`;
     return { sql, params };
@@ -177,6 +181,13 @@ function filterSql(tableName: string, field: string, value: any, params: any[]):
     }
     params.push(value);
     return `${colRef} = $${params.length}`;
+}
+
+function filterConditionSql(tableName: string, filters: {[field: string]: any}, params: any[]): string {
+    const conditions = keys(filters).map((field) => (
+        filterSql(tableName, field, filters[field], params)
+    ));
+    return conditions.join(' AND ');
 }
 
 function returnColumnsSql(tableName: string, resource: Resource<any, any, any>): string {

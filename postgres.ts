@@ -154,7 +154,7 @@ export class DatabaseClient {
     ) {
         const insertedValues = table.resource.validate(item);
         const query = insertQuery(table, insertedValues);
-        const aggregationQueries = this.getAggregationQueries(table, insertedValues, 1);
+        const aggregationQueries = this.getAggregationQueries(table, insertedValues, null);
         const result = aggregationQueries.length
             ? await this.withTransaction(async (connection) => {
                 const res = await connection.query(query.sql, query.params);
@@ -192,16 +192,10 @@ export class DatabaseClient {
         identity: Identity<S, PK, V>,
         item: S,
     ) {
+        // Perform an update, but require all the resource properties
         const { resource } = table;
-        const identitySerializer = resource
-            .pick([...resource.identifyBy, resource.versionBy])
-            .partial(resource.identifyBy);
-        const filters = identitySerializer.validate(identity);
-        const values = resource.validate(item);
-        // TODO: Update aggregations!
-        const query = updateQuery(table, filters, values);
-        const { rows } = await this.executeQuery(query);
-        return this.getValidatedRow(table, rows);
+        resource.validate(item);
+        return this.update(table, identity, item);
     }
 
     /**
@@ -234,10 +228,25 @@ export class DatabaseClient {
             .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
         const values = updateSerializer.validate(changes);
-        // TODO: Update aggregations!
-        const query = updateQuery(table, filters, values);
-        const { rows } = await this.executeQuery(query);
-        return this.getValidatedRow(table, rows);
+        const result = table.aggregate.length
+            ? await this.withTransaction(async (connection) => {
+                const query = updateQuery(table, filters, values, true);
+                const res = await connection.query(query.sql, query.params);
+                const { rows } = res;
+                if (rows.length) {
+                    // Row was actually updated
+                    // Update aggregations
+                    const newItem = parseRow(table.name, table, rows[0]);
+                    const oldItem = parseRow('_previous', table, rows[0]);
+                    const aggregationQueries = this.getAggregationQueries(table, newItem, oldItem);
+                    await queryAll(connection, aggregationQueries);
+                }
+                return res;
+            })
+            : await this.executeQuery(
+                updateQuery(table, filters, values, false),
+            );
+        return this.getValidatedRow(table, result.rows);
     }
 
     /**
@@ -262,7 +271,7 @@ export class DatabaseClient {
         const updateSerializer = resource.partial([resource.versionBy]);
         const insertValues = resource.validate(creation);
         const updateValues = updateSerializer.validate(update);
-        const aggregationQueries = this.getAggregationQueries(table, insertValues, 1);
+        const aggregationQueries = this.getAggregationQueries(table, insertValues, null);
         const query = insertQuery(table, insertValues, updateValues);
         const result = aggregationQueries.length
             ? await this.withTransaction(async (connection) => {
@@ -316,7 +325,7 @@ export class DatabaseClient {
                     // Update aggregations
                     const item = parseRow(table.name, table, rows[0]);
                     if (item) {
-                        const aggregationQueries = this.getAggregationQueries(table, item, -1);
+                        const aggregationQueries = this.getAggregationQueries(table, null, item);
                         await queryAll(connection, aggregationQueries);
                     }
                 }
@@ -468,18 +477,27 @@ export class DatabaseClient {
     }
 
     private getAggregationQueries<S, PK extends Key<S>, V extends Key<S>, D>(
-        table: TableDefinition<S, PK, V, D>, values: S, diff: number,
+        table: TableDefinition<S, PK, V, D>, newValues: S | null, oldValues: S | null,
     ) {
+        const idValues = newValues || oldValues;
+        if (!idValues) {
+            // Both parameters are null
+            return [];
+        }
         // NOTE: Sorting by aggregation table names to ensure a consistent
         // order that minimizes possibility for deadlocks.
         const aggregations = sort(table.aggregations, (agg) => agg.target.name);
-        return aggregations.map((aggregation) => (
-            updateQuery(
-                aggregation.target,
-                transformValues(aggregation.by, (field) => values[field]),
-                {[aggregation.field]: increment(diff)},
-            )
-        ));
+        return aggregations.map(({ target, by, field, filters }) => {
+            const identifier = transformValues(by, (pk) => idValues[pk]);
+            const mask = { ...filters, ...identifier };
+            const isMatching = newValues != null && hasProperties(newValues, mask);
+            const wasMatching = oldValues != null && hasProperties(oldValues, mask);
+            const diff = (isMatching ? 1 : 0) - (wasMatching ? 1 : 0);
+            if (diff === 0) {
+                return null;
+            }
+            return updateQuery(target, identifier, {[field]: increment(diff)});
+        }).filter(isNotNully);
     }
 }
 
