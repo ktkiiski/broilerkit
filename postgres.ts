@@ -349,7 +349,7 @@ export class DatabaseClient {
         table: TableDefinition<S, PK, V, D>,
         query: Exact<Q, D>,
     ): Promise<Page<S, Q>> {
-        const { ordering, direction, since, ...filters } = query;
+        const { ordering, direction, since, ...filters } = query as Q;
         const results: S[] = [];
         const chunkSize = 100;
         for await (const items of this.scanChunks(table, chunkSize, filters, ordering, direction, since)) {
@@ -361,7 +361,7 @@ export class DatabaseClient {
             if (cursor) {
                 return {
                     results: cursor.results,
-                    next: { ...query, since: cursor.since as any },
+                    next: { ...query as Q, since: cursor.since as any },
                 };
             }
         }
