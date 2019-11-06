@@ -146,7 +146,7 @@ Resources:
       BackupRetentionPeriod: 35
       ScalingConfiguration:
         AutoPause: true
-        SecondsUntilAutoPause: 1800 # 30 min
+        SecondsUntilAutoPause: 7200 # 2 hours
         # TODO: MinCapacity & MaxCapacity
       DBClusterParameterGroupName:
         Ref: DatabaseDBClusterParameterGroup
