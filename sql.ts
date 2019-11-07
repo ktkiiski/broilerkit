@@ -1,10 +1,22 @@
 import { TableDefinition } from './db';
 import { Resource } from './resources';
+import { isNotNully } from './utils/compare';
 import { Key, keys } from './utils/objects';
+import { stripPrefix } from './utils/strings';
 
-export interface SqlQuery {
+export interface SqlQuery<R> {
     sql: string;
     params: any[];
+    deserialize(result: SqlResult): R;
+}
+
+export interface Row {
+    [key: string]: any;
+}
+
+export interface SqlResult {
+    rows: Row[];
+    rowCount: number;
 }
 
 export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
@@ -14,7 +26,7 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     ordering?: string,
     direction?: 'asc' | 'desc',
     since?: any,
-): SqlQuery {
+): SqlQuery<S[]> {
     const params: any[] = [];
     const { name, resource } = table;
     let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
@@ -36,13 +48,15 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         sql += ` LIMIT $${params.length}`;
     }
     sql += ';';
-    return { sql, params };
+    return makeQuery(sql, params, ({ rows }) => (
+        rows.map((row) => parseRow(name, table, row)).filter(isNotNully)
+    ));
 }
 
 export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     filtersList: Array<Record<string, any>>,
-): SqlQuery {
+): SqlQuery<S[]> {
     const { name, resource } = table;
     const params: any[] = [];
     let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
@@ -50,15 +64,35 @@ export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         `(${filterConditionSql(name, filters, params)})`
     ));
     sql += ` WHERE ${orConditions.join(' OR ')};`;
-    return { sql, params };
+    return makeQuery(sql, params, ({ rows }) => (
+        rows.map((row) => parseRow(name, table, row)).filter(isNotNully)
+    ));
 }
 
 export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     filters: Record<string, any>,
     values: Record<string, any>,
+    returnPrevious: false,
+): SqlQuery<S[]>;
+export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+    table: TableDefinition<S, PK, V, D>,
+    filters: Record<string, any>,
+    values: Record<string, any>,
+    returnPrevious: true,
+): SqlQuery<Array<[S, S]>>;
+export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+    table: TableDefinition<S, PK, V, D>,
+    filters: Record<string, any>,
+    values: Record<string, any>,
+    returnPrevious?: boolean,
+): SqlQuery<S[] | Array<[S, S]>>;
+export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+    table: TableDefinition<S, PK, V, D>,
+    filters: Record<string, any>,
+    values: Record<string, any>,
     returnPrevious: boolean = false,
-): SqlQuery {
+): SqlQuery<S[] | Array<[S, S]>> {
     const params: any[] = [];
     const assignments: string[] = [];
     const { name, resource } = table;
@@ -86,19 +120,45 @@ export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         const joinSql = joinConditions.join(' AND ');
         const prevReturnSql = returnColumnsSql(prevAlias, resource);
         const sql = `UPDATE ${tblRef} SET ${valSql} FROM (${prevSelect}) ${prevRef} WHERE ${joinSql} RETURNING ${prevReturnSql}, ${returnSql};`;
-        return { sql, params };
+        return makeQuery(sql, params, ({ rows }) => (
+            rows.map((row) => {
+                const newItem = parseRow(name, table, row);
+                const oldItem = parseRow('_previous', table, row);
+                if (newItem && oldItem) {
+                    return [newItem, oldItem] as [S, S];
+                }
+                return null;
+            }).filter(isNotNully)
+        ));
     } else {
         // Normal update, without joining the previous state
         const sql = `UPDATE ${tblRef} SET ${valSql} WHERE ${condSql} RETURNING ${returnSql};`;
-        return { sql, params };
+        return makeQuery(sql, params, ({ rows }) => (
+            rows.map((row) => parseRow(name, table, row)).filter(isNotNully)
+        ));
     }
+}
+
+interface InsertResult<R> {
+    item: R;
+    wasCreated: boolean;
 }
 
 export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     insertValues: Record<string, any>,
+    updateValues: Record<string, any>,
+): SqlQuery<InsertResult<S>>;
+export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+    table: TableDefinition<S, PK, V, D>,
+    insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
-): SqlQuery {
+): SqlQuery<InsertResult<S> | null>;
+export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
+    table: TableDefinition<S, PK, V, D>,
+    insertValues: Record<string, any>,
+    updateValues?: Record<string, any>,
+): SqlQuery<InsertResult<S> | null> {
     const params: any[] = [];
     const columns: string[] = [];
     const placeholders: string[] = [];
@@ -128,13 +188,21 @@ export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         sql += ` ON CONFLICT DO NOTHING`;
     }
     sql += ` RETURNING ${returnColumnsSql(name, resource)}, xmax::text::int;`;
-    return { sql, params };
+    return makeQuery(sql, params, ({ rows }) => {
+        for (const { xmax, ...row } of rows) {
+            const item = parseRow(name, table, row);
+            if (item) {
+                return { item, wasCreated: xmax === 0 };
+            }
+        }
+        return null;
+    });
 }
 
 export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     table: TableDefinition<S, PK, V, D>,
     filters: Record<string, any>,
-): SqlQuery {
+): SqlQuery<S | null> {
     const params: any[] = [];
     let sql = `DELETE FROM ${ref(table.name)}`;
     const conditionSql = filterConditionSql(table.name, filters, params);
@@ -142,7 +210,15 @@ export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         sql += ` WHERE ${conditionSql}`;
     }
     sql += ` RETURNING ${returnColumnsSql(table.name, table.resource)};`;
-    return { sql, params };
+    return {
+        sql, params,
+        deserialize({ rows }) {
+            if (!rows.length) {
+                return null;
+            }
+            return parseRow(name, table, rows[0]);
+        },
+    };
 }
 
 class Increment {
@@ -199,4 +275,42 @@ function returnColumnsSql(tableName: string, resource: Resource<any, any, any>):
 
 function ref(identifier: string) {
     return JSON.stringify(identifier);
+}
+
+function makeQuery<R>(sql: string, params: any[], deserialize: (result: SqlResult) => R): SqlQuery<R> {
+    return { sql, params, deserialize };
+}
+
+function parseRow<S, PK extends Key<S>>(tableAlias: string, table: TableDefinition<S, PK, any, any>, row: Row): S | null {
+    const { defaults, resource } = table;
+    const propertyPrefix = tableAlias + '.';
+    const item: Row = {};
+    Object.keys(row).forEach((key) => {
+        const propertyName = stripPrefix(key, propertyPrefix);
+        if (propertyName != null) {
+            item[propertyName] = row[key];
+        }
+    });
+    const result = Object.keys(defaults).reduce(
+        (obj, key) => {
+            const defaultValue = defaults[key];
+            if (obj[key as keyof S] == null && defaultValue != null) {
+                return { ...obj, [key]: defaultValue };
+            }
+            return obj;
+        },
+        item as S,
+    );
+    try {
+        return resource.validate(result as S);
+    } catch (error) {
+        // The database entry is not valid!
+        const identity: {[key: string]: any} = {};
+        resource.identifyBy.forEach((key) => {
+            identity[key] = result[key];
+        });
+        // tslint:disable-next-line:no-console
+        console.error(`Failed to load invalid record ${JSON.stringify(identity)} from the database:`, error);
+        return null;
+    }
 }
