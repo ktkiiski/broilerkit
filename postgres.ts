@@ -16,21 +16,67 @@ interface SqlScanChunk extends SqlResult {
 
 export interface SqlConnection {
     query(sql: string, params?: any[]): Promise<SqlResult>;
+    queryAll(queries: Array<{sql: string, params?: any[]}>): Promise<SqlResult[]>;
     scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk>;
+    beginTransaction(): Promise<void>;
+    rollbackTransaction(): Promise<void>;
+    commitTransaction(): Promise<void>;
     disconnect(error?: any): Promise<void>;
 }
 
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
+    private transactionCount = 0;
     public async query(sql: string, params?: any[]): Promise<SqlResult> {
         const { client } = this;
         return client.query(sql, params);
+    }
+    public async queryAll(queries: Array<{ sql: string; params?: any[]; }>): Promise<SqlResult[]> {
+        // TODO: Could probably be optimized as a single ';' separated query string in some cases
+        const results: SqlResult[] = [];
+        for (const { sql, params } of queries) {
+            results.push(await this.query(sql, params));
+        }
+        return results;
     }
     public async *scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk> {
         const { client } = this;
         for await (const rows of scanCursor<Row>(client, chunkSize, sql, params)) {
             yield { rows, rowCount: rows.length, isComplete: rows.length < chunkSize };
         }
+    }
+    public async beginTransaction(): Promise<void> {
+        const query = this.transactionCount
+            ? `SAVEPOINT t${this.transactionCount};`
+            : `BEGIN;`;
+        this.transactionCount += 1;
+        try {
+            await this.query(query);
+        } catch (error) {
+            // Failed to begin a transaction
+            this.transactionCount -= 1;
+            throw error;
+        }
+    }
+    public async rollbackTransaction(): Promise<void> {
+        if (!this.transactionCount) {
+            throw new Error('Not in a transaction. Cannot rollback');
+        }
+        this.transactionCount -= 1;
+        const query = this.transactionCount
+            ? `ROLLBACK TO SAVEPOINT t${this.transactionCount};`
+            : `ROLLBACK;`;
+        await this.query(query);
+    }
+    public async commitTransaction(): Promise<void> {
+        if (!this.transactionCount) {
+            throw new Error('Not in a transaction. Cannot commit');
+        }
+        this.transactionCount -= 1;
+        const query = this.transactionCount
+            ? `RELEASE SAVEPOINT t${this.transactionCount};`
+            : `COMMIT;`;
+        await this.query(query);
     }
     public abstract disconnect(error?: any): Promise<void>;
 }
@@ -54,7 +100,6 @@ export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClien
 }
 
 export class RemotePostgreSqlConnection implements SqlConnection {
-
     private rdsDataApi?: RDSDataService = new RDSDataService({
         apiVersion: '2018-08-01',
         region: this.region,
@@ -93,6 +138,13 @@ export class RemotePostgreSqlConnection implements SqlConnection {
         });
         return { rowCount, rows };
     }
+    public async queryAll(queries: Array<{ sql: string; params?: any[]; }>): Promise<SqlResult[]> {
+        const results: SqlResult[] = [];
+        for (const { sql, params } of queries) {
+            results.push(await this.query(sql, params));
+        }
+        return results;
+    }
     public async *scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk> {
         // The RDSDataService does not support cursors. For now, we just attempt
         // to retrieve everything, but this will fail when the data masses increase.
@@ -102,6 +154,15 @@ export class RemotePostgreSqlConnection implements SqlConnection {
             const rows = allRows.splice(0, chunkSize);
             yield { rows, rowCount: rows.length, isComplete: !allRows.length };
         }
+    }
+    public beginTransaction(): never {
+        throw new Error('Transactions not implemented.');
+    }
+    public rollbackTransaction(): never {
+        throw new Error('Transactions not implemented.');
+    }
+    public commitTransaction(): never {
+        throw new Error('Transactions not implemented.');
     }
     public async disconnect(): Promise<void> {
         delete this.rdsDataApi;
@@ -425,6 +486,37 @@ export class DatabaseClient {
         ));
     }
 
+    /**
+     * Executes all the given database operations, failing as soon as any of them fails.
+     * Note that unless run in a transaction, any failed operations are not rolled back,
+     * and you won't get any intermediate results. Therefore it is recommended to either
+     * only run read operations, or wrap the exeution in a transaction.
+     * @param queries Array of database operations to execute
+     */
+    public async runAll<R extends any[]>(
+        queries: {[P in keyof R]: SqlQuery<R[P]>},
+    ): Promise<R> {
+        return this.withConnection(async (connection) => {
+            const results = await connection.queryAll(queries);
+            return queries.map((query, index) => query.deserialize(results[index])) as {[P in keyof R]: R[P]};
+        });
+    }
+
+    /**
+     * Executes an array of database operations atomically in a transaction,
+     * returning an array of results in corresponding order. Fails if any of the
+     * operations fail, rolling back earlier results.
+     * @param queries Array of database operations to execute
+     */
+    public async batch<R extends any[]>(
+        queries: {[P in keyof R]: SqlQuery<R[P]>},
+    ): Promise<R> {
+        return this.withTransaction(async (connection) => {
+            const results = await connection.queryAll(queries);
+            return queries.map((query, index) => query.deserialize(results[index])) as {[P in keyof R]: R[P]};
+        });
+    }
+
     private async withConnection<R>(callback: (connection: SqlConnection) => Promise<R>): Promise<R> {
         const connection = await this.connect();
         try {
@@ -445,15 +537,15 @@ export class DatabaseClient {
         return this.withConnection(async (connection) => {
             let result;
             try {
-                await connection.query('BEGIN');
+                await connection.beginTransaction();
                 result = await callback(connection);
             } catch (error) {
                 // Something went wrong. Rollback the transaction
-                await connection.query('ROLLBACK');
+                await connection.rollbackTransaction();
                 throw error;
             }
             // Commit the transaction
-            await connection.query('COMMIT');
+            await connection.commitTransaction();
             return result;
         });
     }
