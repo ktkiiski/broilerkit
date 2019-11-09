@@ -204,12 +204,13 @@ export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     filters: Record<string, any>,
 ): SqlQuery<S | null> {
     const params: any[] = [];
-    let sql = `DELETE FROM ${ref(table.name)}`;
-    const conditionSql = filterConditionSql(table.name, filters, params);
+    const { name } = table;
+    let sql = `DELETE FROM ${ref(name)}`;
+    const conditionSql = filterConditionSql(name, filters, params);
     if (conditionSql) {
         sql += ` WHERE ${conditionSql}`;
     }
-    sql += ` RETURNING ${returnColumnsSql(table.name, table.resource)};`;
+    sql += ` RETURNING ${returnColumnsSql(name, table.resource)};`;
     return {
         sql, params,
         deserialize({ rows }) {
@@ -219,6 +220,21 @@ export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
             return parseRow(name, table, rows[0]);
         },
     };
+}
+
+export function countQuery(
+    table: TableDefinition<any, any, any, any>,
+    filters: Record<string, any>,
+): SqlQuery<number> {
+    const params: any[] = [];
+    const { name } = table;
+    let sql = `SELECT COUNT(*)::int AS count FROM ${ref(name)}`;
+    const filtersSql = filterConditionSql(name, filters, params);
+    if (filtersSql) {
+        sql += ` WHERE ${filtersSql}`;
+    }
+    sql += ';';
+    return makeQuery(sql, params, ({ rows }) => rows[0]?.count ?? 0);
 }
 
 class Increment {
