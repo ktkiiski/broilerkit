@@ -1,8 +1,11 @@
 import { TableState } from './migration';
 import { OrderedQuery } from './pagination';
+import { executeQueries, executeQuery, SqlOperation, withTransaction } from './postgres';
 import { Resource } from './resources';
-import { countQuery, SqlQuery } from './sql';
-import { FilteredKeys, Key, keys, Require } from './utils/objects';
+import { countQuery, increment, insertQuery, SqlQuery, updateQuery } from './sql';
+import { sort } from './utils/arrays';
+import { hasProperties, isNotNully } from './utils/compare';
+import { FilteredKeys, Key, keys, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -94,6 +97,71 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
     /***** DATABASE OPERATIONS *******/
 
     /**
+     * Returns a database operation that inserts an item with the given ID
+     * to the database table if it does not exist yet. If it already exists,
+     * then returns null without failing.
+     *
+     * The given item must contain all resource attributes, including
+     * the identifying attributes and the version attribute.
+     */
+    public initiate(item: S): SqlOperation<S | null> {
+        const insertedValues = this.resource.validate(item);
+        const query = insertQuery(this, insertedValues);
+        const aggregationQueries = this.getAggregationQueries(insertedValues, null);
+        return async (connection) => {
+            const result = aggregationQueries.length
+                ? await withTransaction(connection, async () => {
+                    const res = await executeQuery(connection, query);
+                    if (res) {
+                        // Update aggregations
+                        await executeQueries(connection, aggregationQueries);
+                    }
+                    return res;
+                })
+                : await executeQuery(connection, query);
+            return result && result.item;
+        };
+    }
+
+    /**
+     * Returns a database operation that inserts a new item to the database
+     * or updates an existing item if one already exists with the same identity.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * Results to the created/updated item.
+     */
+    public upsert(creation: S, update: PartialUpdate<S, V>): SqlOperation<S> {
+        const { resource } = this;
+        const updateSerializer = resource.partial([resource.versionBy]);
+        const insertValues = resource.validate(creation);
+        const updateValues = updateSerializer.validate(update);
+        const aggregationQueries = this.getAggregationQueries(insertValues, null);
+        const query = insertQuery(this, insertValues, updateValues);
+        if (!aggregationQueries.length) {
+            return async (connection) => {
+                const insertion = await executeQuery(connection, query);
+                return insertion.item;
+            };
+        }
+        return (connection) => withTransaction(connection, async () => {
+            const res = await connection.query(query.sql, query.params);
+            const insertion = query.deserialize(res);
+            if (insertion.wasCreated) {
+                // Row was actually inserted
+                // Update aggregations
+                await executeQueries(connection, aggregationQueries);
+            }
+            return insertion.item;
+        });
+    }
+
+    /**
      * Returns an database operation for counting items in an table matching
      * the given filtering criterias. The criteria must match the indexes in the table.
      * Please consider the poor performance of COUNT operation on large tables!
@@ -106,6 +174,28 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
         filters: Omit<D, 'direction' | 'ordering' | 'since'>,
     ): SqlQuery<number> {
         return countQuery(this, filters);
+    }
+
+    private getAggregationQueries(newValues: S | null, oldValues: S | null) {
+        const idValues = newValues || oldValues;
+        if (!idValues) {
+            // Both parameters are null
+            return [];
+        }
+        // NOTE: Sorting by aggregation table names to ensure a consistent
+        // order that minimizes possibility for deadlocks.
+        const aggregations = sort(this.aggregations, (agg) => agg.target.name);
+        return aggregations.map(({ target, by, field, filters }) => {
+            const identifier = transformValues(by, (pk) => idValues[pk]);
+            const mask = { ...filters, ...identifier };
+            const isMatching = newValues != null && hasProperties(newValues, mask);
+            const wasMatching = oldValues != null && hasProperties(oldValues, mask);
+            const diff = (isMatching ? 1 : 0) - (wasMatching ? 1 : 0);
+            if (diff === 0) {
+                return null;
+            }
+            return updateQuery(target, identifier, {[field]: increment(diff)});
+        }).filter(isNotNully);
     }
 }
 

@@ -24,6 +24,8 @@ export interface SqlConnection {
     disconnect(error?: any): Promise<void>;
 }
 
+export type SqlOperation<R> = (connection: SqlConnection) => Promise<R>;
+
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
     private transactionCount = 0;
@@ -222,7 +224,7 @@ export class DatabaseClient {
                 const createdItem = query.deserialize(res);
                 if (createdItem) {
                     // Update aggregations
-                    await queryAll(connection, aggregationQueries);
+                    await executeQueries(connection, aggregationQueries);
                 }
                 return createdItem;
             })
@@ -300,7 +302,7 @@ export class DatabaseClient {
                     // Row was actually updated
                     // Update aggregations
                     const aggregationQueries = this.getAggregationQueries(table, newItem, oldItem);
-                    await queryAll(connection, aggregationQueries);
+                    await executeQueries(connection, aggregationQueries);
                     return [newItem];
                 }
                 return [];
@@ -345,7 +347,7 @@ export class DatabaseClient {
                 if (insertion.wasCreated) {
                     // Row was actually inserted
                     // Update aggregations
-                    await queryAll(connection, aggregationQueries);
+                    await executeQueries(connection, aggregationQueries);
                 }
                 return insertion;
             })
@@ -389,7 +391,7 @@ export class DatabaseClient {
                     // Row was actually deleted
                     // Update aggregations
                     const aggregationQueries = this.getAggregationQueries(table, null, item);
-                    await queryAll(connection, aggregationQueries);
+                    await executeQueries(connection, aggregationQueries);
                 }
                 return item;
             })
@@ -479,7 +481,7 @@ export class DatabaseClient {
     }
 
     /**
-     * Executes all the given database operations, failing as soon as any of them fails.
+     * Executes all the given database queries, failing as soon as any of them fails.
      * Note that unless run in a transaction, any failed operations are not rolled back,
      * and you won't get any intermediate results. Therefore it is recommended to either
      * only run read operations, or wrap the exeution in a transaction.
@@ -498,14 +500,13 @@ export class DatabaseClient {
      * Executes an array of database operations atomically in a transaction,
      * returning an array of results in corresponding order. Fails if any of the
      * operations fail, rolling back earlier results.
-     * @param queries Array of database operations to execute
+     * @param operations Array of database operations to execute
      */
     public async batch<R extends any[]>(
-        queries: {[P in keyof R]: SqlQuery<R[P]>},
+        operations: {[P in keyof R]: SqlOperation<R[P]>},
     ): Promise<R> {
         return this.withTransaction(async (connection) => {
-            const results = await connection.queryAll(queries);
-            return queries.map((query, index) => query.deserialize(results[index])) as {[P in keyof R]: R[P]};
+            return operations.map((op) => op(connection)) as {[P in keyof R]: R[P]};
         });
     }
 
@@ -519,27 +520,13 @@ export class DatabaseClient {
     }
 
     private async executeQuery<R>(query: SqlQuery<R>): Promise<R> {
-        const result = await this.withConnection(
-            (connection) => connection.query(query.sql, query.params),
-        );
-        return query.deserialize(result);
+        return this.withConnection((connection) => executeQuery(connection, query));
     }
 
     private async withTransaction<R>(callback: (connection: SqlConnection) => Promise<R>): Promise<R> {
-        return this.withConnection(async (connection) => {
-            let result;
-            try {
-                await connection.beginTransaction();
-                result = await callback(connection);
-            } catch (error) {
-                // Something went wrong. Rollback the transaction
-                await connection.rollbackTransaction();
-                throw error;
-            }
-            // Commit the transaction
-            await connection.commitTransaction();
-            return result;
-        });
+        return this.withConnection(async (connection) => (
+            withTransaction(connection, () => callback(connection))
+        ));
     }
 
     private async *scanChunks<S, PK extends Key<S>, V extends Key<S>, D>(
@@ -587,13 +574,33 @@ export class DatabaseClient {
     }
 }
 
-async function queryAll<R>(connection: SqlConnection, queries: Array<SqlQuery<R>>): Promise<R[]> {
+export async function executeQuery<R>(connection: SqlConnection, query: SqlQuery<R>): Promise<R> {
+    const result = await connection.query(query.sql, query.params);
+    return query.deserialize(result);
+}
+
+export async function executeQueries<R>(connection: SqlConnection, queries: Array<SqlQuery<R>>): Promise<R[]> {
     const results: R[] = [];
     for (const query of queries) {
         const result = await connection.query(query.sql, query.params);
         results.push(query.deserialize(result));
     }
     return results;
+}
+
+export async function withTransaction<R>(connection: SqlConnection, callback: () => Promise<R>): Promise<R> {
+    let result;
+    try {
+        await connection.beginTransaction();
+        result = await callback();
+    } catch (error) {
+        // Something went wrong. Rollback the transaction
+        await connection.rollbackTransaction();
+        throw error;
+    }
+    // Commit the transaction
+    await connection.commitTransaction();
+    return result;
 }
 
 function encodeDataApiFieldValue(value: unknown) {
