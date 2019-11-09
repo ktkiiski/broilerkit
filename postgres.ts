@@ -5,7 +5,7 @@ import { NotFound, PreconditionFailed } from './http';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { scanCursor } from './postgres-cursor';
 import { nestedList } from './serializers';
-import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, Row, selectQuery, SqlQuery, SqlResult, updateQuery } from './sql';
+import { batchSelectQuery, deleteQuery, increment, insertQuery, Row, selectQuery, SqlQuery, SqlResult, updateQuery } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
 import { Exact, Key, transformValues } from './utils/objects';
@@ -430,14 +430,6 @@ export class DatabaseClient {
         }
         // No more items
         return { results, next: null };
-    }
-
-    public async count<D>(
-        table: TableDefinition<any, any, any, D>,
-        filters: Omit<D, 'direction' | 'ordering' | 'since'>,
-    ): Promise<number> {
-        const query = countQuery(table, filters);
-        return this.executeQuery(query);
     }
 
     /**

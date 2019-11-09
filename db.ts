@@ -1,6 +1,7 @@
 import { TableState } from './migration';
 import { OrderedQuery } from './pagination';
 import { Resource } from './resources';
+import { countQuery, SqlQuery } from './sql';
 import { FilteredKeys, Key, keys, Require } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
@@ -88,6 +89,23 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
     public getState(): TableState {
         const { name, indexes } = this;
         return getResourceState(name, this.resource, indexes);
+    }
+
+    /***** DATABASE OPERATIONS *******/
+
+    /**
+     * Returns an database operation for counting items in an table matching
+     * the given filtering criterias. The criteria must match the indexes in the table.
+     * Please consider the poor performance of COUNT operation on large tables!
+     * Always prefer aggregations whenever appropriate instead of counting
+     * large number of rows in the database.
+     *
+     * @param filters Filters defining which rows to count
+     */
+    public count(
+        filters: Omit<D, 'direction' | 'ordering' | 'since'>,
+    ): SqlQuery<number> {
+        return countQuery(this, filters);
     }
 }
 
