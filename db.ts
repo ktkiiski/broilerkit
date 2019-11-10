@@ -1,11 +1,13 @@
+import { NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
-import { OrderedQuery } from './pagination';
+import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { executeQueries, executeQuery, SqlOperation, withTransaction } from './postgres';
 import { Resource } from './resources';
-import { countQuery, increment, insertQuery, SqlQuery, updateQuery } from './sql';
+import { nestedList } from './serializers';
+import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, selectQuery, SqlQuery, SqlScanQuery, updateQuery } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
-import { FilteredKeys, Key, keys, Require, transformValues } from './utils/objects';
+import { Exact, FilteredKeys, Key, keys, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -97,6 +99,74 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
     /***** DATABASE OPERATIONS *******/
 
     /**
+     * Returns a database operation that gets an item from the
+     * database table using the given identity object, containing
+     * all the identifying attributes.
+     * It results to an error if the item was not found.
+     */
+    public retrieve(query: Identity<S, PK, V>): SqlQuery<S> {
+        const { resource } = this;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
+        const filters = identitySerializer.validate(query);
+        const select = selectQuery(this, filters, 1);
+        return {
+            ...select,
+            deserialize: (result) => {
+                const [item] = select.deserialize(result);
+                if (!item) {
+                    throw new NotFound(`Item was not found.`);
+                }
+                return item;
+            },
+        };
+    }
+
+    /**
+     * Returns a database operation that inserts an item with the given ID
+     * to the database table. The item must contain all resource attributes,
+     * including the identifying attributes and the version attribute.
+     *
+     * It results to an error if an item with the same identifying
+     * attributes already exists in the database.
+     *
+     * Results to the given item object if inserted successfully.
+     */
+    public create(item: S): SqlOperation<S> {
+        const insertedValues = this.resource.validate(item);
+        const query = insertQuery(this, insertedValues);
+        const aggregationQueries = this.getAggregationQueries(insertedValues, null);
+        return async (connection) => {
+            const result = aggregationQueries.length
+                ? await withTransaction(connection, async () => {
+                    const res = await executeQuery(connection, query);
+                    if (res) {
+                        // Update aggregations
+                        await executeQueries(connection, aggregationQueries);
+                    }
+                    return res;
+                })
+                : await executeQuery(connection, query);
+            if (!result) {
+                throw new PreconditionFailed(`Item already exists.`);
+            }
+            return result.item;
+        };
+    }
+
+    /**
+     * Returns a database operation that either creates an item or
+     * replaces an existing one. Use this if you don't care if the
+     * item already existed in the database.
+     *
+     * Results to the given item object if written successfully.
+     */
+    public write(item: S): SqlOperation<S> {
+        return this.upsert(item, item);
+    }
+
+    /**
      * Returns a database operation that inserts an item with the given ID
      * to the database table if it does not exist yet. If it already exists,
      * then returns null without failing.
@@ -120,6 +190,83 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
                 })
                 : await executeQuery(connection, query);
             return result && result.item;
+        };
+    }
+
+    /**
+     * Returns a database operation that replaces an existing item in the
+     * database table, identified by the given identity object. The given
+     * item object must contain all model attributes, including the identifying
+     * attributes and the new version attribute.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * It results to an error if an item does not exist. Also fails if the
+     * existing item's version does not match any given version.
+     *
+     * Results to the updated item object if inserted successfully.
+     */
+    public replace(identity: Identity<S, PK, V>, item: S): SqlOperation<S> {
+        // Perform an update, but require all the resource properties
+        const { resource } = this;
+        resource.validate(item);
+        return this.update(identity, item);
+    }
+
+    /**
+     * Returns a database operation that updates some of the attributes
+     * of an existing item in the database, identified by the given
+     * identity object. The changes must contain the version attribute,
+     * and any sub-set of the other attributes.
+     *
+     * NOTE: It is an error to attempt changing identifying attributes!
+     *
+     * The identity may optionally include the version attribute.
+     * In this case, the update is done only if the existing item's version
+     * matches the version in the identity object. This allows making
+     * non-conflicting updates.
+     *
+     * Fails if the item does not exist. Also fails if the
+     * existing item's version does not match any given version.
+     *
+     * Results to the updated item object with all up-to-date attributes,
+     * if updated successfully.
+     */
+    public update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): SqlOperation<S> {
+        const { resource } = this;
+        const updateSerializer = resource.partial([resource.versionBy]);
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
+        const filters = identitySerializer.validate(identity);
+        const values = updateSerializer.validate(changes);
+        return async (connection) => {
+            const [result] = this.aggregate.length
+                ? await withTransaction(connection, async () => {
+                    const query = updateQuery(this, filters, values, true);
+                    const updates = await executeQuery(connection, query);
+                    for (const [newItem, oldItem] of updates) {
+                        // Row was actually updated
+                        // Update aggregations
+                        const aggregationQueries = this.getAggregationQueries(newItem, oldItem);
+                        await executeQueries(connection, aggregationQueries);
+                        return [newItem];
+                    }
+                    return [];
+                })
+                : await executeQuery(
+                    connection,
+                    updateQuery(this, filters, values, false),
+                );
+            if (!result) {
+                throw new NotFound(`Item was not found.`);
+            }
+            return result;
         };
     }
 
@@ -162,6 +309,89 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
     }
 
     /**
+     * Returns a database operation that deletes an item from the database,
+     * identified by the given identity object. Fails if the item does not exists.
+     */
+    public destroy(identity: Identity<S, PK, V>): SqlOperation<void> {
+        const { resource } = this;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
+        const filters = identitySerializer.validate(identity);
+        const query = deleteQuery(this, filters);
+        return async (connection) => {
+            const result = this.aggregations.length
+                ? await withTransaction(connection, async () => {
+                    const item = await executeQuery(connection, query);
+                    if (item) {
+                        // Row was actually deleted
+                        // Update aggregations
+                        const aggregationQueries = this.getAggregationQueries(null, item);
+                        await executeQueries(connection, aggregationQueries);
+                    }
+                    return item;
+                })
+                : await executeQuery(connection, query);
+            if (!result) {
+                throw new NotFound(`Item was not found.`);
+            }
+        };
+    }
+
+    /**
+     * Return a database opeartion that queries and finds the first/next batch
+     * of items from the table matching the given criteria.
+     *
+     * The return value is a page object containing an array of items,
+     * and the `query` parameter for retrieving the next batch, or null
+     * if no more items are expected to be found.
+     */
+    public list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>> {
+        const results: S[] = [];
+        const { ordering, direction } = query;
+        const { chunkSize, sql, params, deserialize } = this.scan(query);
+        return async (connection) => {
+            for await (const chunk of connection.scan(chunkSize, sql, params)) {
+                const items = deserialize(chunk);
+                results.push(...items);
+                if (chunk.isComplete) {
+                    return { results, next: null };
+                }
+                const cursor = prepareForCursor(results, ordering, direction);
+                if (cursor) {
+                    return {
+                        results: cursor.results,
+                        next: { ...query as Q, since: cursor.since as any },
+                    };
+                }
+            }
+            // No more items
+            return { results, next: null };
+        };
+    }
+
+    /**
+     * Returns a database scan query for iterating over batches of items from the
+     * table matching the given criteria.
+     *
+     * Without parameters should scan the whole table, in no particular order.
+     */
+    public scan(query?: Query<S>): SqlScanQuery<S> {
+        const chunkSize = 100;
+        if (!query) {
+            return {
+                ...selectQuery(this, {}),
+                chunkSize,
+            };
+        }
+        const { ordering, direction, since, ...filters } = query;
+        return {
+            ...selectQuery(this, filters, undefined, ordering, direction, since),
+            chunkSize,
+        };
+    }
+
+    /**
      * Returns an database operation for counting items in an table matching
      * the given filtering criterias. The criteria must match the indexes in the table.
      * Please consider the poor performance of COUNT operation on large tables!
@@ -174,6 +404,33 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
         filters: Omit<D, 'direction' | 'ordering' | 'since'>,
     ): SqlQuery<number> {
         return countQuery(this, filters);
+    }
+
+    /**
+     * Returns a database operation for retrieving item for each of the identity given objects,
+     * or null values if no matching item is found, in the most efficient way possible. The results
+     * from the returned promise are in the same order than the identities.
+     */
+    public batchRetrieve(identities: Array<Identity<S, PK, V>>): SqlQuery<Array<S | null>> {
+        if (!identities.length) {
+            return { sql: '', params: [], deserialize: () => [] };
+        }
+        const { resource } = this;
+        const identitySerializer = resource
+            .pick([...resource.identifyBy, resource.versionBy])
+            .partial(resource.identifyBy);
+        const identityListSerializer = nestedList(identitySerializer);
+        const filtersList = identityListSerializer.validate(identities);
+        const query = batchSelectQuery(this, filtersList);
+        return {
+            ...query,
+            deserialize: (result) => {
+                const items = query.deserialize(result);
+                return filtersList.map((identity) => (
+                    items.find((item) => item && hasProperties(item, identity)) || null
+                ));
+            },
+        };
     }
 
     private getAggregationQueries(newValues: S | null, oldValues: S | null) {

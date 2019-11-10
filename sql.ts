@@ -10,6 +10,10 @@ export interface SqlQuery<R> {
     deserialize(result: SqlResult): R;
 }
 
+export interface SqlScanQuery<R> extends SqlQuery<R[]> {
+    chunkSize: number;
+}
+
 export interface Row {
     [key: string]: any;
 }

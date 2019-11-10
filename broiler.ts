@@ -335,7 +335,7 @@ export class Broiler {
         const table = this.getTable(tableName);
         const connect = await this.getDatabaseConnector();
         const dbClient = new DatabaseClient(connect);
-        for await (const items of dbClient.scan(table)) {
+        for await (const items of dbClient.scan(table.scan())) {
             for (const item of items) {
                 const serializedItem = table.resource.serialize(item);
                 this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
@@ -353,7 +353,7 @@ export class Broiler {
             try {
                 const serializedItem = JSON.parse(line);
                 const item = table.resource.deserialize(serializedItem);
-                await dbClient.write(table, item);
+                await dbClient.run(table.write(item));
                 this.log(`Line ${index} ${green('✔︎')}`);
             } catch (err) {
                 this.log(`Line ${index} ${red('×')}`);
@@ -374,7 +374,7 @@ export class Broiler {
             this.log(`${dim('Backing up')} ${name}`);
             try {
                 const filePath = path.resolve(basePath, `${name}.jsonl`);
-                await writeAsyncIterable(filePath, mapAsync(dbClient.scan(table), (rows) => {
+                await writeAsyncIterable(filePath, mapAsync(dbClient.scan(table.scan()), (rows) => {
                     const jsonRows = rows.map((record) => {
                         const serializedItem = resource.serialize(record);
                         return JSON.stringify(serializedItem) + '\n';
@@ -424,15 +424,12 @@ export class Broiler {
                     try {
                         const serializedItem = JSON.parse(line);
                         const item = resource.deserialize(serializedItem);
-                        if (overwrite) {
-                            await dbClient.write(table, item);
-                        } else {
-                            try {
-                                await dbClient.create(table, item);
-                            } catch (error) {
-                                if (!isResponse(error, HttpStatus.PreconditionFailed)) {
-                                    throw error;
-                                }
+                        const operation = overwrite ? table.write(item) : table.create(item);
+                        try {
+                            await dbClient.run(operation);
+                        } catch (error) {
+                            if (!isResponse(error, HttpStatus.PreconditionFailed)) {
+                                throw error;
                             }
                         }
                     } catch (err) {

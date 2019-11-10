@@ -20,11 +20,11 @@ export default implementAll(localApi).using({
     _createUser: async (props, { db }) => {
         const id = uuid4();
         const now = new Date();
-        const user = await db.create(localUsers, {
+        const user = await db.run(localUsers.create({
             id, ...props,
             updatedAt: now,
             createdAt: now,
-        });
+        }));
         return new Created(user);
     },
 });

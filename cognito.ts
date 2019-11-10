@@ -96,24 +96,34 @@ export class LocalUserPool implements UserPool {
     ) {}
 
     public retrieve(query: UserIdentity): Promise<User> {
-        return this.db.retrieve(localUsers, query as Identity<User, 'id', 'updatedAt'>);
+        return this.db.run(
+            localUsers.retrieve(query as Identity<User, 'id', 'updatedAt'>),
+        );
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
         const update = {...changes, updatedAt: new Date()};
-        return this.db.update(localUsers, identity as Identity<User, 'id', 'updatedAt'>, update as PartialUpdate<User, 'updatedAt'>);
+        return this.db.run(
+            localUsers.update(identity as Identity<User, 'id', 'updatedAt'>, update as PartialUpdate<User, 'updatedAt'>),
+        );
     }
 
     public destroy(identity: UserIdentity) {
-        return this.db.destroy(localUsers, identity as Identity<User, 'id', 'updatedAt'>);
+        return this.db.run(
+            localUsers.destroy(identity as Identity<User, 'id', 'updatedAt'>),
+        );
     }
 
     public scan(query?: {}): AsyncIterableIterator<User[]> {
-        return this.db.scan(localUsers, query as any);
+        return this.db.scan(
+            localUsers.scan(query as any),
+        );
     }
 
     public batchRetrieve(identities: UserIdentity[]) {
-        return this.db.batchRetrieve(localUsers, identities as Array<Identity<User, 'id', 'updatedAt'>>);
+        return this.db.run(
+            localUsers.batchRetrieve(identities as Array<Identity<User, 'id', 'updatedAt'>>),
+        );
     }
 }
 
