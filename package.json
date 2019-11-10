@@ -1,6 +1,6 @@
 {
   "name": "broilerkit",
-  "version": "0.18.1",
+  "version": "0.19.0",
   "description": "Utility kit for Broilerplate, including helpers for quickly deploying scalable web apps to AWS cloud",
   "main": "index.js",
   "types": "index.ts",
