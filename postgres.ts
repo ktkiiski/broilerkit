@@ -487,12 +487,16 @@ export class DatabaseClient {
      * only run read operations, or wrap the exeution in a transaction.
      * @param queries Array of database operations to execute
      */
-    public async runAll<R extends any[]>(
-        queries: {[P in keyof R]: SqlQuery<R[P]>},
-    ): Promise<R> {
+    public async runAll<T1, T2, T3, T4, T5>(queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>, SqlQuery<T4>, SqlQuery<T5>]): Promise<[T1, T2, T3, T4, T5]>;
+    public async runAll<T1, T2, T3, T4>(queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>, SqlQuery<T4>]): Promise<[T1, T2, T3, T4]>;
+    public async runAll<T1, T2, T3>(queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>]): Promise<[T1, T2, T3]>;
+    public async runAll<T1, T2>(queries: [SqlQuery<T1>, SqlQuery<T2>]): Promise<[T1, T2]>;
+    public async runAll<T1>(queries: [SqlQuery<T1>]): Promise<[T1]>;
+    public async runAll<T>(queries: Array<SqlQuery<T>>): Promise<T[]>;
+    public async runAll<T>(queries: Array<SqlQuery<T>>): Promise<T[]> {
         return this.withConnection(async (connection) => {
             const results = await connection.queryAll(queries);
-            return queries.map((query, index) => query.deserialize(results[index])) as {[P in keyof R]: R[P]};
+            return queries.map((query, index) => query.deserialize(results[index]));
         });
     }
 
@@ -502,11 +506,19 @@ export class DatabaseClient {
      * operations fail, rolling back earlier results.
      * @param operations Array of database operations to execute
      */
-    public async batch<R extends any[]>(
-        operations: {[P in keyof R]: SqlOperation<R[P]>},
-    ): Promise<R> {
+    public async batch<T1, T2, T3, T4, T5>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>, SqlOperation<T4>, SqlOperation<T5>]): Promise<[T1, T2, T3, T4, T5]>;
+    public async batch<T1, T2, T3, T4>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>, SqlOperation<T4>]): Promise<[T1, T2, T3, T4]>;
+    public async batch<T1, T2, T3>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>]): Promise<[T1, T2, T3]>;
+    public async batch<T1, T2>(queries: [SqlOperation<T1>, SqlOperation<T2>]): Promise<[T1, T2]>;
+    public async batch<T1>(queries: [SqlOperation<T1>]): Promise<[T1]>;
+    public async batch<T>(queries: Array<SqlOperation<T>>): Promise<T[]>;
+    public async batch<T>(operations: Array<SqlOperation<T>>): Promise<T[]> {
         return this.withTransaction(async (connection) => {
-            return operations.map((op) => op(connection)) as {[P in keyof R]: R[P]};
+            const results: T[] = [];
+            for (const op of operations) {
+                results.push(await op(connection));
+            }
+            return results;
         });
     }
 
