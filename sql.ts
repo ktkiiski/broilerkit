@@ -1,4 +1,4 @@
-import { TableDefinition } from './db';
+import { Table } from './db';
 import { Resource } from './resources';
 import { isNotNully } from './utils/compare';
 import { Key, keys } from './utils/objects';
@@ -24,7 +24,7 @@ export interface SqlResult {
 }
 
 export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filters: Record<string, any>,
     limit?: number,
     ordering?: string,
@@ -58,7 +58,7 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
 }
 
 export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filtersList: Array<Record<string, any>>,
 ): SqlQuery<S[]> {
     const { name, resource } = table;
@@ -74,25 +74,25 @@ export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
 }
 
 export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious: false,
 ): SqlQuery<S[]>;
 export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious: true,
 ): SqlQuery<Array<[S, S]>>;
 export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious?: boolean,
 ): SqlQuery<S[] | Array<[S, S]>>;
 export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious: boolean = false,
@@ -149,17 +149,17 @@ interface InsertResult<R> {
 }
 
 export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     insertValues: Record<string, any>,
     updateValues: Record<string, any>,
 ): SqlQuery<InsertResult<S>>;
 export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
 ): SqlQuery<InsertResult<S> | null>;
 export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
 ): SqlQuery<InsertResult<S> | null> {
@@ -204,7 +204,7 @@ export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
 }
 
 export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: TableDefinition<S, PK, V, D>,
+    table: Table<S, PK, V, D>,
     filters: Record<string, any>,
 ): SqlQuery<S | null> {
     const params: any[] = [];
@@ -227,7 +227,7 @@ export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
 }
 
 export function countQuery(
-    table: TableDefinition<any, any, any, any>,
+    table: Table<any, any, any, any>,
     filters: Record<string, any>,
 ): SqlQuery<number> {
     const params: any[] = [];
@@ -301,7 +301,7 @@ function makeQuery<R>(sql: string, params: any[], deserialize: (result: SqlResul
     return { sql, params, deserialize };
 }
 
-function parseRow<S, PK extends Key<S>>(tableAlias: string, table: TableDefinition<S, PK, any, any>, row: Row): S | null {
+function parseRow<S, PK extends Key<S>>(tableAlias: string, table: Table<S, PK, any, any>, row: Row): S | null {
     const { defaults, resource } = table;
     const propertyPrefix = tableAlias + '.';
     const item: Row = {};

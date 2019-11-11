@@ -2,7 +2,6 @@
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
-import { Table } from './db';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse, Unauthorized } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation } from './operations';
@@ -20,10 +19,6 @@ export interface RequestContext {
 
 export type Handler<I, O, R> = (input: I, request: R & RequestContext) => Promise<O>;
 export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;
-
-export type Tables<T> = {
-    [P in keyof T]: Table;
-};
 
 type Implementables<I, O, R> = (
     {[P in keyof I]: Operation<I[P], any, any>} &

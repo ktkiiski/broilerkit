@@ -840,7 +840,7 @@ export class Broiler {
             .reduce(mergeTemplates, dbSetupTemplate);
     }
 
-    private generateDbTableTemplate(table: Table) {
+    private generateDbTableTemplate(table: Table<any, any, any, any>) {
         const logicalId = `DatabaseTable${upperFirst(table.name)}`;
         const tableProperties = {
             ServiceToken: { 'Fn::GetAtt': 'DatabaseMigrationLambdaFunction.Arn' },
@@ -1053,7 +1053,7 @@ export class Broiler {
             return [];
         }
         const dbModulePath = path.resolve(projectRootPath, sourceDir, databaseFile);
-        const dbModule = require(dbModulePath) as {[key: string]: Table};
+        const dbModule = require(dbModulePath) as {[key: string]: Table<any, any, any, any>};
         return order(Object.values(dbModule), 'name', 'asc');
     }
 

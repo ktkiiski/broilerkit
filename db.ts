@@ -16,19 +16,17 @@ export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
-export type Table = TableDefinition<any, Key<any>, Key<any>, any>;
-
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
 interface Aggregation<S> {
-    target: Table;
+    target: Table<any, any, any, any>;
     type: 'count' | 'sum';
     field: string;
     by: {[pk: string]: Key<S>};
     filters: Partial<S>;
 }
 
-export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implements Table {
+export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
 
     /**
      * List of indexes for this database table.
@@ -58,23 +56,23 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
      * model. Otherwise you will get errors when attempting to decode an object
      * from the database that lack required attributes.
      */
-    public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): TableDefinition<S, PK, V, D> {
-        return new TableDefinition(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults}, this.aggregations);
+    public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): Table<S, PK, V, D> {
+        return new Table(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults}, this.aggregations);
     }
 
-    public index<K1 extends keyof S>(key: K1): TableDefinition<S, PK, V, D | IndexQuery<S, never, K1>>;
-    public index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): TableDefinition<S, PK, V, D | IndexQuery<S, K1, K2>>;
-    public index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): TableDefinition<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
-    public index<K extends keyof S>(...index: K[]): TableDefinition<S, PK, V, D | IndexQuery<S, K, K>> {
+    public index<K1 extends keyof S>(key: K1): Table<S, PK, V, D | IndexQuery<S, never, K1>>;
+    public index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): Table<S, PK, V, D | IndexQuery<S, K1, K2>>;
+    public index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): Table<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
+    public index<K extends keyof S>(...index: K[]): Table<S, PK, V, D | IndexQuery<S, K, K>> {
         let newIndexes: IndexTree<S> = {};
         while (index.length) {
             const key = index.pop() as K;
             newIndexes = {[key]: newIndexes} as IndexTree<S>;
         }
-        return new TableDefinition(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults, this.aggregations);
+        return new Table(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults, this.aggregations);
     }
 
-    public aggregate<T, TPK extends Key<T>>(target: TableDefinition<T, TPK, any, any>) {
+    public aggregate<T, TPK extends Key<T>>(target: Table<T, TPK, any, any>) {
         const count = (
             countField: string & FilteredKeys<T, number>,
             by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
@@ -83,7 +81,7 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
             const aggregations = this.aggregations.concat([{
                 target, type: 'count', field: countField, by, filters,
             }]);
-            return new TableDefinition<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
+            return new Table<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
         };
         return { count };
     }
@@ -461,7 +459,7 @@ export class TableDefinition<S, PK extends Key<S>, V extends Key<S>, D> implemen
  * @param name An unique name for the table
  */
 export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string) {
-    return new TableDefinition<S, PK, V, never>(resource, name, {}, {}, []);
+    return new Table<S, PK, V, never>(resource, name, {}, {}, []);
 }
 
 export function getResourceState(name: string, resource: Resource<any, Key<any>, Key<any>>, indexes: string[][]): TableState {
