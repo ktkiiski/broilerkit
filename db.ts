@@ -1,3 +1,4 @@
+import { nullable } from './fields';
 import { NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
@@ -23,7 +24,7 @@ export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> {
     retrieve(query: Identity<S, PK, V>): SqlQuery<S>;
     list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>>;
     scan(query?: Query<S>): SqlScanQuery<S>;
-    join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: Table<S2, PK2 & Key<S2>, any, any>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableModel<S & Record<K, S2>, PK, V, D>;
+    join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: Table<S2, PK2 & Key<S2>, any, any>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableModel<S & Record<K, S2 | null>, PK, V, D>;
 }
 
 export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D> {
@@ -178,7 +179,7 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
         propertyName: K,
         other: Table<S2, any, any, any>,
         on: {[key: string]: string},
-    ): ReadableModel<S & Record<K, S2>, PK, V, D> {
+    ): ReadableModel<S & Record<K, S2 | null>, PK, V, D> {
         const nestings: SqlNesting[] = [
             ...this.nestings,
             {
@@ -187,8 +188,8 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
                 on,
             },
         ];
-        const resource: Resource<S & Record<K, S2>, PK, V> = this.resource.expand(
-            { [propertyName]: nested(other.resource) } as Fields<Record<K, S2>>,
+        const resource: Resource<S & Record<K, S2 | null>, PK, V> = this.resource.expand(
+            { [propertyName]: nullable(nested(other.resource)) } as Fields<Record<K, S2 | null>>,
         );
         return new BaseTable(
             resource, this.name, this.columns, this.defaults, nestings,
