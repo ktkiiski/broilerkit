@@ -3,8 +3,9 @@ import { TableState } from './migration';
 import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { executeQueries, executeQuery, SqlOperation, withTransaction } from './postgres';
 import { Resource } from './resources';
-import { nestedList } from './serializers';
-import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, selectQuery, SqlQuery, SqlScanQuery, updateQuery } from './sql';
+import { Fields, nested, nestedList } from './serializers';
+import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, selectQuery, SqlQuery, SqlScanQuery, SqlWriteable, updateQuery } from './sql';
+import { SqlNesting, SqlQueryable } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
 import { Exact, FilteredKeys, Key, keys, Require, transformValues } from './utils/objects';
@@ -18,6 +19,53 @@ export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
+export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> {
+    retrieve(query: Identity<S, PK, V>): SqlQuery<S>;
+    list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>>;
+    scan(query?: Query<S>): SqlScanQuery<S>;
+    join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: Table<S2, PK2 & Key<S2>, any, any>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableModel<S & Record<K, S2>, PK, V, D>;
+}
+
+export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D> {
+    create(item: S): SqlOperation<S>;
+    write(item: S): SqlOperation<S>;
+    initiate(item: S): SqlOperation<S | null>;
+    replace(identity: Identity<S, PK, V>, item: S): SqlOperation<S>;
+    update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): SqlOperation<S>;
+    upsert(creation: S, update: PartialUpdate<S, V>): SqlOperation<S>;
+    destroy(identity: Identity<S, PK, V>): SqlOperation<void>;
+    count(filters: Omit<D, 'direction' | 'ordering' | 'since'>): SqlQuery<number>;
+    batchRetrieve(identities: Array<Identity<S, PK, V>>): SqlQuery<Array<S | null>>;
+}
+
+export interface Table<S, PK extends Key<S>, V extends Key<S>, D> extends Model<S, PK, V, D>, SqlWriteable<S>, SqlQueryable<S> {
+    /**
+     * Sets default values for the properties loaded from the database.
+     * They are used to fill in any missing values for loaded items. You should
+     * provide this when you have added any new fields to the database
+     * model. Otherwise you will get errors when attempting to decode an object
+     * from the database that lack required attributes.
+     */
+    migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): Table<S, PK, V, D>;
+
+    index<K1 extends keyof S>(key: K1): Table<S, PK, V, D | IndexQuery<S, never, K1>>;
+    index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): Table<S, PK, V, D | IndexQuery<S, K1, K2>>;
+    index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): Table<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
+    index<K extends keyof S>(...index: K[]): Table<S, PK, V, D | IndexQuery<S, K, K>>;
+
+    aggregate<T, TPK extends Key<T>>(target: Table<T, TPK, any, any>): Aggregator<S, PK, V, D, T, TPK>;
+
+    getState(): TableState;
+}
+
+interface Aggregator<S, PK extends Key<S>, V extends Key<S>, D, T, TPK extends Key<T>> {
+    count(
+        countField: string & FilteredKeys<T, number>,
+        by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
+        filters?: Partial<S>,
+    ): Table<S, PK, V, D>;
+}
+
 interface Aggregation<S> {
     target: Table<any, any, any, any>;
     type: 'count' | 'sum';
@@ -26,12 +74,9 @@ interface Aggregation<S> {
     filters: Partial<S>;
 }
 
-export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
+class BaseTable<S, PK extends Key<S>, V extends Key<S>, D>
+implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
 
-    /**
-     * List of indexes for this database table.
-     */
-    public readonly indexes: string[][] = [];
     constructor(
         /**
          * A definition of the resource being stored to this database table.
@@ -42,57 +87,10 @@ export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
          * other table definitions.
          */
         public readonly name: string,
-        private readonly indexTree: IndexTree<S>,
-        public readonly defaults: {[P in any]: S[any]},
-        public readonly aggregations: Array<Aggregation<S>>,
-    ) {
-        this.indexes = flattenIndexes(indexTree);
-    }
-
-    /**
-     * Sets default values for the properties loaded from the database.
-     * They are used to fill in any missing values for loaded items. You should
-     * provide this when you have added any new fields to the database
-     * model. Otherwise you will get errors when attempting to decode an object
-     * from the database that lack required attributes.
-     */
-    public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): Table<S, PK, V, D> {
-        return new Table(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults}, this.aggregations);
-    }
-
-    public index<K1 extends keyof S>(key: K1): Table<S, PK, V, D | IndexQuery<S, never, K1>>;
-    public index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): Table<S, PK, V, D | IndexQuery<S, K1, K2>>;
-    public index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): Table<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
-    public index<K extends keyof S>(...index: K[]): Table<S, PK, V, D | IndexQuery<S, K, K>> {
-        let newIndexes: IndexTree<S> = {};
-        while (index.length) {
-            const key = index.pop() as K;
-            newIndexes = {[key]: newIndexes} as IndexTree<S>;
-        }
-        return new Table(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults, this.aggregations);
-    }
-
-    public aggregate<T, TPK extends Key<T>>(target: Table<T, TPK, any, any>) {
-        const count = (
-            countField: string & FilteredKeys<T, number>,
-            by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
-            filters: Partial<S> = {},
-        ) => {
-            const aggregations = this.aggregations.concat([{
-                target, type: 'count', field: countField, by, filters,
-            }]);
-            return new Table<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
-        };
-        return { count };
-    }
-
-    /**
-     * Returns a state representation of the table for migration.
-     */
-    public getState(): TableState {
-        const { name, indexes } = this;
-        return getResourceState(name, this.resource, indexes);
-    }
+        public readonly columns: Fields<any>,
+        public readonly defaults: {[P in any]: any},
+        public readonly nestings: SqlNesting[],
+    ) {}
 
     /***** DATABASE OPERATIONS *******/
 
@@ -120,6 +118,147 @@ export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
             },
         };
     }
+
+    /**
+     * Return a database opeartion that queries and finds the first/next batch
+     * of items from the table matching the given criteria.
+     *
+     * The return value is a page object containing an array of items,
+     * and the `query` parameter for retrieving the next batch, or null
+     * if no more items are expected to be found.
+     */
+    public list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>> {
+        const results: S[] = [];
+        const { ordering, direction } = query;
+        const { chunkSize, sql, params, deserialize } = this.scan(query);
+        return async (connection) => {
+            for await (const chunk of connection.scan(chunkSize, sql, params)) {
+                const items = deserialize(chunk);
+                results.push(...items);
+                if (chunk.isComplete) {
+                    return { results, next: null };
+                }
+                const cursor = prepareForCursor(results, ordering, direction);
+                if (cursor) {
+                    return {
+                        results: cursor.results,
+                        next: { ...query as Q, since: cursor.since as any },
+                    };
+                }
+            }
+            // No more items
+            return { results, next: null };
+        };
+    }
+
+    /**
+     * Returns a database scan query for iterating over batches of items from the
+     * table matching the given criteria.
+     *
+     * Without parameters should scan the whole table, in no particular order.
+     */
+    public scan(query?: Query<S>): SqlScanQuery<S> {
+        const chunkSize = 100;
+        if (!query) {
+            return {
+                ...selectQuery(this, {}),
+                chunkSize,
+            };
+        }
+        const { ordering, direction, since, ...filters } = query;
+        return {
+            ...selectQuery(this, filters, undefined, ordering, direction, since),
+            chunkSize,
+        };
+    }
+
+    // NOTE: The signature does not completely match the interface because of this:
+    // https://github.com/microsoft/TypeScript/issues/30071
+    public join<K extends string, S2>(
+        propertyName: K,
+        other: Table<S2, any, any, any>,
+        on: {[key: string]: string},
+    ): ReadableModel<S & Record<K, S2>, PK, V, D> {
+        const nestings: SqlNesting[] = [
+            ...this.nestings,
+            {
+                alias: propertyName,
+                queryable: other,
+                on,
+            },
+        ];
+        const resource: Resource<S & Record<K, S2>, PK, V> = this.resource.expand(
+            { [propertyName]: nested(other.resource) } as Fields<Record<K, S2>>,
+        );
+        return new BaseTable(
+            resource, this.name, this.columns, this.defaults, nestings,
+        );
+    }
+}
+
+export class DatabaseTable<S, PK extends Key<S>, V extends Key<S>, D>
+extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
+    /**
+     * List of indexes for this database table.
+     */
+    public readonly indexes: string[][] = [];
+    public readonly primaryKeys = this.resource.identifyBy;
+    constructor(
+        resource: Resource<S, PK, V>,
+        name: string,
+        private readonly indexTree: IndexTree<S>,
+        defaults: {[P in any]: S[any]},
+        private readonly aggregations: Array<Aggregation<S>>,
+    ) {
+        super(resource, name, resource.fields, defaults, []);
+        this.indexes = flattenIndexes(indexTree);
+    }
+
+    /**
+     * Sets default values for the properties loaded from the database.
+     * They are used to fill in any missing values for loaded items. You should
+     * provide this when you have added any new fields to the database
+     * model. Otherwise you will get errors when attempting to decode an object
+     * from the database that lack required attributes.
+     */
+    public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): Table<S, PK, V, D> {
+        return new DatabaseTable(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults}, this.aggregations);
+    }
+
+    public index<K extends keyof S>(...index: K[]): Table<S, PK, V, D | IndexQuery<S, K, K>> {
+        let newIndexes: IndexTree<S> = {};
+        while (index.length) {
+            const key = index.pop() as K;
+            newIndexes = {[key]: newIndexes} as IndexTree<S>;
+        }
+        return new DatabaseTable(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults, this.aggregations);
+    }
+
+    // NOTE: The signature does not completely match the interface because of this:
+    // https://github.com/microsoft/TypeScript/issues/30071
+    public aggregate<T>(target: Table<T, any, any, any>) {
+        const count = (
+            countField: string & FilteredKeys<T, number>,
+            by: {[key: string]: Key<S>},
+            filters: Partial<S> = {},
+        ): Table<S, PK, V, D> => {
+            const aggregations = this.aggregations.concat([{
+                target, type: 'count', field: countField, by, filters,
+            }]);
+            return new DatabaseTable<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
+        };
+        return { count };
+    }
+
+    /**
+     * Returns a state representation of the table for migration.
+     */
+    public getState(): TableState {
+        const { name, indexes } = this;
+        return getResourceState(name, this.resource, indexes);
+    }
+
+    /***** DATABASE OPERATIONS *******/
 
     /**
      * Returns a database operation that inserts an item with the given ID
@@ -337,59 +476,6 @@ export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
     }
 
     /**
-     * Return a database opeartion that queries and finds the first/next batch
-     * of items from the table matching the given criteria.
-     *
-     * The return value is a page object containing an array of items,
-     * and the `query` parameter for retrieving the next batch, or null
-     * if no more items are expected to be found.
-     */
-    public list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>> {
-        const results: S[] = [];
-        const { ordering, direction } = query;
-        const { chunkSize, sql, params, deserialize } = this.scan(query);
-        return async (connection) => {
-            for await (const chunk of connection.scan(chunkSize, sql, params)) {
-                const items = deserialize(chunk);
-                results.push(...items);
-                if (chunk.isComplete) {
-                    return { results, next: null };
-                }
-                const cursor = prepareForCursor(results, ordering, direction);
-                if (cursor) {
-                    return {
-                        results: cursor.results,
-                        next: { ...query as Q, since: cursor.since as any },
-                    };
-                }
-            }
-            // No more items
-            return { results, next: null };
-        };
-    }
-
-    /**
-     * Returns a database scan query for iterating over batches of items from the
-     * table matching the given criteria.
-     *
-     * Without parameters should scan the whole table, in no particular order.
-     */
-    public scan(query?: Query<S>): SqlScanQuery<S> {
-        const chunkSize = 100;
-        if (!query) {
-            return {
-                ...selectQuery(this, {}),
-                chunkSize,
-            };
-        }
-        const { ordering, direction, since, ...filters } = query;
-        return {
-            ...selectQuery(this, filters, undefined, ordering, direction, since),
-            chunkSize,
-        };
-    }
-
-    /**
      * Returns an database operation for counting items in an table matching
      * the given filtering criterias. The criteria must match the indexes in the table.
      * Please consider the poor performance of COUNT operation on large tables!
@@ -398,9 +484,7 @@ export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
      *
      * @param filters Filters defining which rows to count
      */
-    public count(
-        filters: Omit<D, 'direction' | 'ordering' | 'since'>,
-    ): SqlQuery<number> {
+    public count(filters: Omit<D, 'direction' | 'ordering' | 'since'>): SqlQuery<number> {
         return countQuery(this, filters);
     }
 
@@ -458,8 +542,8 @@ export class Table<S, PK extends Key<S>, V extends Key<S>, D> {
  * @param resource Resource that is stored to the table
  * @param name An unique name for the table
  */
-export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string) {
-    return new Table<S, PK, V, never>(resource, name, {}, {}, []);
+export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string): Table<S, PK, V, never> {
+    return new DatabaseTable<S, PK, V, never>(resource, name, {}, {}, []);
 }
 
 export function getResourceState(name: string, resource: Resource<any, Key<any>, Key<any>>, indexes: string[][]): TableState {

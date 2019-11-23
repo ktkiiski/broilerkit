@@ -1,8 +1,16 @@
 import { RDSDataService } from 'aws-sdk';
 import { Client, ClientBase, PoolClient } from 'pg';
 import { scanCursor } from './postgres-cursor';
-import { Row, SqlQuery, SqlResult, SqlScanQuery } from './sql';
+import { formatSql, Row, SqlQuery, SqlResult, SqlScanQuery } from './sql';
 import { isNotNully } from './utils/compare';
+
+const verboseLogging = !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
+
+function logSql(sql: string, params?: any[]) {
+    const msg = verboseLogging ? formatSql(sql, params) : sql;
+    // tslint:disable-next-line:no-console
+    console.debug(msg);
+}
 
 interface SqlScanChunk extends SqlResult {
     isComplete: boolean;
@@ -30,6 +38,7 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             return { rowCount: 0, rows: [] };
         }
         const { client } = this;
+        logSql(sql, params);
         return client.query(sql, params);
     }
     public async queryAll(queries: Array<{ sql: string; params?: any[]; }>): Promise<SqlResult[]> {
@@ -45,6 +54,7 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             return;
         }
         const { client } = this;
+        logSql(sql, params);
         for await (const rows of scanCursor<Row>(client, chunkSize, sql, params)) {
             yield { rows, rowCount: rows.length, isComplete: rows.length < chunkSize };
         }

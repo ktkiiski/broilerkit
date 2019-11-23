@@ -1,8 +1,9 @@
-import { Table } from './db';
-import { Resource } from './resources';
+import chalk from 'chalk';
+import { Fields, Serializer } from './serializers';
 import { isNotNully } from './utils/compare';
-import { Key, keys } from './utils/objects';
-import { stripPrefix } from './utils/strings';
+import { keys } from './utils/objects';
+
+const { cyan, magenta, dim } = chalk;
 
 export interface SqlQuery<R> {
     sql: string;
@@ -23,8 +24,30 @@ export interface SqlResult {
     rowCount: number;
 }
 
-export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export interface SqlNesting {
+    alias: string;
+    queryable: SqlQueryable<any>;
+    on: {[key: string]: string};
+}
+
+export interface SqlQueryable<S> {
+    name: string;
+    resource: Serializer<S>;
+    defaults: { [P in any]: S[any] };
+    columns: Fields<S>;
+    nestings: SqlNesting[];
+}
+
+export interface SqlWriteable<S> {
+    name: string;
+    resource: Serializer<S>;
+    primaryKeys: string[];
+    columns: Fields<S>;
+    defaults: { [P in any]: S[any] };
+}
+
+export function selectQuery<S>(
+    table: SqlQueryable<S>,
     filters: Record<string, any>,
     limit?: number,
     ordering?: string,
@@ -32,20 +55,21 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     since?: any,
 ): SqlQuery<S[]> {
     const params: any[] = [];
-    const { name, resource } = table;
-    let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
+    const { name, resource, defaults } = table;
+    let sql = `SELECT ${getSelectColumnsSql(table)} FROM ${ref(name)}`;
+    sql += getNestingJoinSql(name, table.nestings);
     const filtersSql = filterConditionSql(name, filters, params);
     const conditions = filtersSql ? [filtersSql] : [];
     if (ordering && direction && since != null) {
         params.push(since);
         const dirOp = direction === 'asc' ? '>' : '<';
-        conditions.push(`${ref(ordering)} ${dirOp} $${params.length}`);
+        conditions.push(`${ref(name)}.${ref(ordering)} ${dirOp} $${params.length}`);
     }
     if (conditions.length) {
         sql += ` WHERE ${conditions.join(' AND ')}`;
     }
     if (ordering && direction) {
-        sql += ` ORDER BY ${ref(ordering)} ${direction.toUpperCase()}`;
+        sql += ` ORDER BY ${ref(name)}.${ref(ordering)} ${direction.toUpperCase()}`;
     }
     if (limit != null) {
         params.push(limit);
@@ -53,81 +77,80 @@ export function selectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     }
     sql += ';';
     return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(name, table, row)).filter(isNotNully)
+        rows.map((row) => parseRow(name, resource, defaults, row)).filter(isNotNully)
     ));
 }
 
-export function batchSelectQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function batchSelectQuery<S>(
+    table: SqlQueryable<S>,
     filtersList: Array<Record<string, any>>,
 ): SqlQuery<S[]> {
-    const { name, resource } = table;
+    const { name, columns, resource } = table;
     const params: any[] = [];
-    let sql = `SELECT ${returnColumnsSql(name, resource)} FROM ${ref(name)}`;
+    let sql = `SELECT ${returnColumnsSql(name, columns)} FROM ${ref(name)}`;
     const orConditions = filtersList.map((filters) => (
         `(${filterConditionSql(name, filters, params)})`
     ));
     sql += ` WHERE ${orConditions.join(' OR ')};`;
     return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(name, table, row)).filter(isNotNully)
+        rows.map((row) => parseRow(name, resource, table.defaults, row)).filter(isNotNully)
     ));
 }
 
-export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function updateQuery<S>(
+    table: SqlWriteable<S>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious: false,
 ): SqlQuery<S[]>;
-export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function updateQuery<S>(
+    table: SqlWriteable<S>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious: true,
 ): SqlQuery<Array<[S, S]>>;
-export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function updateQuery<S>(
+    table: SqlWriteable<S>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious?: boolean,
 ): SqlQuery<S[] | Array<[S, S]>>;
-export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function updateQuery<S>(
+    table: SqlWriteable<S>,
     filters: Record<string, any>,
     values: Record<string, any>,
     returnPrevious: boolean = false,
 ): SqlQuery<S[] | Array<[S, S]>> {
     const params: any[] = [];
     const assignments: string[] = [];
-    const { name, resource } = table;
-    const { fields, identifyBy } = table.resource;
-    const columns = keys(fields);
-    columns.forEach((key) => {
+    const { name, columns, primaryKeys, resource, defaults } = table;
+    const columnNames = keys(columns);
+    columnNames.forEach((key) => {
         const value = values[key];
-        if (typeof value !== 'undefined' && !identifyBy.includes(key as PK)) {
+        if (typeof value !== 'undefined' && !primaryKeys.includes(key)) {
             assignments.push(assignmentSql(name, key, value, params));
         }
     });
     const tblRef = ref(name);
     const valSql = assignments.join(', ');
     const condSql = filterConditionSql(name, filters, params);
-    const returnSql = returnColumnsSql(name, resource);
+    const returnSql = returnColumnsSql(name, columns);
     if (returnPrevious) {
         // Join the current state to the query in order to return the previous state
-        const columnSql = keys(resource.fields).map(ref).join(', ');
+        const columnSql = keys(columns).map(ref).join(', ');
         const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql} FOR UPDATE`;
         const prevAlias = '_previous';
         const prevRef = ref(prevAlias);
-        const joinConditions = identifyBy.map((pk) => (
+        const joinConditions = primaryKeys.map((pk) => (
             `${prevRef}.${ref(pk)} = ${tblRef}.${ref(pk)}`
         ));
         const joinSql = joinConditions.join(' AND ');
-        const prevReturnSql = returnColumnsSql(prevAlias, resource);
+        const prevReturnSql = returnColumnsSql(prevAlias, columns);
         const sql = `UPDATE ${tblRef} SET ${valSql} FROM (${prevSelect}) ${prevRef} WHERE ${joinSql} RETURNING ${prevReturnSql}, ${returnSql};`;
         return makeQuery(sql, params, ({ rows }) => (
             rows.map((row) => {
-                const newItem = parseRow(name, table, row);
-                const oldItem = parseRow('_previous', table, row);
+                const newItem = parseRow(name, resource, defaults, row);
+                const oldItem = parseRow('_previous', resource, defaults, row);
                 if (newItem && oldItem) {
                     return [newItem, oldItem] as [S, S];
                 }
@@ -138,7 +161,7 @@ export function updateQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         // Normal update, without joining the previous state
         const sql = `UPDATE ${tblRef} SET ${valSql} WHERE ${condSql} RETURNING ${returnSql};`;
         return makeQuery(sql, params, ({ rows }) => (
-            rows.map((row) => parseRow(name, table, row)).filter(isNotNully)
+            rows.map((row) => parseRow(name, resource, defaults, row)).filter(isNotNully)
         ));
     }
 }
@@ -148,29 +171,28 @@ interface InsertResult<R> {
     wasCreated: boolean;
 }
 
-export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function insertQuery<S>(
+    table: SqlWriteable<S>,
     insertValues: Record<string, any>,
     updateValues: Record<string, any>,
 ): SqlQuery<InsertResult<S>>;
-export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function insertQuery<S>(
+    table: SqlWriteable<S>,
     insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
 ): SqlQuery<InsertResult<S> | null>;
-export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function insertQuery<S>(
+    table: SqlWriteable<S>,
     insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
 ): SqlQuery<InsertResult<S> | null> {
     const params: any[] = [];
-    const columns: string[] = [];
+    const columnNames: string[] = [];
     const placeholders: string[] = [];
     const updates: string[] = [];
-    const { name, resource } = table;
-    const { fields, identifyBy } = resource;
-    keys(fields).forEach((key) => {
-        columns.push(ref(key));
+    const { name, resource, columns, primaryKeys } = table;
+    keys(columns).forEach((key) => {
+        columnNames.push(ref(key));
         params.push(insertValues[key]);
         placeholders.push(`$${params.length}`);
     });
@@ -181,20 +203,20 @@ export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
         });
     }
     const tblSql = ref(name);
-    const colSql = columns.join(', ');
+    const colSql = columnNames.join(', ');
     const valSql = placeholders.join(', ');
     let sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql})`;
     if (updates.length) {
-        const pkSql = identifyBy.map(ref).join(',');
+        const pkSql = primaryKeys.map(ref).join(',');
         const upSql = updates.join(', ');
         sql += ` ON CONFLICT (${pkSql}) DO UPDATE SET ${upSql}`;
     } else {
         sql += ` ON CONFLICT DO NOTHING`;
     }
-    sql += ` RETURNING ${returnColumnsSql(name, resource)}, xmax::text::int;`;
+    sql += ` RETURNING ${returnColumnsSql(name, columns)}, xmax::text::int;`;
     return makeQuery(sql, params, ({ rows }) => {
         for (const { xmax, ...row } of rows) {
-            const item = parseRow(name, table, row);
+            const item = parseRow(name, resource, table.defaults, row);
             if (item) {
                 return { item, wasCreated: xmax === 0 };
             }
@@ -203,31 +225,31 @@ export function insertQuery<S, PK extends Key<S>, V extends Key<S>, D>(
     });
 }
 
-export function deleteQuery<S, PK extends Key<S>, V extends Key<S>, D>(
-    table: Table<S, PK, V, D>,
+export function deleteQuery<S>(
+    table: SqlWriteable<S>,
     filters: Record<string, any>,
 ): SqlQuery<S | null> {
     const params: any[] = [];
-    const { name } = table;
+    const { name, resource } = table;
     let sql = `DELETE FROM ${ref(name)}`;
     const conditionSql = filterConditionSql(name, filters, params);
     if (conditionSql) {
         sql += ` WHERE ${conditionSql}`;
     }
-    sql += ` RETURNING ${returnColumnsSql(name, table.resource)};`;
+    sql += ` RETURNING ${returnColumnsSql(name, table.columns)};`;
     return {
         sql, params,
         deserialize({ rows }) {
             if (!rows.length) {
                 return null;
             }
-            return parseRow(name, table, rows[0]);
+            return parseRow(name, resource, table.defaults, rows[0]);
         },
     };
 }
 
 export function countQuery(
-    table: Table<any, any, any, any>,
+    table: SqlQueryable<any>,
     filters: Record<string, any>,
 ): SqlQuery<number> {
     const params: any[] = [];
@@ -247,6 +269,29 @@ class Increment {
 
 export function increment(diff: number) {
     return new Increment(diff);
+}
+
+function getSelectColumnsSql(table: SqlQueryable<any>, name = table.name): string {
+    let selectSql = returnColumnsSql(name, table.columns);
+    for (const { queryable, alias } of table.nestings || []) {
+        selectSql = `${selectSql}, ${getSelectColumnsSql(queryable, `${name}.${alias}`)}`;
+    }
+    return selectSql;
+}
+
+function getNestingJoinSql(baseName: string, nestings: SqlNesting[]): string {
+    const joinSqlCmps: string[] = [];
+    for (const { queryable, alias, on } of nestings) {
+        const name = `${baseName}.${alias}`;
+        const joinConditions = Object.keys(on).map((targetKey) => {
+            const sourceKey = on[targetKey];
+            return `${ref(name)}.${ref(targetKey)} = ${ref(baseName)}.${ref(sourceKey)}`;
+        });
+        const onSql = joinConditions.join(' AND ');
+        joinSqlCmps.push(` LEFT JOIN ${ref(queryable.name)} AS ${ref(name)} ON ${onSql}`);
+        joinSqlCmps.push(getNestingJoinSql(name, queryable.nestings));
+    }
+    return joinSqlCmps.join('');
 }
 
 function assignmentSql(tableName: string, field: string, value: any, params: any[]): string {
@@ -286,51 +331,759 @@ function filterConditionSql(tableName: string, filters: {[field: string]: any}, 
     return conditions.join(' AND ');
 }
 
-function returnColumnsSql(tableName: string, resource: Resource<any, any, any>): string {
-    const columnSqls = keys(resource.fields).map((column) => (
+function returnColumnsSql(tableName: string, columns: Fields<any>): string {
+    const columnSqls = keys(columns).map((column) => (
         `${ref(tableName)}.${ref(column)} AS ${ref(tableName + '.' + column)}`
     ));
     return columnSqls.join(', ');
 }
 
 function ref(identifier: string) {
-    return JSON.stringify(identifier);
+    return !keywords.includes(identifier.toUpperCase()) && /^[a-z][a-z0-9]*$/.test(identifier)
+        ? identifier : `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function escapeValue(value: unknown): string {
+    if (value == null) {
+        return 'NULL';
+    }
+    if (value === false) {
+        return 'FALSE';
+    }
+    if (value === true) {
+        return 'TRUE';
+    }
+    const str = String(value);
+    if (typeof value === 'number') {
+        return str;
+    }
+    return `'${str.replace(/'/g, '\'\'')}'`;
 }
 
 function makeQuery<R>(sql: string, params: any[], deserialize: (result: SqlResult) => R): SqlQuery<R> {
     return { sql, params, deserialize };
 }
 
-function parseRow<S, PK extends Key<S>>(tableAlias: string, table: Table<S, PK, any, any>, row: Row): S | null {
-    const { defaults, resource } = table;
-    const propertyPrefix = tableAlias + '.';
-    const item: Row = {};
-    Object.keys(row).forEach((key) => {
-        const propertyName = stripPrefix(key, propertyPrefix);
-        if (propertyName != null) {
-            item[propertyName] = row[key];
-        }
-    });
-    const result = Object.keys(defaults).reduce(
+function cleanupNullNestings(item: Row): Row | null {
+    if (item == null || typeof item !== 'object' || Array.isArray(item) || item instanceof Date) {
+        return item;
+    }
+    let allNull = true;
+    const result = Object.keys(item).reduce(
         (obj, key) => {
-            const defaultValue = defaults[key];
-            if (obj[key as keyof S] == null && defaultValue != null) {
-                return { ...obj, [key]: defaultValue };
+            const currentValue = obj[key];
+            if (currentValue != null) {
+                allNull = false;
+                const cleanValue = cleanupNullNestings(currentValue);
+                if (cleanValue !== currentValue) {
+                    return { ...obj, [key]: cleanValue };
+                }
             }
             return obj;
         },
-        item as S,
+        item,
     );
+    return allNull ? null : result;
+}
+
+function fillDefaultValues<S>(item: S, defaults: {[P in any]: S[any]}) {
+    return Object.keys(defaults).reduce((obj, key) => {
+        const defaultValue = defaults[key];
+        if (obj[key as keyof S] == null && defaultValue != null) {
+            return { ...obj, [key]: defaultValue };
+        }
+        return obj;
+    }, item);
+}
+
+function parseRow<S>(
+    tableAlias: string,
+    resource: Serializer<S>,
+    defaults: {[P in any]: S[any]},
+    row: Row,
+): S | null {
+    const item: Row = {};
+    Object.keys(row).forEach((key) => {
+        let obj = item;
+        const value = row[key];
+        const propertyPath = key.split('.');
+        const rootProperty = propertyPath.shift() as string;
+        if (rootProperty !== tableAlias) {
+            return;
+        }
+        while (propertyPath.length > 1) {
+            const property = propertyPath.shift() as string;
+            obj = (obj[property] = (obj[property] ?? {}));
+        }
+        obj[propertyPath[0]] = value;
+    });
+    const cleanItem = cleanupNullNestings(item);
+    if (cleanItem == null) {
+        return null;
+    }
+    const result = fillDefaultValues(cleanItem, defaults);
     try {
         return resource.validate(result as S);
     } catch (error) {
         // The database entry is not valid!
-        const identity: {[key: string]: any} = {};
-        resource.identifyBy.forEach((key) => {
-            identity[key] = result[key];
-        });
         // tslint:disable-next-line:no-console
-        console.error(`Failed to load invalid record ${JSON.stringify(identity)} from the database:`, error);
+        console.error(`Failed to load invalid ${tableAlias} item from the database:`, error);
         return null;
     }
 }
+
+const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|;)/g;
+
+function tokenize(sql: string): string[] {
+    return sql.split(sqlTokenizerRegexp).filter((token) => !!token);
+}
+
+export function formatSql(sql: string, params: any[] = []) {
+    const tokens = tokenize(sql);
+    const keywordColor = tokens.length && tokens[0] !== 'SELECT' ? cyan : magenta;
+    const colorizedTokens = tokenize(sql).map((token) => {
+        if (keywords.includes(token.toUpperCase())) {
+            return keywordColor(token);
+        }
+        const paramMatch = /^\$(\d+)$/.exec(token);
+        if (paramMatch) {
+            const value = params[parseInt(paramMatch[1], 10) - 1];
+            return escapeValue(value);
+        }
+        if (token[0] === ' ' || /^'.*'$/.test(token[0])) {
+            return token;
+        }
+        return dim(token);
+    });
+    return colorizedTokens.join('');
+}
+
+const keywords = [
+    'A',
+    'ABORT',
+    'ABS',
+    'ABSOLUTE',
+    'ACCESS',
+    'ACTION',
+    'ADA',
+    'ADD',
+    'ADMIN',
+    'AFTER',
+    'AGGREGATE',
+    'ALIAS',
+    'ALL',
+    'ALLOCATE',
+    'ALSO',
+    'ALTER',
+    'ALWAYS',
+    'ANALYSE',
+    'ANALYZE',
+    'AND',
+    'ANY',
+    'ARE',
+    'ARRAY',
+    'AS',
+    'ASC',
+    'ASENSITIVE',
+    'ASSERTION',
+    'ASSIGNMENT',
+    'ASYMMETRIC',
+    'AT',
+    'ATOMIC',
+    'ATTRIBUTE',
+    'ATTRIBUTES',
+    'AUTHORIZATION',
+    'AVG',
+    'BACKWARD',
+    'BEFORE',
+    'BEGIN',
+    'BERNOULLI',
+    'BETWEEN',
+    'BIGINT',
+    'BINARY',
+    'BIT',
+    'BITVAR',
+    'BIT_LENGTH',
+    'BLOB',
+    'BOOLEAN',
+    'BOTH',
+    'BREADTH',
+    'BY',
+    'C',
+    'CACHE',
+    'CALL',
+    'CALLED',
+    'CARDINALITY',
+    'CASCADE',
+    'CASCADED',
+    'CASE',
+    'CAST',
+    'CATALOG',
+    'CATALOG_NAME',
+    'CEIL',
+    'CEILING',
+    'CHAIN',
+    'CHAR',
+    'CHARACTER',
+    'CHARACTERISTICS',
+    'CHARACTERS',
+    'CHARACTER_LENGTH',
+    'CHARACTER_SET_CATALOG',
+    'CHARACTER_SET_NAME',
+    'CHARACTER_SET_SCHEMA',
+    'CHAR_LENGTH',
+    'CHECK',
+    'CHECKED',
+    'CHECKPOINT',
+    'CLASS',
+    'CLASS_ORIGIN',
+    'CLOB',
+    'CLOSE',
+    'CLUSTER',
+    'COALESCE',
+    'COBOL',
+    'COLLATE',
+    'COLLATION',
+    'COLLATION_CATALOG',
+    'COLLATION_NAME',
+    'COLLATION_SCHEMA',
+    'COLLECT',
+    'COLUMN',
+    'COLUMN_NAME',
+    'COMMAND_FUNCTION',
+    'COMMAND_FUNCTION_CODE',
+    'COMMENT',
+    'COMMIT',
+    'COMMITTED',
+    'COMPLETION',
+    'CONDITION',
+    'CONDITION_NUMBER',
+    'CONNECT',
+    'CONNECTION',
+    'CONNECTION_NAME',
+    'CONSTRAINT',
+    'CONSTRAINTS',
+    'CONSTRAINT_CATALOG',
+    'CONSTRAINT_NAME',
+    'CONSTRAINT_SCHEMA',
+    'CONSTRUCTOR',
+    'CONTAINS',
+    'CONTINUE',
+    'CONVERSION',
+    'CONVERT',
+    'COPY',
+    'CORR',
+    'CORRESPONDING',
+    'COUNT',
+    'COVAR_POP',
+    'COVAR_SAMP',
+    'CREATE',
+    'CREATEDB',
+    'CREATEROLE',
+    'CREATEUSER',
+    'CROSS',
+    'CSV',
+    'CUBE',
+    'CUME_DIST',
+    'CURRENT',
+    'CURRENT_DATE',
+    'CURRENT_DEFAULT_TRANSFORM_GROUP',
+    'CURRENT_PATH',
+    'CURRENT_ROLE',
+    'CURRENT_TIME',
+    'CURRENT_TIMESTAMP',
+    'CURRENT_TRANSFORM_GROUP_FOR_TYPE',
+    'CURRENT_USER',
+    'CURSOR',
+    'CURSOR_NAME',
+    'CYCLE',
+    'DATA',
+    'DATABASE',
+    'DATE',
+    'DATETIME_INTERVAL_CODE',
+    'DATETIME_INTERVAL_PRECISION',
+    'DAY',
+    'DEALLOCATE',
+    'DEC',
+    'DECIMAL',
+    'DECLARE',
+    'DEFAULT',
+    'DEFAULTS',
+    'DEFERRABLE',
+    'DEFERRED',
+    'DEFINED',
+    'DEFINER',
+    'DEGREE',
+    'DELETE',
+    'DELIMITER',
+    'DELIMITERS',
+    'DENSE_RANK',
+    'DEPTH',
+    'DEREF',
+    'DERIVED',
+    'DESC',
+    'DESCRIBE',
+    'DESCRIPTOR',
+    'DESTROY',
+    'DESTRUCTOR',
+    'DETERMINISTIC',
+    'DIAGNOSTICS',
+    'DICTIONARY',
+    'DISABLE',
+    'DISCONNECT',
+    'DISPATCH',
+    'DISTINCT',
+    'DO',
+    'DOMAIN',
+    'DOUBLE',
+    'DROP',
+    'DYNAMIC',
+    'DYNAMIC_FUNCTION',
+    'DYNAMIC_FUNCTION_CODE',
+    'EACH',
+    'ELEMENT',
+    'ELSE',
+    'ENABLE',
+    'ENCODING',
+    'ENCRYPTED',
+    'END',
+    'END',
+    'EQUALS',
+    'ESCAPE',
+    'EVERY',
+    'EXCEPT',
+    'EXCEPTION',
+    'EXCLUDE',
+    'EXCLUDING',
+    'EXCLUSIVE',
+    'EXEC',
+    'EXECUTE',
+    'EXISTING',
+    'EXISTS',
+    'EXP',
+    'EXPLAIN',
+    'EXTERNAL',
+    'EXTRACT',
+    'FALSE',
+    'FETCH',
+    'FILTER',
+    'FINAL',
+    'FIRST',
+    'FLOAT',
+    'FLOOR',
+    'FOLLOWING',
+    'FOR',
+    'FORCE',
+    'FOREIGN',
+    'FORTRAN',
+    'FORWARD',
+    'FOUND',
+    'FREE',
+    'FREEZE',
+    'FROM',
+    'FULL',
+    'FUNCTION',
+    'FUSION',
+    'G',
+    'GENERAL',
+    'GENERATED',
+    'GET',
+    'GLOBAL',
+    'GO',
+    'GOTO',
+    'GRANT',
+    'GRANTED',
+    'GREATEST',
+    'GROUP',
+    'GROUPING',
+    'HANDLER',
+    'HAVING',
+    'HEADER',
+    'HIERARCHY',
+    'HOLD',
+    'HOST',
+    'HOUR',
+    'IDENTITY',
+    'IGNORE',
+    'ILIKE',
+    'IMMEDIATE',
+    'IMMUTABLE',
+    'IMPLEMENTATION',
+    'IMPLICIT',
+    'IN',
+    'INCLUDING',
+    'INCREMENT',
+    'INDEX',
+    'INDICATOR',
+    'INFIX',
+    'INHERIT',
+    'INHERITS',
+    'INITIALIZE',
+    'INITIALLY',
+    'INNER',
+    'INOUT',
+    'INPUT',
+    'INSENSITIVE',
+    'INSERT',
+    'INSTANCE',
+    'INSTANTIABLE',
+    'INSTEAD',
+    'INT',
+    'INTEGER',
+    'INTERSECT',
+    'INTERSECTION',
+    'INTERVAL',
+    'INTO',
+    'INVOKER',
+    'IS',
+    'ISNULL',
+    'ISOLATION',
+    'ITERATE',
+    'JOIN',
+    'K',
+    'KEY',
+    'KEY_MEMBER',
+    'KEY_TYPE',
+    'LANCOMPILER',
+    'LANGUAGE',
+    'LARGE',
+    'LAST',
+    'LATERAL',
+    'LEADING',
+    'LEAST',
+    'LEFT',
+    'LENGTH',
+    'LESS',
+    'LEVEL',
+    'LIKE',
+    'LIMIT',
+    'LISTEN',
+    'LN',
+    'LOAD',
+    'LOCAL',
+    'LOCALTIME',
+    'LOCALTIMESTAMP',
+    'LOCATION',
+    'LOCATOR',
+    'LOCK',
+    'LOGIN',
+    'LOWER',
+    'M',
+    'MAP',
+    'MATCH',
+    'MATCHED',
+    'MAX',
+    'MAXVALUE',
+    'MEMBER',
+    'MERGE',
+    'MESSAGE_LENGTH',
+    'MESSAGE_OCTET_LENGTH',
+    'MESSAGE_TEXT',
+    'METHOD',
+    'MIN',
+    'MINUTE',
+    'MINVALUE',
+    'MOD',
+    'MODE',
+    'MODIFIES',
+    'MODIFY',
+    'MODULE',
+    'MONTH',
+    'MORE',
+    'MOVE',
+    'MULTISET',
+    'MUMPS',
+    'NAME',
+    'NAMES',
+    'NATIONAL',
+    'NATURAL',
+    'NCHAR',
+    'NCLOB',
+    'NESTING',
+    'NEW',
+    'NEXT',
+    'NO',
+    'NOCREATEDB',
+    'NOCREATEROLE',
+    'NOCREATEUSER',
+    'NOINHERIT',
+    'NOLOGIN',
+    'NONE',
+    'NORMALIZE',
+    'NORMALIZED',
+    'NOSUPERUSER',
+    'NOT',
+    'NOTHING',
+    'NOTIFY',
+    'NOTNULL',
+    'NOWAIT',
+    'NULL',
+    'NULLABLE',
+    'NULLIF',
+    'NULLS',
+    'NUMBER',
+    'NUMERIC',
+    'OBJECT',
+    'OCTETS',
+    'OCTET_LENGTH',
+    'OF',
+    'OFF',
+    'OFFSET',
+    'OIDS',
+    'OLD',
+    'ON',
+    'ONLY',
+    'OPEN',
+    'OPERATION',
+    'OPERATOR',
+    'OPTION',
+    'OPTIONS',
+    'OR',
+    'ORDER',
+    'ORDERING',
+    'ORDINALITY',
+    'OTHERS',
+    'OUT',
+    'OUTER',
+    'OUTPUT',
+    'OVER',
+    'OVERLAPS',
+    'OVERLAY',
+    'OVERRIDING',
+    'OWNER',
+    'PAD',
+    'PARAMETER',
+    'PARAMETERS',
+    'PARAMETER_MODE',
+    'PARAMETER_NAME',
+    'PARAMETER_ORDINAL_POSITION',
+    'PARAMETER_SPECIFIC_CATALOG',
+    'PARAMETER_SPECIFIC_NAME',
+    'PARAMETER_SPECIFIC_SCHEMA',
+    'PARTIAL',
+    'PARTITION',
+    'PASCAL',
+    'PASSWORD',
+    'PATH',
+    'PERCENTILE_CONT',
+    'PERCENTILE_DISC',
+    'PERCENT_RANK',
+    'PLACING',
+    'PLI',
+    'POSITION',
+    'POSTFIX',
+    'POWER',
+    'PRECEDING',
+    'PRECISION',
+    'PREFIX',
+    'PREORDER',
+    'PREPARE',
+    'PREPARED',
+    'PRESERVE',
+    'PRIMARY',
+    'PRIOR',
+    'PRIVILEGES',
+    'PROCEDURAL',
+    'PROCEDURE',
+    'PUBLIC',
+    'QUOTE',
+    'RANGE',
+    'RANK',
+    'READ',
+    'READS',
+    'REAL',
+    'RECHECK',
+    'RECURSIVE',
+    'REF',
+    'REFERENCES',
+    'REFERENCING',
+    'REGR_AVGX',
+    'REGR_AVGY',
+    'REGR_COUNT',
+    'REGR_INTERCEPT',
+    'REGR_R2',
+    'REGR_SLOPE',
+    'REGR_SXX',
+    'REGR_SXY',
+    'REGR_SYY',
+    'REINDEX',
+    'RELATIVE',
+    'RELEASE',
+    'RENAME',
+    'REPEATABLE',
+    'REPLACE',
+    'RESET',
+    'RESTART',
+    'RESTRICT',
+    'RESULT',
+    'RETURN',
+    'RETURNED_CARDINALITY',
+    'RETURNED_LENGTH',
+    'RETURNED_OCTET_LENGTH',
+    'RETURNED_SQLSTATE',
+    'RETURNS',
+    'REVOKE',
+    'RIGHT',
+    'ROLE',
+    'ROLLBACK',
+    'ROLLUP',
+    'ROUTINE',
+    'ROUTINE_CATALOG',
+    'ROUTINE_NAME',
+    'ROUTINE_SCHEMA',
+    'ROW',
+    'ROWS',
+    'ROW_COUNT',
+    'ROW_NUMBER',
+    'RULE',
+    'SAVEPOINT',
+    'SCALE',
+    'SCHEMA',
+    'SCHEMA_NAME',
+    'SCOPE',
+    'SCOPE_CATALOG',
+    'SCOPE_NAME',
+    'SCOPE_SCHEMA',
+    'SCROLL',
+    'SEARCH',
+    'SECOND',
+    'SECTION',
+    'SECURITY',
+    'SELECT',
+    'SELF',
+    'SENSITIVE',
+    'SEQUENCE',
+    'SERIALIZABLE',
+    'SERVER_NAME',
+    'SESSION',
+    'SESSION_USER',
+    'SET',
+    'SETOF',
+    'SETS',
+    'SHARE',
+    'SHOW',
+    'SIMILAR',
+    'SIMPLE',
+    'SIZE',
+    'SMALLINT',
+    'SOME',
+    'SOURCE',
+    'SPACE',
+    'SPECIFIC',
+    'SPECIFICTYPE',
+    'SPECIFIC_NAME',
+    'SQL',
+    'SQLCODE',
+    'SQLERROR',
+    'SQLEXCEPTION',
+    'SQLSTATE',
+    'SQLWARNING',
+    'SQRT',
+    'STABLE',
+    'START',
+    'STATE',
+    'STATEMENT',
+    'STATIC',
+    'STATISTICS',
+    'STDDEV_POP',
+    'STDDEV_SAMP',
+    'STDIN',
+    'STDOUT',
+    'STORAGE',
+    'STRICT',
+    'STRUCTURE',
+    'STYLE',
+    'SUBCLASS_ORIGIN',
+    'SUBLIST',
+    'SUBMULTISET',
+    'SUBSTRING',
+    'SUM',
+    'SUPERUSER',
+    'SYMMETRIC',
+    'SYSID',
+    'SYSTEM',
+    'SYSTEM_USER',
+    'TABLE',
+    'TABLESAMPLE',
+    'TABLESPACE',
+    'TABLE_NAME',
+    'TEMP',
+    'TEMPLATE',
+    'TEMPORARY',
+    'TERMINATE',
+    'THAN',
+    'THEN',
+    'TIES',
+    'TIME',
+    'TIMESTAMP',
+    'TIMEZONE_HOUR',
+    'TIMEZONE_MINUTE',
+    'TO',
+    'TOAST',
+    'TOP_LEVEL_COUNT',
+    'TRAILING',
+    'TRANSACTION',
+    'TRANSACTIONS_COMMITTED',
+    'TRANSACTIONS_ROLLED_BACK',
+    'TRANSACTION_ACTIVE',
+    'TRANSFORM',
+    'TRANSFORMS',
+    'TRANSLATE',
+    'TRANSLATION',
+    'TREAT',
+    'TRIGGER',
+    'TRIGGER_CATALOG',
+    'TRIGGER_NAME',
+    'TRIGGER_SCHEMA',
+    'TRIM',
+    'TRUE',
+    'TRUNCATE',
+    'TRUSTED',
+    'TYPE',
+    'UESCAPE',
+    'UNBOUNDED',
+    'UNCOMMITTED',
+    'UNDER',
+    'UNENCRYPTED',
+    'UNION',
+    'UNIQUE',
+    'UNKNOWN',
+    'UNLISTEN',
+    'UNNAMED',
+    'UNNEST',
+    'UNTIL',
+    'UPDATE',
+    'UPPER',
+    'USAGE',
+    'USER',
+    'USER_DEFINED_TYPE_CATALOG',
+    'USER_DEFINED_TYPE_CODE',
+    'USER_DEFINED_TYPE_NAME',
+    'USER_DEFINED_TYPE_SCHEMA',
+    'USING',
+    'VACUUM',
+    'VALID',
+    'VALIDATOR',
+    'VALUE',
+    'VALUES',
+    'VARCHAR',
+    'VARIABLE',
+    'VARYING',
+    'VAR_POP',
+    'VAR_SAMP',
+    'VERBOSE',
+    'VIEW',
+    'VOLATILE',
+    'WHEN',
+    'WHENEVER',
+    'WHERE',
+    'WIDTH_BUCKET',
+    'WINDOW',
+    'WITH',
+    'WITHIN',
+    'WITHOUT',
+    'WORK',
+    'WRITE',
+    'YEAR',
+    'ZONE',
+];
