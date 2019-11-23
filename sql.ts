@@ -353,7 +353,9 @@ function escapeValue(value: unknown): string {
     if (value === true) {
         return 'TRUE';
     }
-    const str = String(value);
+    const str = value instanceof Date
+        ? value.toISOString()
+        : String(value);
     if (typeof value === 'number') {
         return str;
     }
