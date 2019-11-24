@@ -9,23 +9,26 @@ import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, sele
 import { SqlNesting, SqlQueryable } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
-import { Exact, FilteredKeys, Key, keys, Require, transformValues } from './utils/objects';
+import { Exact, FilteredKeys, Key, keys, pick, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
 export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | Array<T[P]>} & OrderedQuery<T, O> & Filters<T>;
 
-export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | V> | Pick<S, PK>) & Partial<S>;
+export type Identity<S, PK extends Key<S>, V extends Key<S> | undefined> = (Pick<S, PK | (V extends undefined ? never : V)> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
-export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> {
+export interface ReadableModel<S, PK extends Key<S>, V extends Key<S> | undefined, D> {
     retrieve(query: Identity<S, PK, V>): SqlQuery<S>;
     list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>>;
     scan(query?: Query<S>): SqlScanQuery<S>;
-    join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: Table<S2, PK2 & Key<S2>, any, any>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableModel<S & Record<K, S2 | null>, PK, V, D>;
+    pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V extends K ? K : undefined, Exclude<D, Record<Exclude<Key<K>, K>, any>>>;
+    join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableTable<S & Record<K, S2 | null>, PK, V, D>;
 }
+
+type ReadableTable<S, PK extends Key<S>, V extends Key<S> | undefined, D> = ReadableModel<S, PK, V, D> & SqlQueryable<S, PK>;
 
 export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D> {
     create(item: S): SqlOperation<S>;
@@ -39,7 +42,8 @@ export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends Readab
     batchRetrieve(identities: Array<Identity<S, PK, V>>): SqlQuery<Array<S | null>>;
 }
 
-export interface Table<S, PK extends Key<S>, V extends Key<S>, D> extends Model<S, PK, V, D>, SqlWriteable<S>, SqlQueryable<S> {
+export interface Table<S, PK extends Key<S>, V extends Key<S>, D>
+extends Model<S, PK, V, D>, SqlWriteable<S, PK>, SqlQueryable<S, PK> {
     /**
      * Sets default values for the properties loaded from the database.
      * They are used to fill in any missing values for loaded items. You should
@@ -75,8 +79,8 @@ interface Aggregation<S> {
     filters: Partial<S>;
 }
 
-class BaseTable<S, PK extends Key<S>, V extends Key<S>, D>
-implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
+class BaseTable<S, PK extends Key<S>, V extends Key<S> | undefined, D>
+implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
 
     constructor(
         /**
@@ -89,6 +93,7 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
          */
         public readonly name: string,
         public readonly columns: Fields<any>,
+        public readonly primaryKeys: PK[],
         public readonly defaults: {[P in any]: any},
         public readonly nestings: SqlNesting[],
     ) {}
@@ -103,9 +108,13 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
      */
     public retrieve(query: Identity<S, PK, V>): SqlQuery<S> {
         const { resource } = this;
-        const identitySerializer = resource
-            .pick([...resource.identifyBy, resource.versionBy])
-            .partial(resource.identifyBy);
+        const { identifyBy, versionBy } = resource;
+        const identitySerializer = versionBy
+            ? resource
+                .pick([...identifyBy, versionBy as Key<S>])
+                .partial(identifyBy)
+            : resource
+                .pick(identifyBy);
         const filters = identitySerializer.validate(query);
         const select = selectQuery(this, filters, 1);
         return {
@@ -177,9 +186,9 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
     // https://github.com/microsoft/TypeScript/issues/30071
     public join<K extends string, S2>(
         propertyName: K,
-        other: Table<S2, any, any, any>,
+        other: SqlQueryable<S2>,
         on: {[key: string]: string},
-    ): ReadableModel<S & Record<K, S2 | null>, PK, V, D> {
+    ): ReadableTable<S & Record<K, S2 | null>, PK, V, D> {
         const nestings: SqlNesting[] = [
             ...this.nestings,
             {
@@ -192,9 +201,22 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S> {
             { [propertyName]: nullable(nested(other.resource)) } as Fields<Record<K, S2 | null>>,
         );
         return new BaseTable(
-            resource, this.name, this.columns, this.defaults, nestings,
+            resource, this.name, this.columns, this.primaryKeys, this.defaults, nestings,
         );
     }
+
+    public pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V extends K ? V : undefined, Exclude<D, Record<Exclude<Key<K>, K>, any>>> {
+        const resource = this.resource.subset(columns);
+        return new BaseTable<Pick<S, K>, PK & K, V extends K ? V : undefined, Exclude<D, Record<Exclude<Key<K>, K>, any>>>(
+            resource,
+            this.name,
+            pick(this.columns, columns),
+            this.primaryKeys as Array<PK & K>,
+            pick(this.defaults, columns),
+            this.nestings,
+        );
+    }
+
 }
 
 export class DatabaseTable<S, PK extends Key<S>, V extends Key<S>, D>
@@ -203,7 +225,6 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
      * List of indexes for this database table.
      */
     public readonly indexes: string[][] = [];
-    public readonly primaryKeys = this.resource.identifyBy;
     constructor(
         resource: Resource<S, PK, V>,
         name: string,
@@ -211,7 +232,7 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
         defaults: {[P in any]: S[any]},
         private readonly aggregations: Array<Aggregation<S>>,
     ) {
-        super(resource, name, resource.fields, defaults, []);
+        super(resource, name, resource.fields, resource.identifyBy, defaults, []);
         this.indexes = flattenIndexes(indexTree);
     }
 

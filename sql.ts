@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { Fields, Serializer } from './serializers';
 import { isNotNully } from './utils/compare';
-import { keys } from './utils/objects';
+import { Key, keys } from './utils/objects';
 
 const { cyan, magenta, dim } = chalk;
 
@@ -26,22 +26,23 @@ export interface SqlResult {
 
 export interface SqlNesting {
     alias: string;
-    queryable: SqlQueryable<any>;
+    queryable: SqlQueryable<any, any>;
     on: {[key: string]: string};
 }
 
-export interface SqlQueryable<S> {
+export interface SqlQueryable<S, PK extends Key<S> = Key<S>> {
     name: string;
     resource: Serializer<S>;
+    primaryKeys: PK[];
     defaults: { [P in any]: S[any] };
     columns: Fields<S>;
     nestings: SqlNesting[];
 }
 
-export interface SqlWriteable<S> {
+export interface SqlWriteable<S, PK extends Key<S> = Key<S>> {
     name: string;
     resource: Serializer<S>;
-    primaryKeys: string[];
+    primaryKeys: PK[];
     columns: Fields<S>;
     defaults: { [P in any]: S[any] };
 }

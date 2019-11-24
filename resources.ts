@@ -9,6 +9,7 @@ export interface Resource<T, PK extends Key<T>, V extends Key<T> | undefined> ex
     readonly name: string;
     readonly identifyBy: PK[];
     readonly versionBy: V;
+    subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V extends K ? V : undefined>;
     expand<E>(fields: Fields<E>): Resource<T & E, PK, V>;
 }
 
@@ -26,9 +27,18 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T> | undefined> extends 
         public readonly versionBy: V) {
         super(fields);
     }
-    public subset<K extends Exclude<Key<T> & Key<Fields<T>>, PK>>(attrs: K[]): FieldResource<Pick<T, K | PK>, PK, V extends K ? V : undefined> {
+    public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V extends K ? V : undefined> {
+        const { identifyBy } = this;
+        if (!identifyBy.every((key) => (attrs as string[]).includes(key))) {
+            throw new Error('Cannot omit identifying keys for a subset of a resource');
+        }
         const versionBy = attrs.indexOf(this.versionBy as any) >= 0 ? this.versionBy : undefined;
-        return new FieldResource(this.name, pick(this.fields, [...attrs, ...this.identifyBy]) as Fields<Pick<T, K | PK>>, this.identifyBy, versionBy as V extends K ? V : undefined);
+        return new FieldResource(
+            this.name,
+            pick(this.fields, attrs) as Fields<Pick<T, K | PK>>,
+            identifyBy as Array<K & PK>,
+            versionBy as V extends K ? V : undefined,
+        );
     }
     public expand<E>(fields: Fields<E>): FieldResource<T & E, PK, V> {
         return new FieldResource(this.name, {...this.fields, ...fields} as Fields<T & E>, this.identifyBy, this.versionBy);
