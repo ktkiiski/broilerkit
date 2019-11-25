@@ -445,7 +445,11 @@ export function formatSql(sql: string, params: any[] = []) {
     const tokens = tokenize(sql);
     const keywordColor = tokens.length && tokens[0] !== 'SELECT' ? cyan : magenta;
     const colorizedTokens = tokenize(sql).map((token) => {
-        if (keywords.includes(token.toUpperCase())) {
+        const upperToken = token.toUpperCase();
+        if (minorKeywords.includes(upperToken)) {
+            return dim(keywordColor(token));
+        }
+        if (keywords.includes(upperToken)) {
             return keywordColor(token);
         }
         const paramMatch = /^\$(\d+)$/.exec(token);
@@ -920,6 +924,7 @@ const keywords = [
     'RESTRICT',
     'RESULT',
     'RETURN',
+    'RETURNING',
     'RETURNED_CARDINALITY',
     'RETURNED_LENGTH',
     'RETURNED_OCTET_LENGTH',
@@ -1089,4 +1094,14 @@ const keywords = [
     'WRITE',
     'YEAR',
     'ZONE',
+];
+
+const minorKeywords = [
+    'AS',
+    'ASC',
+    'DESC',
+    'IS',
+    'NOT',
+    'NOTNULL',
+    'NULL',
 ];
