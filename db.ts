@@ -15,20 +15,20 @@ export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
 export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | Array<T[P]>} & OrderedQuery<T, O> & Filters<T>;
 
-export type Identity<S, PK extends Key<S>, V extends Key<S> | undefined> = (Pick<S, PK | (V extends undefined ? never : V)> | Pick<S, PK>) & Partial<S>;
+export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | (V extends undefined ? never : V)> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
-export interface ReadableModel<S, PK extends Key<S>, V extends Key<S> | undefined, D> {
+export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> {
     retrieve(query: Identity<S, PK, V>): SqlQuery<S>;
     list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>>;
     scan(query?: Query<S>): SqlScanQuery<S>;
-    pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V extends K ? K : undefined, Exclude<D, Record<Exclude<Key<K>, K>, any>>>;
+    pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>;
     join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableTable<S & Record<K, S2 | null>, PK, V, D>;
 }
 
-type ReadableTable<S, PK extends Key<S>, V extends Key<S> | undefined, D> = ReadableModel<S, PK, V, D> & SqlQueryable<S, PK>;
+type ReadableTable<S, PK extends Key<S>, V extends Key<S>, D> = ReadableModel<S, PK, V, D> & SqlQueryable<S, PK>;
 
 export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D> {
     create(item: S): SqlOperation<S>;
@@ -79,7 +79,7 @@ interface Aggregation<S> {
     filters: Partial<S>;
 }
 
-class BaseTable<S, PK extends Key<S>, V extends Key<S> | undefined, D>
+class BaseTable<S, PK extends Key<S>, V extends Key<S>, D>
 implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
 
     constructor(
@@ -109,9 +109,9 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
     public retrieve(query: Identity<S, PK, V>): SqlQuery<S> {
         const { resource } = this;
         const { identifyBy, versionBy } = resource;
-        const identitySerializer = versionBy
+        const identitySerializer = versionBy.length
             ? resource
-                .pick([...identifyBy, versionBy as Key<S>])
+                .pick([...identifyBy, ...versionBy])
                 .partial(identifyBy)
             : resource
                 .pick(identifyBy);
@@ -205,9 +205,9 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
         );
     }
 
-    public pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V extends K ? V : undefined, Exclude<D, Record<Exclude<Key<K>, K>, any>>> {
+    public pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>> {
         const resource = this.resource.subset(columns);
-        return new BaseTable<Pick<S, K>, PK & K, V extends K ? V : undefined, Exclude<D, Record<Exclude<Key<K>, K>, any>>>(
+        return new BaseTable<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>(
             resource,
             this.name,
             pick(this.columns, columns),
@@ -398,9 +398,9 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
      */
     public update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): SqlOperation<S> {
         const { resource } = this;
-        const updateSerializer = resource.partial([resource.versionBy]);
+        const updateSerializer = resource.partial(resource.versionBy);
         const identitySerializer = resource
-            .pick([...resource.identifyBy, resource.versionBy])
+            .pick([...resource.identifyBy, ...resource.versionBy])
             .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
         const values = updateSerializer.validate(changes);
@@ -444,7 +444,7 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
      */
     public upsert(creation: S, update: PartialUpdate<S, V>): SqlOperation<S> {
         const { resource } = this;
-        const updateSerializer = resource.partial([resource.versionBy]);
+        const updateSerializer = resource.partial(resource.versionBy);
         const insertValues = resource.validate(creation);
         const updateValues = updateSerializer.validate(update);
         const aggregationQueries = this.getAggregationQueries(insertValues, null);
@@ -474,7 +474,7 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
     public destroy(identity: Identity<S, PK, V>): SqlOperation<void> {
         const { resource } = this;
         const identitySerializer = resource
-            .pick([...resource.identifyBy, resource.versionBy])
+            .pick([...resource.identifyBy, ...resource.versionBy])
             .partial(resource.identifyBy);
         const filters = identitySerializer.validate(identity);
         const query = deleteQuery(this, filters);
@@ -521,7 +521,7 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
         }
         const { resource } = this;
         const identitySerializer = resource
-            .pick([...resource.identifyBy, resource.versionBy])
+            .pick([...resource.identifyBy, ...resource.versionBy])
             .partial(resource.identifyBy);
         const identityListSerializer = nestedList(identitySerializer);
         const filtersList = identityListSerializer.validate(identities);

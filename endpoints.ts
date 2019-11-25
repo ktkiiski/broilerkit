@@ -5,7 +5,7 @@ import { Fields, nested } from './serializers';
 import { UrlPattern } from './url';
 import { Key, Nullable, transformValues } from './utils/objects';
 
-export class Endpoint<S, PK extends Key<S>, V extends Key<S> | undefined, U extends Key<S>> {
+export class Endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>> {
     constructor(
         public readonly resource: Resource<S, PK, V>,
         public readonly pattern: UrlPattern<U>,
@@ -23,7 +23,7 @@ export class Endpoint<S, PK extends Key<S>, V extends Key<S> | undefined, U exte
     }
 }
 
-export function endpoint<S, PK extends Key<S>, V extends Key<S> | undefined, U extends Key<S>>(
+export function endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>>(
     resource: Resource<S, PK, V>,
     pattern: UrlPattern<U>,
 ) {

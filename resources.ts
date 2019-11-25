@@ -5,15 +5,15 @@ import { buildObject, Key, keys, pick, toPairs, transformValues } from './utils/
 
 type ResourceFields<I, O> = {[P in keyof I]: Field<I[P], any>} & {[P in keyof O]: Field<any, O[P]>};
 
-export interface Resource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> {
+export interface Resource<T, PK extends Key<T>, V extends Key<T>> extends FieldSerializer<T> {
     readonly name: string;
     readonly identifyBy: PK[];
-    readonly versionBy: V;
-    subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V extends K ? V : undefined>;
+    readonly versionBy: V[];
+    subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V & K>;
     expand<E>(fields: Fields<E>): Resource<T & E, PK, V>;
 }
 
-class FieldResource<T, PK extends Key<T>, V extends Key<T> | undefined> extends FieldSerializer<T> implements Resource<T, PK, V> {
+class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSerializer<T> implements Resource<T, PK, V> {
     /**
      * @param name The identifying name of this type of resource.
      * @param fields Attribute names with their field definitions of the resource.
@@ -24,20 +24,20 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T> | undefined> extends 
         public readonly name: string,
         fields: Fields<T>,
         public readonly identifyBy: PK[],
-        public readonly versionBy: V) {
+        public readonly versionBy: V[]) {
         super(fields);
     }
-    public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V extends K ? V : undefined> {
+    public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V & K> {
         const { identifyBy } = this;
         if (!identifyBy.every((key) => (attrs as string[]).includes(key))) {
             throw new Error('Cannot omit identifying keys for a subset of a resource');
         }
-        const versionBy = attrs.indexOf(this.versionBy as any) >= 0 ? this.versionBy : undefined;
+        const versionBy = this.versionBy.filter((attr) => attrs.indexOf(attr as any) >= 0);
         return new FieldResource(
             this.name,
             pick(this.fields, attrs) as Fields<Pick<T, K | PK>>,
             identifyBy as Array<K & PK>,
-            versionBy as V extends K ? V : undefined,
+            versionBy as Array<K & V>,
         );
     }
     public expand<E>(fields: Fields<E>): FieldResource<T & E, PK, V> {
@@ -47,15 +47,15 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T> | undefined> extends 
 
 export type Deserialization<T extends Serializer<any, any>> = T extends Serializer<infer R> ? R : any;
 
-interface ResourceOptions<T, X, PK extends Key<T>, V extends Key<T> | undefined> {
+interface ResourceOptions<T, X, PK extends Key<T>, V extends Key<T>> {
     name: string;
     fields: ResourceFields<T, X>;
     identifyBy: PK[];
     versionBy?: V;
 }
 
-export function resource<T, X, PK extends Key<T>, V extends Key<T> | undefined = undefined>(options: ResourceOptions<T, X, PK, V>): FieldResource<T, PK, V> {
-    return new FieldResource(options.name, options.fields, options.identifyBy, options.versionBy as V);
+export function resource<T, X, PK extends Key<T>, V extends Key<T> = never>(options: ResourceOptions<T, X, PK, V>): FieldResource<T, PK, V> {
+    return new FieldResource(options.name, options.fields, options.identifyBy, options.versionBy ? [options.versionBy] : []);
 }
 
 type FilteredKeys<T, Condition> = { [P in keyof T]: T[P] extends Condition ? P : never }[keyof T];
@@ -90,14 +90,14 @@ export function relation<T, PK extends Key<T>, RK extends string, R extends Reco
     return {resource, filterMapping, relationMapping, fieldMapping};
 }
 
-export class JunctionResource<T, R, F> extends FieldResource<Junction<R, F>, Key<JunctionIdentity<R>>, undefined> {
+export class JunctionResource<T, R, F> extends FieldResource<Junction<R, F>, Key<JunctionIdentity<R>>, never> {
     constructor(
         public readonly relations: JunctionOptions<T, R, F>,
         name: string,
         fields: Fields<Junction<R, F>>,
         identifyBy: Array<Key<JunctionIdentity<R>>>,
     ) {
-        super(name, fields, identifyBy, undefined);
+        super(name, fields, identifyBy, []);
     }
 }
 
