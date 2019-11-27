@@ -18,6 +18,17 @@ export type FilteredKeys<T, Condition> = { [P in keyof T]: T[P] extends Conditio
 export type FilteredValues<T, Condition> = Pick<T, FilteredKeys<T, Condition>>;
 
 /**
+ * Resolves to keys of an object that do NOT match the given Condition type.
+ * Source: https://medium.com/dailyjs/typescript-create-a-condition-based-subset-types-9d902cea5b8c
+ */
+export type ExcludedKeys<T, Condition> = { [P in keyof T]: T[P] extends Condition ? never : P }[keyof T];
+/**
+ * Filters keys of an object so that they do NOT match the given Condition type.
+ * Source: https://medium.com/dailyjs/typescript-create-a-condition-based-subset-types-9d902cea5b8c
+ */
+export type ExcludedValues<T, Condition> = Pick<T, ExcludedKeys<T, Condition>>;
+
+/**
  * Iterates through each own enumerable property of the given
  * object and calls the given callback for each of them.
  * @param obj Object to iterate
@@ -142,6 +153,18 @@ export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, Extract<
             output[key] = obj[key];
         }
     }
+    return output;
+}
+
+export function omitUndefined<V>(obj: {[key: string]: V}): {[key: string]: Exclude<V, undefined>};
+export function omitUndefined<T>(obj: T): ExcludedValues<T, undefined>;
+export function omitUndefined<T>(obj: T): ExcludedValues<T, undefined> {
+    const output: any = {};
+    forEachProperty(obj, (key, value) => {
+        if (typeof value !== 'undefined') {
+            output[key] = value;
+        }
+    });
     return output;
 }
 

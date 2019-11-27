@@ -5,11 +5,11 @@ import { OrderedQuery, Page, prepareForCursor } from './pagination';
 import { executeQueries, executeQuery, SqlOperation, withTransaction } from './postgres';
 import { Resource } from './resources';
 import { Fields, nested, nestedList } from './serializers';
-import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, selectQuery, SqlQuery, SqlScanQuery, SqlWriteable, updateQuery } from './sql';
+import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, selectQuery, SqlJoin, SqlQuery, SqlScanQuery, SqlWriteable, updateQuery } from './sql';
 import { SqlNesting, SqlQueryable } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
-import { Exact, FilteredKeys, Key, keys, pick, Require, transformValues } from './utils/objects';
+import { Exact, FilteredKeys, Key, keys, omitUndefined, pick, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -20,17 +20,24 @@ export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
 type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
 
-export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> {
+export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> extends SqlQueryable<S, PK> {
     retrieve(query: Identity<S, PK, V>): SqlQuery<S>;
     list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>>;
     scan(query?: Query<S>): SqlScanQuery<S>;
-    pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>;
-    join<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableTable<S & Record<K, S2 | null>, PK, V, D>;
+    pick<K extends Key<S>>(columns: K[]): ReadableModel<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>;
+    /**
+     * Join table with another table with an inner join.
+     */
+    join<S2, PK2 extends Key<S2>, T extends {[column: string]: Key<S2>}>(table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]?: string & FilteredKeys<S, S2[P]>}, columns: T): ReadableModel<S & {[P in Key<T>]: S2[T[P]]}, PK | (FilteredKeys<T, PK2> & string), V, Partial<S & {[P in Key<T>]: S2[T[P]]}> & OrderedQuery<S & {[P in Key<T>]: S2[T[P]]}, Key<S & {[P in Key<T>]: S2[T[P]]}>>>;
+    /**
+     * Nests another table entry to the items as a nested property
+     * with a left join (resulting to a null value if matching row
+     * does not exist).
+     */
+    nest<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableModel<S & Record<K, S2 | null>, PK, V, D>;
 }
 
-type ReadableTable<S, PK extends Key<S>, V extends Key<S>, D> = ReadableModel<S, PK, V, D> & SqlQueryable<S, PK>;
-
-export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D> {
+export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D>, SqlWriteable<S, PK> {
     create(item: S): SqlOperation<S>;
     write(item: S): SqlOperation<S>;
     initiate(item: S): SqlOperation<S | null>;
@@ -43,7 +50,7 @@ export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends Readab
 }
 
 export interface Table<S, PK extends Key<S>, V extends Key<S>, D>
-extends Model<S, PK, V, D>, SqlWriteable<S, PK>, SqlQueryable<S, PK> {
+extends Model<S, PK, V, D> {
     /**
      * Sets default values for the properties loaded from the database.
      * They are used to fill in any missing values for loaded items. You should
@@ -79,8 +86,7 @@ interface Aggregation<S> {
     filters: Partial<S>;
 }
 
-class BaseTable<S, PK extends Key<S>, V extends Key<S>, D>
-implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
+class TableView<S, PK extends Key<S>, V extends Key<S>, D> implements ReadableModel<S, PK, V, D> {
 
     constructor(
         /**
@@ -95,6 +101,7 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
         public readonly columns: Fields<any>,
         public readonly primaryKeys: PK[],
         public readonly defaults: {[P in any]: any},
+        public readonly joins: SqlJoin[],
         public readonly nestings: SqlNesting[],
     ) {}
 
@@ -182,13 +189,41 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
         };
     }
 
+    public join<S2, PK2 extends Key<S2>>(
+        other: SqlQueryable<S2, PK2 & Key<S2>>,
+        on: {[key: string]: string | undefined},
+        columns: {[key: string]: string},
+    ): ReadableModel<any, any, V, any> {
+        const { name } = other;
+        let aliasIndex = 0;
+        while (this.joins.some((join) => join.alias === `${name}${aliasIndex}`)) {
+            aliasIndex += 1;
+        }
+        const alias = `${name}${aliasIndex}`;
+        const joins: SqlJoin[] = [
+            ...this.joins,
+            {
+                alias,
+                queryable: other,
+                columns,
+                on: omitUndefined(on),
+            },
+        ];
+        const resource: Resource<any, any, V> = this.resource.expand(
+            transformValues(columns, (source) => other.columns[source as Key<S2>]),
+        );
+        return new TableView(
+            resource, this.name, this.columns, this.primaryKeys, this.defaults, joins, this.nestings,
+        );
+    }
+
     // NOTE: The signature does not completely match the interface because of this:
     // https://github.com/microsoft/TypeScript/issues/30071
-    public join<K extends string, S2>(
+    public nest<K extends string, S2>(
         propertyName: K,
         other: SqlQueryable<S2>,
         on: {[key: string]: string},
-    ): ReadableTable<S & Record<K, S2 | null>, PK, V, D> {
+    ): ReadableModel<S & Record<K, S2 | null>, PK, V, D> {
         const nestings: SqlNesting[] = [
             ...this.nestings,
             {
@@ -200,27 +235,29 @@ implements ReadableModel<S, PK, V, D>, SqlQueryable<S, PK> {
         const resource: Resource<S & Record<K, S2 | null>, PK, V> = this.resource.expand(
             { [propertyName]: nullable(nested(other.resource)) } as Fields<Record<K, S2 | null>>,
         );
-        return new BaseTable(
-            resource, this.name, this.columns, this.primaryKeys, this.defaults, nestings,
+        return new TableView(
+            resource, this.name, this.columns, this.primaryKeys, this.defaults, this.joins, nestings,
         );
     }
 
-    public pick<K extends Key<S>>(columns: K[]): ReadableTable<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>> {
-        const resource = this.resource.subset(columns);
-        return new BaseTable<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>(
+    public pick<K extends Key<S>>(columnNames: K[]): ReadableModel<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>> {
+        const resource = this.resource.subset(columnNames);
+        return new TableView<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>(
             resource,
             this.name,
-            pick(this.columns, columns),
+            pick(this.columns, columnNames),
             this.primaryKeys as Array<PK & K>,
-            pick(this.defaults, columns),
-            this.nestings,
+            pick(this.defaults, columnNames),
+            this.joins
+                .map(({ columns, ...join }) => ({ columns: pick(columns, []), ...join }))
+                .filter(({ columns }) => Object.keys(columns).length > 0),
+            this.nestings.filter((nesting) => columnNames.includes(nesting.alias as K)),
         );
     }
-
 }
 
 export class DatabaseTable<S, PK extends Key<S>, V extends Key<S>, D>
-extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
+extends TableView<S, PK, V, D> implements Table<S, PK, V, D> {
     /**
      * List of indexes for this database table.
      */
@@ -232,7 +269,7 @@ extends BaseTable<S, PK, V, D> implements Table<S, PK, V, D> {
         defaults: {[P in any]: S[any]},
         private readonly aggregations: Array<Aggregation<S>>,
     ) {
-        super(resource, name, resource.fields, resource.identifyBy, defaults, []);
+        super(resource, name, resource.fields, resource.identifyBy, defaults, [], []);
         this.indexes = flattenIndexes(indexTree);
     }
 
