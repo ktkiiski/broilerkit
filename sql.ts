@@ -4,7 +4,7 @@ import { Fields, Serializer } from './serializers';
 import { isNotNully, isNully } from './utils/compare';
 import { Key, keys } from './utils/objects';
 
-const { cyan, magenta, dim } = chalk;
+const { cyan, magenta, dim, red } = chalk;
 
 export interface SqlQuery<R> {
     sql: string;
@@ -531,11 +531,13 @@ export function formatSql(sql: string, params: any[] = []) {
     const tokens = tokenize(sql);
     const keywordColor = tokens.length && tokens[0] !== 'SELECT' ? cyan : magenta;
     const colorizedTokens = tokenize(sql).map((token) => {
-        const upperToken = token.toUpperCase();
-        if (minorKeywords.includes(upperToken)) {
+        if (dangerKeywords.includes(token)) {
+            return red(token);
+        }
+        if (minorKeywords.includes(token)) {
             return dim(keywordColor(token));
         }
-        if (keywords.includes(upperToken)) {
+        if (keywords.includes(token)) {
             return keywordColor(token);
         }
         const paramMatch = /^\$(\d+)$/.exec(token);
@@ -649,6 +651,7 @@ const keywords = [
     'COMMIT',
     'COMMITTED',
     'COMPLETION',
+    'CONCURRENTLY',
     'CONDITION',
     'CONDITION_NUMBER',
     'CONFLICT',
@@ -798,6 +801,7 @@ const keywords = [
     'HOST',
     'HOUR',
     'IDENTITY',
+    'IF',
     'IGNORE',
     'ILIKE',
     'IMMEDIATE',
@@ -1183,12 +1187,25 @@ const keywords = [
     'ZONE',
 ];
 
+const dangerKeywords = [
+    'ROLLBACK',
+];
+
 const minorKeywords = [
     'AS',
     'ASC',
+    'BEGIN',
+    'COALESCE',
+    'COMMIT',
     'DESC',
+    'EXISTS',
+    'IF',
     'IS',
     'NOT',
     'NOTNULL',
     'NULL',
+    'RELEASE',
+    'SAVEPOINT',
+    'TO',
+    'TRANSACTION',
 ];

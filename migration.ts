@@ -6,6 +6,14 @@ import * as url from 'url';
 
 type RequestType = 'Create' | 'Update' | 'Delete';
 
+let formatSql: (sql: string, params?: any[]) => string;
+try {
+    formatSql = require('./sql').formatSql;
+} catch {
+    // The module is not available on migration Lambda
+    formatSql = (x: string) => x;
+}
+
 interface TableColumn {
     name: string;
     type: string;
@@ -55,13 +63,17 @@ function getIndexName(index: TableIndex, tableName: string): string {
     return `idx_${tableName}_${index.keys.join('_')}`;
 }
 
+function logSql(sql: string) {
+    console.log(formatSql(sql));
+}
+
 export async function createTable(client: Client, state: TableState) {
     const pkColumns = state.primaryKeys;
     const tableName = state.name;
     const pkKeys = pkColumns.map((col) => escapeRef(col.name)).join(', ');
     const pkDefs = pkColumns.map((col) => `${escapeRef(col.name)} ${col.type} NOT NULL`).join(', ');
     const sql = `CREATE TABLE IF NOT EXISTS ${escapeRef(tableName)} (${pkDefs}, PRIMARY KEY (${pkKeys}));`;
-    console.log(sql);
+    logSql(sql);
     await client.query(sql);
     console.info(`Successfully created the table ${tableName}`);
     // Need to create the other columns of the table
@@ -70,7 +82,7 @@ export async function createTable(client: Client, state: TableState) {
 export async function deleteTable(client: Client, state: TableState) {
     const tableName = state.name;
     const sql = `DROP TABLE IF EXISTS ${escapeRef(tableName)};`;
-    console.log(sql);
+    logSql(sql);
     await client.query(sql);
     console.info(`Successfully dropped the table ${tableName}`);
 }
@@ -81,13 +93,13 @@ export async function updateTable(client: Client, state: TableState, oldState: T
     if (oldTableName && tableName !== oldTableName) {
         // Renamte the table
         const sql = `ALTER TABLE ${escapeRef(oldTableName)} RENAME TO ${escapeRef(tableName)};`;
-        console.log(sql);
+        logSql(sql);
         await client.query(sql);
         console.info(`Renamed the table ${oldTableName} as ${tableName}`);
     }
     for (const column of columns) {
         const sql = `ALTER TABLE ${escapeRef(tableName)} ADD COLUMN IF NOT EXISTS ${escapeRef(column.name)} ${column.type} NULL;`;
-        console.log(sql);
+        logSql(sql);
         await client.query(sql);
         console.info(`Upserted the column ${column.name} to table ${tableName}`);
     }
@@ -103,7 +115,7 @@ export async function updateTable(client: Client, state: TableState, oldState: T
     for (const index of createdIndexes) {
         const colDefs = index.keys.map(escapeRef).join(', ');
         const sql = `CREATE INDEX CONCURRENTLY IF NOT EXISTS ${escapeRef(index.name)} ON ${escapeRef(tableName)} (${colDefs});`;
-        console.log(sql);
+        logSql(sql);
         await client.query(sql);
         console.info(`Successfully created the index ${index.name} on table ${tableName} for keys: ${colDefs}`);
     }
@@ -111,7 +123,7 @@ export async function updateTable(client: Client, state: TableState, oldState: T
     const deletedIndexNames = oldIndexNames.filter((idxName) => !newIndexNames.includes(idxName));
     for (const indexName of deletedIndexNames) {
         const sql = `DROP INDEX CONCURRENTLY ${escapeRef(indexName)};`;
-        console.log(sql);
+        logSql(sql);
         await client.query(sql);
         console.info(`Successfully deleted the index ${indexName} from table ${tableName}`);
     }
