@@ -20,6 +20,8 @@ import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 const pageHtml$ = readFile('./index.html');
 // API service
 const apiService = getApiService();
+// Database
+const db = getDatabase();
 // Load the module exporting the rendered React component
 const view: React.ComponentType<{}> = require('_site').default;
 const service = apiService.extend({
@@ -69,7 +71,7 @@ const sessionEncryptionKey$ = retrieveSecret(encryptionSecretArn).then(async (se
 const serverContext$ = Promise
     .all([dbConnectionPool$, sessionEncryptionKey$])
     .then(([dbConnectionPool, sessionEncryptionKey]): ServerContext => {
-        return { dbConnectionPool, sessionEncryptionKey };
+        return { dbConnectionPool, sessionEncryptionKey, db };
     });
 
 const executeService = middleware(authenticationMiddleware(service.execute));
@@ -97,6 +99,17 @@ function getApiService() {
         return new ApiService({});
     }
     return new ApiService(apiModule.default);
+}
+
+function getDatabase() {
+    let dbModule;
+    try {
+        dbModule = require('_db');
+    } catch {
+        // No API available
+        return null;
+    }
+    return dbModule.default;
 }
 
 async function retrieveSecret(secretArn: string | undefined) {

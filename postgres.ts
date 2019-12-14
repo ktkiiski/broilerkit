@@ -1,7 +1,9 @@
 import { RDSDataService } from 'aws-sdk';
 import { Client, ClientBase, PoolClient } from 'pg';
+import { Table } from './db';
 import { scanCursor } from './postgres-cursor';
-import { formatSql, Row, SqlQuery, SqlResult, SqlScanQuery } from './sql';
+import { Resource } from './resources';
+import { formatSql, Row, SqlQuery, SqlResult, TableDefaults } from './sql';
 import { isNotNully } from './utils/compare';
 
 const verboseLogging = !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
@@ -16,6 +18,12 @@ interface SqlScanChunk extends SqlResult {
     isComplete: boolean;
 }
 
+export interface Database {
+    tables: Table[];
+    defaultsByTable: TableDefaults;
+    getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null): Array<SqlOperation<any>>;
+}
+
 export interface SqlConnection {
     query(sql: string, params?: any[]): Promise<SqlResult>;
     queryAll(queries: Array<{sql: string, params?: any[]}>): Promise<SqlResult[]>;
@@ -26,9 +34,8 @@ export interface SqlConnection {
     disconnect(error?: any): Promise<void>;
 }
 
-export type SqlOperation<R> = (connection: SqlConnection) => Promise<R>;
-
-type SqlExecutable<R> = SqlQuery<R> | SqlOperation<R>;
+export type SqlOperation<R> = (connection: SqlConnection, db: Database) => Promise<R>;
+export type SqlScanOperation<S> = (connection: SqlConnection, db: Database) => AsyncIterableIterator<S[]>;
 
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
@@ -192,6 +199,7 @@ export class RemotePostgreSqlConnection implements SqlConnection {
 export class DatabaseClient {
 
     constructor(
+        private readonly db: Database | null,
         private readonly connect: () => Promise<SqlConnection>,
     ) {}
 
@@ -200,11 +208,9 @@ export class DatabaseClient {
      * returning its result as a promise.
      * @param query database operation or query
      */
-    public async run<T>(query: SqlExecutable<T>) {
-        if (typeof query === 'function') {
-            return this.withConnection((connection) => query(connection));
-        }
-        return this.executeQuery(query);
+    public async run<T>(query: SqlOperation<T>) {
+        const db = this.getDatabase();
+        return this.withConnection((connection) => query(connection, db));
     }
 
     /**
@@ -233,28 +239,28 @@ export class DatabaseClient {
      * operations fail, rolling back earlier results.
      * @param operations Array of database operations to execute
      */
-    public async batch<T1, T2, T3, T4, T5>(queries: [SqlExecutable<T1>, SqlExecutable<T2>, SqlExecutable<T3>, SqlExecutable<T4>, SqlExecutable<T5>]): Promise<[T1, T2, T3, T4, T5]>;
-    public async batch<T1, T2, T3, T4>(queries: [SqlExecutable<T1>, SqlExecutable<T2>, SqlExecutable<T3>, SqlExecutable<T4>]): Promise<[T1, T2, T3, T4]>;
-    public async batch<T1, T2, T3>(queries: [SqlExecutable<T1>, SqlExecutable<T2>, SqlExecutable<T3>]): Promise<[T1, T2, T3]>;
-    public async batch<T1, T2>(queries: [SqlExecutable<T1>, SqlExecutable<T2>]): Promise<[T1, T2]>;
-    public async batch<T1>(queries: [SqlExecutable<T1>]): Promise<[T1]>;
-    public async batch<T>(queries: Array<SqlExecutable<T>>): Promise<T[]>;
-    public async batch<T>(operations: Array<SqlExecutable<T>>): Promise<T[]> {
+    public async batch<T1, T2, T3, T4, T5>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>, SqlOperation<T4>, SqlOperation<T5>]): Promise<[T1, T2, T3, T4, T5]>;
+    public async batch<T1, T2, T3, T4>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>, SqlOperation<T4>]): Promise<[T1, T2, T3, T4]>;
+    public async batch<T1, T2, T3>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>]): Promise<[T1, T2, T3]>;
+    public async batch<T1, T2>(queries: [SqlOperation<T1>, SqlOperation<T2>]): Promise<[T1, T2]>;
+    public async batch<T1>(queries: [SqlOperation<T1>]): Promise<[T1]>;
+    public async batch<T>(queries: Array<SqlOperation<T>>): Promise<T[]>;
+    public async batch<T>(operations: Array<SqlOperation<T>>): Promise<T[]> {
+        const db = this.getDatabase();
         return this.withTransaction(async (connection) => {
             const results: T[] = [];
             for (const op of operations) {
-                results.push(await execute(connection, op));
+                results.push(await op(connection, db));
             }
             return results;
         });
     }
 
-    public async *scan<S>(query: SqlScanQuery<S>): AsyncIterableIterator<S[]> {
+    public async *scan<S>(query: SqlScanOperation<S>): AsyncIterableIterator<S[]> {
+        const db = this.getDatabase();
         const connection = await this.connect();
         try {
-            for await (const chunk of connection.scan(query.chunkSize, query.sql, query.params)) {
-                yield query.deserialize(chunk);
-            }
+            yield *query(connection, db);
         } finally {
             connection.disconnect();
         }
@@ -269,19 +275,18 @@ export class DatabaseClient {
         }
     }
 
-    private async executeQuery<R>(query: SqlQuery<R>): Promise<R> {
-        return this.withConnection((connection) => executeQuery(connection, query));
-    }
-
     private async withTransaction<R>(callback: (connection: SqlConnection) => Promise<R>): Promise<R> {
         return this.withConnection(async (connection) => (
             withTransaction(connection, () => callback(connection))
         ));
     }
-}
 
-function execute<R>(connection: SqlConnection, query: SqlExecutable<R>): Promise<R> {
-    return typeof query === 'function' ? query(connection) : executeQuery(connection, query);
+    private getDatabase(): Database {
+        if (!this.db) {
+            throw new Error(`Database not configured`);
+        }
+        return this.db;
+    }
 }
 
 export async function executeQuery<R>(connection: SqlConnection, query: SqlQuery<R>): Promise<R> {

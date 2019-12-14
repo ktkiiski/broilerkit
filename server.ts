@@ -7,7 +7,7 @@ import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
-import { DatabaseClient, PostgreSqlPoolConnection } from './postgres';
+import { Database, DatabaseClient, PostgreSqlPoolConnection } from './postgres';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
 import { transformValues } from './utils/objects';
@@ -34,6 +34,10 @@ type OperationImplementors<I, O, R> = {
  * between requests.
  */
 export interface ServerContext {
+    /**
+     * Information about the database.
+     */
+    db: Database | null;
     /**
      * A pool for PostgreSQL database connections
      * available for the requests.
@@ -101,8 +105,8 @@ class ImplementedOperation implements Controller {
             }
         }
         // Handle the request
-        const { dbConnectionPool } = context;
-        const db = new DatabaseClient(async () => {
+        const { db, dbConnectionPool } = context;
+        const dbClient = new DatabaseClient(db, async () => {
             if (!dbConnectionPool) {
                 throw new Error(`Database is not configured`);
             }
@@ -110,12 +114,12 @@ class ImplementedOperation implements Controller {
             return new PostgreSqlPoolConnection(client);
         });
         const userPoolId = environment.UserPoolId;
-        const users = region === 'local' ? new LocalUserPool(db)
+        const users: UserPool = region === 'local' ? new LocalUserPool(dbClient)
             : userPoolId ? new CognitoUserPool(userPoolId, region)
             : new DummyUserPool();
         // TODO: Even though the client should always close the connection,
         // we should here ensure that all connections are released.
-        const handlerRequest = { ...request, db, users };
+        const handlerRequest = { ...request, db: dbClient, users };
         const {data, ...response} = await this.handler(input, handlerRequest);
         if (!responseSerializer) {
             // No response data should be available
@@ -127,7 +131,7 @@ class ImplementedOperation implements Controller {
     }
 }
 
-export function implement<I, O, R>(
+function implement<I, O, R>(
     operation: Operation<I, O, R>,
     implementation: Handler<I, O, R>,
 ): Controller {

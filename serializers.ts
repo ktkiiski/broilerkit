@@ -4,7 +4,7 @@ import { isApiResponse } from './http';
 import { difference } from './utils/arrays';
 import { forEachKey, Key, keys, omit, pick, Require } from './utils/objects';
 
-export type Fields<T> = {
+export type Fields<T = any> = {
     [P in keyof T]: Field<T[P], any>;
 };
 

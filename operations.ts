@@ -51,7 +51,7 @@ abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, 
 
 export class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
 extends BaseOperation<S, U, A, B>
-implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
+implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A]> {
     public readonly type = 'list' as const;
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly urlSerializer = new CursorSerializer(
@@ -77,7 +77,7 @@ implements Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMa
     public getPayloadSerializer() {
         return null;
     }
-    public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S, U, O, F>, AuthRequestMapping[A]> {
+    public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A]> {
         return this;
     }
 }

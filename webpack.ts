@@ -326,7 +326,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {serverFile, siteFile, sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
+    const {serverFile, databaseFile, siteFile, sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
     const {analyze, stageDir} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
@@ -391,6 +391,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         // API not available. Let the bundle to compile without it, but
         // raise error if attempting to `require`
         externals.push('_service');
+    }
+    // If a database defined, compile it as well
+    if (databaseFile) {
+        aliases._db = path.resolve(projectRootPath, sourceDir, databaseFile);
+    } else {
+        // Database not available. Let the bundle to compile without it, but
+        // raise error if attempting to `require`
+        externals.push('_db');
     }
 
     return {

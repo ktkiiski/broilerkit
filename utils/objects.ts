@@ -156,6 +156,23 @@ export function pick<T, K extends keyof T>(obj: T, props: K[]): Pick<T, Extract<
     return output;
 }
 
+/**
+ * Picks only the keys of the given object matching the criteria.
+ * Also ignores everything else than string attributes.
+ */
+export function pickBy<T, V>(obj: T, fn: (key: string, value: any) => value is V): FilteredValues<T, V>;
+export function pickBy<T, K extends keyof T & string>(obj: T, fn: (key: string, value: any) => key is K): Pick<T, K>;
+export function pickBy<T>(obj: T, fn: (key: string, value: any) => boolean): Partial<T>;
+export function pickBy<T>(obj: T, fn: (key: string, value: any) => boolean): Partial<T> {
+    const output = {} as Partial<T>;
+    forEachKey(obj, (key, value) => {
+        if (fn(key, value)) {
+            output[key] = value;
+        }
+    });
+    return output;
+}
+
 export function omitUndefined<V>(obj: {[key: string]: V}): {[key: string]: Exclude<V, undefined>};
 export function omitUndefined<T>(obj: T): ExcludedValues<T, undefined>;
 export function omitUndefined<T>(obj: T): ExcludedValues<T, undefined> {

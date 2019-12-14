@@ -8,6 +8,7 @@ import { readFile, readStream } from './fs';
 import { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
 import { middleware, requestMiddleware } from './middleware';
 import { authenticationMiddleware } from './oauth';
+import { Database } from './postgres';
 import { ApiService, ServerContext } from './server';
 import { transformValues } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
@@ -96,10 +97,6 @@ export async function serveBackEnd(
     }
     const htmlPagePath = path.resolve(buildDir, './index.html');
     const sessionEncryptionKey = auth ? await JWK.asKey(rawSessionEncryptionKey) : null;
-    const serverContext: ServerContext = {
-        dbConnectionPool,
-        sessionEncryptionKey,
-    };
     const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
     let server: http.Server | undefined;
     try {
@@ -134,7 +131,8 @@ export async function serveBackEnd(
             delete require.cache[serverRequestHandlerFilePath];
             // Load the module exporting the service getter
             const serverModule = require(serverRequestHandlerFilePath);
-            const service: ApiService = serverModule.default(readFile(htmlPagePath));
+            const service: ApiService = serverModule.getApiService(readFile(htmlPagePath));
+            const db: Database | null = serverModule.getDatabase();
             // Get handler for the API requests (if defined)
             const context = {
                 serverOrigin, serverRoot,
@@ -152,6 +150,11 @@ export async function serveBackEnd(
             const executeServerRequest = middleware(
                 authenticationMiddleware(service.execute),
             );
+            const serverContext: ServerContext = {
+                db,
+                dbConnectionPool,
+                sessionEncryptionKey,
+            };
             server = createServer(nodeMiddleware((req) => (
                 executeServerRequest(req, serverContext)
             )));

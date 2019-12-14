@@ -8,11 +8,12 @@ import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
 import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from '../oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from '../oauth';
+import { Database } from '../postgres';
 import LocalAuthRouter from '../react/components/LocalAuthRouter';
 import { ApiService } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 
-export default (pageHtml$: Promise<string>) => {
+export const getApiService = (pageHtml$: Promise<string>) => {
     let module;
     try {
         module = require('_service');
@@ -35,4 +36,12 @@ export default (pageHtml$: Promise<string>) => {
         [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedInController(),
         [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
     });
+};
+
+export const getDatabase = (): Database | null => {
+    try {
+        return require('_db').default;
+    } catch {
+        return null;
+    }
 };

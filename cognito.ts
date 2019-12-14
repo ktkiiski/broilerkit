@@ -1,9 +1,9 @@
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { Identity, PartialUpdate, table } from './db';
+import { batchRetrieve, destroy, Identity, PartialUpdate, retrieve, scan, update } from './db';
 import { HttpStatus, isResponse, NotFound } from './http';
 import { DatabaseClient } from './postgres';
 import { Serializer } from './serializers';
-import { User, user } from './users';
+import { User, users } from './users';
 import { mapCached } from './utils/arrays';
 
 interface UserIdentity { id: string; }
@@ -37,10 +37,10 @@ export class DummyUserPool implements UserPool {
 
 export class CognitoUserPool implements UserPool {
 
-    private updateSerializer = user
+    private updateSerializer = users
         .omit(['id', 'email', 'updatedAt', 'createdAt'])
         .fullPartial() as Serializer<UserPartialUpdate>;
-    private identitySerializer = user.pick(['id']);
+    private identitySerializer = users.pick(['id']);
 
     constructor(private userPoolId: string, private region: string) {}
 
@@ -97,37 +97,32 @@ export class LocalUserPool implements UserPool {
 
     public retrieve(query: UserIdentity): Promise<User> {
         return this.db.run(
-            localUsers.retrieve(query as Identity<User, 'id', 'updatedAt'>),
+            retrieve(users, query as Identity<User, 'id', 'updatedAt'>),
         );
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
-        const update = {...changes, updatedAt: new Date()};
+        const updates = {...changes, updatedAt: new Date()};
         return this.db.run(
-            localUsers.update(identity as Identity<User, 'id', 'updatedAt'>, update as PartialUpdate<User, 'updatedAt'>),
+            update(users, identity as Identity<User, 'id', 'updatedAt'>, updates as PartialUpdate<User, 'updatedAt'>),
         );
     }
 
     public destroy(identity: UserIdentity) {
         return this.db.run(
-            localUsers.destroy(identity as Identity<User, 'id', 'updatedAt'>),
+            destroy(users, identity as Identity<User, 'id', 'updatedAt'>),
         );
     }
 
     public scan(query?: {}): AsyncIterableIterator<User[]> {
         return this.db.scan(
-            localUsers.scan(query as any),
+            scan(users, query as any),
         );
     }
 
     public batchRetrieve(identities: UserIdentity[]) {
         return this.db.run(
-            localUsers.batchRetrieve(identities as Array<Identity<User, 'id', 'updatedAt'>>),
+            batchRetrieve(users, identities as Array<Identity<User, 'id', 'updatedAt'>>),
         );
     }
 }
-
-export const localUsers = table(user, '_users')
-    .index('name')
-    .index('email')
-    .index('createdAt');

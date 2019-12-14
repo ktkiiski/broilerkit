@@ -10,16 +10,13 @@ export interface User {
     picture: string | null;
 }
 
-export const user: Resource<User, 'id', 'updatedAt'> = resource({
-    name: 'user',
-    fields: {
+export const users: Resource<User, 'id', 'updatedAt'> = resource('user')
+    .fields({
         id: uuid(),
         name: nullable(string()),
         email: nullable(email()),
         createdAt: datetime(),
         updatedAt: datetime(),
         picture: nullable(url()),
-    },
-    identifyBy: ['id'],
-    versionBy: 'updatedAt',
-});
+    })
+    .identifyBy(['id'], 'updatedAt');

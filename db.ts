@@ -1,15 +1,13 @@
-import { nullable } from './fields';
 import { NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
-import { OrderedQuery, Page, prepareForCursor } from './pagination';
-import { executeQueries, executeQuery, SqlOperation, withTransaction } from './postgres';
+import { OrderedQuery, PageResponse, prepareForCursor } from './pagination';
+import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation, withTransaction } from './postgres';
 import { Resource } from './resources';
-import { Fields, nested, nestedList } from './serializers';
-import { batchSelectQuery, countQuery, deleteQuery, increment, insertQuery, selectQuery, SqlJoin, SqlQuery, SqlScanQuery, SqlWriteable, updateQuery } from './sql';
-import { SqlNesting, SqlQueryable } from './sql';
+import { nestedList } from './serializers';
+import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
 import { sort } from './utils/arrays';
 import { hasProperties, isNotNully } from './utils/compare';
-import { Exact, FilteredKeys, Key, keys, omitUndefined, pick, Require, transformValues } from './utils/objects';
+import { FilteredKeys, Key, pickBy, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -18,39 +16,395 @@ export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P
 export type Identity<S, PK extends Key<S>, V extends Key<S>> = (Pick<S, PK | (V extends undefined ? never : V)> | Pick<S, PK>) & Partial<S>;
 export type PartialUpdate<S, V extends Key<S>> = Require<S, V>;
 
-type IndexTree<T> = {[P in keyof T]?: IndexTree<T>};
-
-export interface ReadableModel<S, PK extends Key<S>, V extends Key<S>, D> extends SqlQueryable<S, PK> {
-    retrieve(query: Identity<S, PK, V>): SqlQuery<S>;
-    list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>>;
-    scan(query?: Query<S>): SqlScanQuery<S>;
-    pick<K extends Key<S>>(columns: K[]): ReadableModel<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>;
-    /**
-     * Join table with another table with an inner join.
-     */
-    join<S2, PK2 extends Key<S2>, T extends {[column: string]: Key<S2>}>(table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]?: string & FilteredKeys<S, S2[P]>}, columns: T): ReadableModel<S & {[P in Key<T>]: S2[T[P]]}, PK | (FilteredKeys<T, PK2> & string), V, Partial<S & {[P in Key<T>]: S2[T[P]]}> & OrderedQuery<S & {[P in Key<T>]: S2[T[P]]}, Key<S & {[P in Key<T>]: S2[T[P]]}>>>;
-    /**
-     * Nests another table entry to the items as a nested property
-     * with a left join (resulting to a null value if matching row
-     * does not exist).
-     */
-    nest<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, table: SqlQueryable<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<S, S2[P]>}): ReadableModel<S & Record<K, S2 | null>, PK, V, D>;
+export interface Table<S = any, PK extends Key<S> = any, V extends Key<S> = any> {
+    resource: Resource<S, PK, V>;
+    getState(): TableState;
 }
 
-export interface Model<S, PK extends Key<S>, V extends Key<S>, D> extends ReadableModel<S, PK, V, D>, SqlWriteable<S, PK> {
-    create(item: S): SqlOperation<S>;
-    write(item: S): SqlOperation<S>;
-    initiate(item: S): SqlOperation<S | null>;
-    replace(identity: Identity<S, PK, V>, item: S): SqlOperation<S>;
-    update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): SqlOperation<S>;
-    upsert(creation: S, update: PartialUpdate<S, V>): SqlOperation<S>;
-    destroy(identity: Identity<S, PK, V>): SqlOperation<void>;
-    count(filters: Omit<D, 'direction' | 'ordering' | 'since'>): SqlQuery<number>;
-    batchRetrieve(identities: Array<Identity<S, PK, V>>): SqlQuery<Array<S | null>>;
+/**
+ * Returns a database operation that gets an item from the
+ * database table using the given identity object, containing
+ * all the identifying attributes.
+ * It results to an error if the item was not found.
+ */
+export function retrieve<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    query: Identity<S, PK, V>,
+): SqlOperation<S> {
+    const { identifyBy, versionBy } = resource;
+    const identitySerializer = versionBy.length
+        ? resource
+            .pick([...identifyBy, ...versionBy])
+            .partial(identifyBy)
+        : resource
+            .pick(identifyBy);
+    const filters = identitySerializer.validate(query);
+    return async (connection, db) => {
+        const select = selectQuery(resource, db.defaultsByTable, filters, 1);
+        const [item] = await executeQuery(connection, select);
+        if (!item) {
+            throw new NotFound(`Item was not found.`);
+        }
+        return item;
+    };
 }
 
-export interface Table<S, PK extends Key<S>, V extends Key<S>, D>
-extends Model<S, PK, V, D> {
+/**
+ * Return a database opeartion that queries and finds the first/next batch
+ * of items from the table matching the given criteria.
+ *
+ * The return value is a page object containing an array of items,
+ * and the `query` parameter for retrieving the next batch, or null
+ * if no more items are expected to be found.
+ */
+export function list<S>(
+    resource: Resource<S, any, any>,
+    query: Query<S>,
+): SqlOperation<PageResponse<S>> {
+    const results: S[] = [];
+    const { ordering, direction, since, ...filters } = query;
+    const chunkSize = 100;
+    return async (connection, db) => {
+        const select = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
+        for await (const chunk of connection.scan(chunkSize, select.sql, select.params)) {
+            const items = select.deserialize(chunk);
+            results.push(...items);
+            if (chunk.isComplete) {
+                return { results, next: null };
+            }
+            const cursor = prepareForCursor(results, ordering, direction);
+            if (cursor) {
+                return {
+                    results: cursor.results,
+                    next: { ...query, since: cursor.since as any },
+                };
+            }
+        }
+        // No more items
+        return { results, next: null };
+    };
+}
+
+/**
+ * Returns a database scan query for iterating over batches of items from the
+ * table matching the given criteria.
+ *
+ * Without parameters should scan the whole table, in no particular order.
+ */
+export function scan<S>(
+    resource: Resource<S, any, any>,
+    query?: Query<S>,
+): SqlScanOperation<S> {
+    const chunkSize = 100;
+    return async function *(connection, db) {
+        let select;
+        if (query) {
+            const { ordering, direction, since, ...filters } = query;
+            select = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
+        } else {
+            select = selectQuery(resource, db.defaultsByTable, {});
+        }
+        for await (const chunk of connection.scan(chunkSize, select.sql, select.params)) {
+            yield select.deserialize(chunk);
+        }
+    };
+}
+
+export class DatabaseTable<S, PK extends Key<S>, V extends Key<S>> implements Table<S, PK, V> {
+    /**
+     * List of indexes for this database table.
+     */
+    constructor(
+        public readonly resource: Resource<S, PK, V>,
+        public readonly indexes: string[][] = [],
+    ) {}
+
+    /**
+     * Returns a state representation of the table for migration.
+     */
+    public getState(): TableState {
+        const { indexes } = this;
+        const { name } = this.resource;
+        return getResourceState(name, this.resource, indexes);
+    }
+}
+/***** DATABASE OPERATIONS *******/
+
+/**
+ * Returns a database operation that inserts an item with the given ID
+ * to the database table. The item must contain all resource attributes,
+ * including the identifying attributes and the version attribute.
+ *
+ * It results to an error if an item with the same identifying
+ * attributes already exists in the database.
+ *
+ * Results to the given item object if inserted successfully.
+ */
+export function create<S>(
+    resource: Resource<S, any, any>,
+    item: S,
+): SqlOperation<S> {
+    const insertedValues = resource.validate(item);
+    return async (connection, db) => {
+        const query = insertQuery(resource, db.defaultsByTable, insertedValues);
+        const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
+        const result = aggregationQueries.length
+            ? await withTransaction(connection, async () => {
+                const res = await executeQuery(connection, query);
+                if (res) {
+                    // Update aggregations
+                    await executeAll(connection, db, aggregationQueries);
+                }
+                return res;
+            })
+            : await executeQuery(connection, query);
+        if (!result) {
+            throw new PreconditionFailed(`Item already exists.`);
+        }
+        return result.item;
+    };
+}
+
+/**
+ * Returns a database operation that either creates an item or
+ * replaces an existing one. Use this if you don't care if the
+ * item already existed in the database.
+ *
+ * Results to the given item object if written successfully.
+ */
+export function write<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    item: S,
+): SqlOperation<S> {
+    return upsert(resource, item, item);
+}
+
+/**
+ * Returns a database operation that inserts an item with the given ID
+ * to the database table if it does not exist yet. If it already exists,
+ * then returns null without failing.
+ *
+ * The given item must contain all resource attributes, including
+ * the identifying attributes and the version attribute.
+ */
+export function initiate<S>(
+    resource: Resource<S, any, any>,
+    item: S,
+): SqlOperation<S | null> {
+    const insertedValues = resource.validate(item);
+    return async (connection, db) => {
+        const query = insertQuery(resource, db.defaultsByTable, insertedValues);
+        const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
+        const result = aggregationQueries.length
+            ? await withTransaction(connection, async () => {
+                const res = await executeQuery(connection, query);
+                if (res) {
+                    // Update aggregations
+                    await executeAll(connection, db, aggregationQueries);
+                }
+                return res;
+            })
+            : await executeQuery(connection, query);
+        return result && result.item;
+    };
+}
+
+/**
+ * Returns a database operation that replaces an existing item in the
+ * database table, identified by the given identity object. The given
+ * item object must contain all model attributes, including the identifying
+ * attributes and the new version attribute.
+ *
+ * NOTE: It is an error to attempt changing identifying attributes!
+ *
+ * The identity may optionally include the version attribute.
+ * In this case, the update is done only if the existing item's version
+ * matches the version in the identity object. This allows making
+ * non-conflicting updates.
+ *
+ * It results to an error if an item does not exist. Also fails if the
+ * existing item's version does not match any given version.
+ *
+ * Results to the updated item object if inserted successfully.
+ */
+export function replace<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    identity: Identity<S, PK, V>,
+    item: S,
+): SqlOperation<S> {
+    // Perform an update, but require all the resource properties
+    resource.validate(item);
+    return update(resource, identity, item);
+}
+
+/**
+ * Returns a database operation that updates some of the attributes
+ * of an existing item in the database, identified by the given
+ * identity object. The changes must contain the version attribute,
+ * and any sub-set of the other attributes.
+ *
+ * NOTE: It is an error to attempt changing identifying attributes!
+ *
+ * The identity may optionally include the version attribute.
+ * In this case, the update is done only if the existing item's version
+ * matches the version in the identity object. This allows making
+ * non-conflicting updates.
+ *
+ * Fails if the item does not exist. Also fails if the
+ * existing item's version does not match any given version.
+ *
+ * Results to the updated item object with all up-to-date attributes,
+ * if updated successfully.
+ */
+export function update<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    identity: Identity<S, PK, V>,
+    changes: PartialUpdate<S, V>,
+): SqlOperation<S> {
+    // TODO: Should be resource.partial(resource.versionBy)
+    // Need to first support auto-versioning by aggregations, or remove versioning
+    const updateSerializer = resource.fullPartial();
+    const identitySerializer = resource
+        .pick([...resource.identifyBy, ...resource.versionBy])
+        .partial(resource.identifyBy);
+    const filters = identitySerializer.validate(identity);
+    const dynamicChanges = pickBy(changes, (_, value) => value instanceof Increment);
+    const staticChanges = pickBy(changes, (_, value) => !(value instanceof Increment));
+    const values = {
+        ...dynamicChanges,
+        ...updateSerializer.validate(staticChanges as PartialUpdate<S, V>),
+    } as PartialUpdate<S, V>;
+    return async (connection, db) => {
+        const [result] = await withTransaction(connection, async () => {
+            const query = updateQuery(resource, filters, values, db.defaultsByTable, true);
+            const updates = await executeQuery(connection, query);
+            for (const [newItem, oldItem] of updates) {
+                // Row was actually updated
+                // Update aggregations
+                const aggregationQueries = db.getAggregationQueries(resource, newItem, oldItem);
+                await executeAll(connection, db, aggregationQueries);
+                return [newItem];
+            }
+            return [];
+        });
+        if (!result) {
+            throw new NotFound(`Item was not found.`);
+        }
+        return result;
+    };
+}
+
+/**
+ * Returns a database operation that inserts a new item to the database
+ * or updates an existing item if one already exists with the same identity.
+ *
+ * NOTE: It is an error to attempt changing identifying attributes!
+ *
+ * The identity may optionally include the version attribute.
+ * In this case, the update is done only if the existing item's version
+ * matches the version in the identity object. This allows making
+ * non-conflicting updates.
+ *
+ * Results to the created/updated item.
+ */
+export function upsert<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    creation: S,
+    changes: PartialUpdate<S, V>,
+): SqlOperation<S> {
+    const updateSerializer = resource.partial(resource.versionBy);
+    const insertValues = resource.validate(creation);
+    const updateValues = updateSerializer.validate(changes);
+    return (connection, db) => withTransaction(connection, async () => {
+        const aggregationQueries = db.getAggregationQueries(resource, insertValues, null);
+        const query = insertQuery(resource, db.defaultsByTable, insertValues, updateValues);
+        const res = await connection.query(query.sql, query.params);
+        const insertion = query.deserialize(res);
+        if (insertion.wasCreated) {
+            // Row was actually inserted
+            // Update aggregations
+            await executeAll(connection, db, aggregationQueries);
+        }
+        return insertion.item;
+    });
+}
+
+/**
+ * Returns a database operation that deletes an item from the database,
+ * identified by the given identity object. Fails if the item does not exists.
+ */
+export function destroy<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    identity: Identity<S, PK, V>,
+): SqlOperation<void> {
+    const identitySerializer = resource
+        .pick([...resource.identifyBy, ...resource.versionBy])
+        .partial(resource.identifyBy);
+    const filters = identitySerializer.validate(identity);
+    return async (connection, db) => {
+        const query = deleteQuery(resource, filters, db.defaultsByTable);
+        const result = await withTransaction(connection, async () => {
+            const item = await executeQuery(connection, query);
+            if (item) {
+                // Row was actually deleted
+                // Update aggregations
+                const aggregationQueries = db.getAggregationQueries(resource, null, item);
+                await executeAll(connection, db, aggregationQueries);
+            }
+            return item;
+        });
+        if (!result) {
+            throw new NotFound(`Item was not found.`);
+        }
+    };
+}
+
+/**
+ * Returns an database operation for counting items in an table matching
+ * the given filtering criterias. The criteria must match the indexes in the table.
+ * Please consider the poor performance of COUNT operation on large tables!
+ * Always prefer aggregations whenever appropriate instead of counting
+ * large number of rows in the database.
+ *
+ * @param filters Filters defining which rows to count
+ */
+export function count<S>(
+    resource: Resource<S, any, any>,
+    filters: Filters<S>,
+): SqlOperation<number> {
+    return async (connection, db) => {
+        const query = countQuery(resource, filters, db.defaultsByTable);
+        return executeQuery(connection, query);
+    };
+}
+
+/**
+ * Returns a database operation for retrieving item for each of the identity given objects,
+ * or null values if no matching item is found, in the most efficient way possible. The results
+ * from the returned promise are in the same order than the identities.
+ */
+export function batchRetrieve<S, PK extends Key<S>, V extends Key<S>>(
+    resource: Resource<S, PK, V>,
+    identities: Array<Identity<S, PK, V>>,
+): SqlOperation<Array<S | null>> {
+    if (!identities.length) {
+        return async () => [];
+    }
+    const identitySerializer = resource
+        .pick([...resource.identifyBy, ...resource.versionBy])
+        .partial(resource.identifyBy);
+    const identityListSerializer = nestedList(identitySerializer);
+    const filtersList = identityListSerializer.validate(identities);
+    return async (connection, db) => {
+        const query = batchSelectQuery(resource, db.defaultsByTable, filtersList);
+        const items = await executeQuery(connection, query);
+        return filtersList.map((identity) => (
+            items.find((item) => item && hasProperties(item, identity)) || null
+        ));
+    };
+}
+
+interface TableOptions<S, PK extends Key<S>, V extends Key<S>> {
     /**
      * Sets default values for the properties loaded from the database.
      * They are used to fill in any missing values for loaded items. You should
@@ -58,523 +412,24 @@ extends Model<S, PK, V, D> {
      * model. Otherwise you will get errors when attempting to decode an object
      * from the database that lack required attributes.
      */
-    migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): Table<S, PK, V, D>;
-
-    index<K1 extends keyof S>(key: K1): Table<S, PK, V, D | IndexQuery<S, never, K1>>;
-    index<K1 extends keyof S, K2 extends keyof S>(key1: K1, key2: K2): Table<S, PK, V, D | IndexQuery<S, K1, K2>>;
-    index<K1 extends keyof S, K2 extends keyof S, K3 extends keyof S>(key1: K1, key2: K2, key3: K3): Table<S, PK, V, D | IndexQuery<S, K1 | K2, K3>>;
-    index<K extends keyof S>(...index: K[]): Table<S, PK, V, D | IndexQuery<S, K, K>>;
-
-    aggregate<T, TPK extends Key<T>>(target: Table<T, TPK, any, any>): Aggregator<S, PK, V, D, T, TPK>;
-
-    getState(): TableState;
-}
-
-interface Aggregator<S, PK extends Key<S>, V extends Key<S>, D, T, TPK extends Key<T>> {
-    count(
-        countField: string & FilteredKeys<T, number>,
-        by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
-        filters?: Partial<S>,
-    ): Table<S, PK, V, D>;
+    migrate?: { [P in Exclude<keyof S, PK | V>]?: S[P] };
+    indexes?: Array<Array<Key<S>>>;
 }
 
 interface Aggregation<S> {
-    target: Table<any, any, any, any>;
+    target: Resource<any, any, any>;
     type: 'count' | 'sum';
     field: string;
     by: {[pk: string]: Key<S>};
     filters: Partial<S>;
 }
 
-class TableView<S, PK extends Key<S>, V extends Key<S>, D> implements ReadableModel<S, PK, V, D> {
+class DatabaseDefinition implements Database {
+    public readonly tables: Array<DatabaseTable<any, any, any>> = [];
+    public defaultsByTable: TableDefaults = {};
+    private aggregationsBySource: {[name: string]: Array<Aggregation<any>>} = {};
 
-    constructor(
-        /**
-         * A definition of the resource being stored to this database table.
-         */
-        public readonly resource: Resource<S, PK, V>,
-        /**
-         * An identifying name for the table that distinguishes it from the
-         * other table definitions.
-         */
-        public readonly name: string,
-        public readonly columns: Fields<any>,
-        public readonly primaryKeys: PK[],
-        public readonly defaults: {[P in any]: any},
-        public readonly joins: SqlJoin[],
-        public readonly nestings: SqlNesting[],
-    ) {}
-
-    /***** DATABASE OPERATIONS *******/
-
-    /**
-     * Returns a database operation that gets an item from the
-     * database table using the given identity object, containing
-     * all the identifying attributes.
-     * It results to an error if the item was not found.
-     */
-    public retrieve(query: Identity<S, PK, V>): SqlQuery<S> {
-        const { resource } = this;
-        const { identifyBy, versionBy } = resource;
-        const identitySerializer = versionBy.length
-            ? resource
-                .pick([...identifyBy, ...versionBy])
-                .partial(identifyBy)
-            : resource
-                .pick(identifyBy);
-        const filters = identitySerializer.validate(query);
-        const select = selectQuery(this, filters, 1);
-        return {
-            ...select,
-            deserialize: (result) => {
-                const [item] = select.deserialize(result);
-                if (!item) {
-                    throw new NotFound(`Item was not found.`);
-                }
-                return item;
-            },
-        };
-    }
-
-    /**
-     * Return a database opeartion that queries and finds the first/next batch
-     * of items from the table matching the given criteria.
-     *
-     * The return value is a page object containing an array of items,
-     * and the `query` parameter for retrieving the next batch, or null
-     * if no more items are expected to be found.
-     */
-    public list<Q extends D & OrderedQuery<S, Key<S>>>(query: Exact<Q, D>): SqlOperation<Page<S, Q>> {
-        const results: S[] = [];
-        const { ordering, direction } = query;
-        const { chunkSize, sql, params, deserialize } = this.scan(query);
-        return async (connection) => {
-            for await (const chunk of connection.scan(chunkSize, sql, params)) {
-                const items = deserialize(chunk);
-                results.push(...items);
-                if (chunk.isComplete) {
-                    return { results, next: null };
-                }
-                const cursor = prepareForCursor(results, ordering, direction);
-                if (cursor) {
-                    return {
-                        results: cursor.results,
-                        next: { ...query as Q, since: cursor.since as any },
-                    };
-                }
-            }
-            // No more items
-            return { results, next: null };
-        };
-    }
-
-    /**
-     * Returns a database scan query for iterating over batches of items from the
-     * table matching the given criteria.
-     *
-     * Without parameters should scan the whole table, in no particular order.
-     */
-    public scan(query?: Query<S>): SqlScanQuery<S> {
-        const chunkSize = 100;
-        if (!query) {
-            return {
-                ...selectQuery(this, {}),
-                chunkSize,
-            };
-        }
-        const { ordering, direction, since, ...filters } = query;
-        return {
-            ...selectQuery(this, filters, undefined, ordering, direction, since),
-            chunkSize,
-        };
-    }
-
-    public join<S2, PK2 extends Key<S2>>(
-        other: SqlQueryable<S2, PK2 & Key<S2>>,
-        on: {[key: string]: string | undefined},
-        columns: {[key: string]: string},
-    ): ReadableModel<any, any, V, any> {
-        const { name } = other;
-        let aliasIndex = 0;
-        while (this.joins.some((join) => join.alias === `${name}${aliasIndex}`)) {
-            aliasIndex += 1;
-        }
-        const alias = `${name}${aliasIndex}`;
-        const joins: SqlJoin[] = [
-            ...this.joins,
-            {
-                alias,
-                queryable: other,
-                columns,
-                on: omitUndefined(on),
-            },
-        ];
-        const resource: Resource<any, any, V> = this.resource.expand(
-            transformValues(columns, (source) => other.columns[source as Key<S2>]),
-        );
-        return new TableView(
-            resource, this.name, this.columns, this.primaryKeys, this.defaults, joins, this.nestings,
-        );
-    }
-
-    // NOTE: The signature does not completely match the interface because of this:
-    // https://github.com/microsoft/TypeScript/issues/30071
-    public nest<K extends string, S2>(
-        propertyName: K,
-        other: SqlQueryable<S2>,
-        on: {[key: string]: string},
-    ): ReadableModel<S & Record<K, S2 | null>, PK, V, D> {
-        const nestings: SqlNesting[] = [
-            ...this.nestings,
-            {
-                alias: propertyName,
-                queryable: other,
-                on,
-            },
-        ];
-        const resource: Resource<S & Record<K, S2 | null>, PK, V> = this.resource.expand(
-            { [propertyName]: nullable(nested(other.resource)) } as Fields<Record<K, S2 | null>>,
-        );
-        return new TableView(
-            resource, this.name, this.columns, this.primaryKeys, this.defaults, this.joins, nestings,
-        );
-    }
-
-    public pick<K extends Key<S>>(columnNames: K[]): ReadableModel<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>> {
-        const resource = this.resource.subset(columnNames);
-        return new TableView<Pick<S, K>, PK & K, V & K, Exclude<D, Record<Exclude<Key<K>, K>, any>>>(
-            resource,
-            this.name,
-            pick(this.columns, columnNames),
-            this.primaryKeys as Array<PK & K>,
-            pick(this.defaults, columnNames),
-            this.joins
-                .map(({ columns, ...join }) => ({ columns: pick(columns, []), ...join }))
-                .filter(({ columns }) => Object.keys(columns).length > 0),
-            this.nestings.filter((nesting) => columnNames.includes(nesting.alias as K)),
-        );
-    }
-}
-
-export class DatabaseTable<S, PK extends Key<S>, V extends Key<S>, D>
-extends TableView<S, PK, V, D> implements Table<S, PK, V, D> {
-    /**
-     * List of indexes for this database table.
-     */
-    public readonly indexes: string[][] = [];
-    constructor(
-        resource: Resource<S, PK, V>,
-        name: string,
-        private readonly indexTree: IndexTree<S>,
-        defaults: {[P in any]: S[any]},
-        private readonly aggregations: Array<Aggregation<S>>,
-    ) {
-        super(resource, name, resource.fields, resource.identifyBy, defaults, [], []);
-        this.indexes = flattenIndexes(indexTree);
-    }
-
-    /**
-     * Sets default values for the properties loaded from the database.
-     * They are used to fill in any missing values for loaded items. You should
-     * provide this when you have added any new fields to the database
-     * model. Otherwise you will get errors when attempting to decode an object
-     * from the database that lack required attributes.
-     */
-    public migrate<K extends Exclude<keyof S, PK | V>>(defaults: {[P in K]: S[P]}): Table<S, PK, V, D> {
-        return new DatabaseTable(this.resource, this.name, this.indexTree, {...this.defaults, ...defaults}, this.aggregations);
-    }
-
-    public index<K extends keyof S>(...index: K[]): Table<S, PK, V, D | IndexQuery<S, K, K>> {
-        let newIndexes: IndexTree<S> = {};
-        while (index.length) {
-            const key = index.pop() as K;
-            newIndexes = {[key]: newIndexes} as IndexTree<S>;
-        }
-        return new DatabaseTable(this.resource, this.name, {...this.indexTree, ...newIndexes}, this.defaults, this.aggregations);
-    }
-
-    // NOTE: The signature does not completely match the interface because of this:
-    // https://github.com/microsoft/TypeScript/issues/30071
-    public aggregate<T>(target: Table<T, any, any, any>) {
-        const count = (
-            countField: string & FilteredKeys<T, number>,
-            by: {[key: string]: Key<S>},
-            filters: Partial<S> = {},
-        ): Table<S, PK, V, D> => {
-            const aggregations = this.aggregations.concat([{
-                target, type: 'count', field: countField, by, filters,
-            }]);
-            return new DatabaseTable<S, PK, V, D>(this.resource, this.name, this.indexTree, this.defaults, aggregations);
-        };
-        return { count };
-    }
-
-    /**
-     * Returns a state representation of the table for migration.
-     */
-    public getState(): TableState {
-        const { name, indexes } = this;
-        return getResourceState(name, this.resource, indexes);
-    }
-
-    /***** DATABASE OPERATIONS *******/
-
-    /**
-     * Returns a database operation that inserts an item with the given ID
-     * to the database table. The item must contain all resource attributes,
-     * including the identifying attributes and the version attribute.
-     *
-     * It results to an error if an item with the same identifying
-     * attributes already exists in the database.
-     *
-     * Results to the given item object if inserted successfully.
-     */
-    public create(item: S): SqlOperation<S> {
-        const insertedValues = this.resource.validate(item);
-        const query = insertQuery(this, insertedValues);
-        const aggregationQueries = this.getAggregationQueries(insertedValues, null);
-        return async (connection) => {
-            const result = aggregationQueries.length
-                ? await withTransaction(connection, async () => {
-                    const res = await executeQuery(connection, query);
-                    if (res) {
-                        // Update aggregations
-                        await executeQueries(connection, aggregationQueries);
-                    }
-                    return res;
-                })
-                : await executeQuery(connection, query);
-            if (!result) {
-                throw new PreconditionFailed(`Item already exists.`);
-            }
-            return result.item;
-        };
-    }
-
-    /**
-     * Returns a database operation that either creates an item or
-     * replaces an existing one. Use this if you don't care if the
-     * item already existed in the database.
-     *
-     * Results to the given item object if written successfully.
-     */
-    public write(item: S): SqlOperation<S> {
-        return this.upsert(item, item);
-    }
-
-    /**
-     * Returns a database operation that inserts an item with the given ID
-     * to the database table if it does not exist yet. If it already exists,
-     * then returns null without failing.
-     *
-     * The given item must contain all resource attributes, including
-     * the identifying attributes and the version attribute.
-     */
-    public initiate(item: S): SqlOperation<S | null> {
-        const insertedValues = this.resource.validate(item);
-        const query = insertQuery(this, insertedValues);
-        const aggregationQueries = this.getAggregationQueries(insertedValues, null);
-        return async (connection) => {
-            const result = aggregationQueries.length
-                ? await withTransaction(connection, async () => {
-                    const res = await executeQuery(connection, query);
-                    if (res) {
-                        // Update aggregations
-                        await executeQueries(connection, aggregationQueries);
-                    }
-                    return res;
-                })
-                : await executeQuery(connection, query);
-            return result && result.item;
-        };
-    }
-
-    /**
-     * Returns a database operation that replaces an existing item in the
-     * database table, identified by the given identity object. The given
-     * item object must contain all model attributes, including the identifying
-     * attributes and the new version attribute.
-     *
-     * NOTE: It is an error to attempt changing identifying attributes!
-     *
-     * The identity may optionally include the version attribute.
-     * In this case, the update is done only if the existing item's version
-     * matches the version in the identity object. This allows making
-     * non-conflicting updates.
-     *
-     * It results to an error if an item does not exist. Also fails if the
-     * existing item's version does not match any given version.
-     *
-     * Results to the updated item object if inserted successfully.
-     */
-    public replace(identity: Identity<S, PK, V>, item: S): SqlOperation<S> {
-        // Perform an update, but require all the resource properties
-        const { resource } = this;
-        resource.validate(item);
-        return this.update(identity, item);
-    }
-
-    /**
-     * Returns a database operation that updates some of the attributes
-     * of an existing item in the database, identified by the given
-     * identity object. The changes must contain the version attribute,
-     * and any sub-set of the other attributes.
-     *
-     * NOTE: It is an error to attempt changing identifying attributes!
-     *
-     * The identity may optionally include the version attribute.
-     * In this case, the update is done only if the existing item's version
-     * matches the version in the identity object. This allows making
-     * non-conflicting updates.
-     *
-     * Fails if the item does not exist. Also fails if the
-     * existing item's version does not match any given version.
-     *
-     * Results to the updated item object with all up-to-date attributes,
-     * if updated successfully.
-     */
-    public update(identity: Identity<S, PK, V>, changes: PartialUpdate<S, V>): SqlOperation<S> {
-        const { resource } = this;
-        const updateSerializer = resource.partial(resource.versionBy);
-        const identitySerializer = resource
-            .pick([...resource.identifyBy, ...resource.versionBy])
-            .partial(resource.identifyBy);
-        const filters = identitySerializer.validate(identity);
-        const values = updateSerializer.validate(changes);
-        return async (connection) => {
-            const [result] = this.aggregate.length
-                ? await withTransaction(connection, async () => {
-                    const query = updateQuery(this, filters, values, true);
-                    const updates = await executeQuery(connection, query);
-                    for (const [newItem, oldItem] of updates) {
-                        // Row was actually updated
-                        // Update aggregations
-                        const aggregationQueries = this.getAggregationQueries(newItem, oldItem);
-                        await executeQueries(connection, aggregationQueries);
-                        return [newItem];
-                    }
-                    return [];
-                })
-                : await executeQuery(
-                    connection,
-                    updateQuery(this, filters, values, false),
-                );
-            if (!result) {
-                throw new NotFound(`Item was not found.`);
-            }
-            return result;
-        };
-    }
-
-    /**
-     * Returns a database operation that inserts a new item to the database
-     * or updates an existing item if one already exists with the same identity.
-     *
-     * NOTE: It is an error to attempt changing identifying attributes!
-     *
-     * The identity may optionally include the version attribute.
-     * In this case, the update is done only if the existing item's version
-     * matches the version in the identity object. This allows making
-     * non-conflicting updates.
-     *
-     * Results to the created/updated item.
-     */
-    public upsert(creation: S, update: PartialUpdate<S, V>): SqlOperation<S> {
-        const { resource } = this;
-        const updateSerializer = resource.partial(resource.versionBy);
-        const insertValues = resource.validate(creation);
-        const updateValues = updateSerializer.validate(update);
-        const aggregationQueries = this.getAggregationQueries(insertValues, null);
-        const query = insertQuery(this, insertValues, updateValues);
-        if (!aggregationQueries.length) {
-            return async (connection) => {
-                const insertion = await executeQuery(connection, query);
-                return insertion.item;
-            };
-        }
-        return (connection) => withTransaction(connection, async () => {
-            const res = await connection.query(query.sql, query.params);
-            const insertion = query.deserialize(res);
-            if (insertion.wasCreated) {
-                // Row was actually inserted
-                // Update aggregations
-                await executeQueries(connection, aggregationQueries);
-            }
-            return insertion.item;
-        });
-    }
-
-    /**
-     * Returns a database operation that deletes an item from the database,
-     * identified by the given identity object. Fails if the item does not exists.
-     */
-    public destroy(identity: Identity<S, PK, V>): SqlOperation<void> {
-        const { resource } = this;
-        const identitySerializer = resource
-            .pick([...resource.identifyBy, ...resource.versionBy])
-            .partial(resource.identifyBy);
-        const filters = identitySerializer.validate(identity);
-        const query = deleteQuery(this, filters);
-        return async (connection) => {
-            const result = this.aggregations.length
-                ? await withTransaction(connection, async () => {
-                    const item = await executeQuery(connection, query);
-                    if (item) {
-                        // Row was actually deleted
-                        // Update aggregations
-                        const aggregationQueries = this.getAggregationQueries(null, item);
-                        await executeQueries(connection, aggregationQueries);
-                    }
-                    return item;
-                })
-                : await executeQuery(connection, query);
-            if (!result) {
-                throw new NotFound(`Item was not found.`);
-            }
-        };
-    }
-
-    /**
-     * Returns an database operation for counting items in an table matching
-     * the given filtering criterias. The criteria must match the indexes in the table.
-     * Please consider the poor performance of COUNT operation on large tables!
-     * Always prefer aggregations whenever appropriate instead of counting
-     * large number of rows in the database.
-     *
-     * @param filters Filters defining which rows to count
-     */
-    public count(filters: Omit<D, 'direction' | 'ordering' | 'since'>): SqlQuery<number> {
-        return countQuery(this, filters);
-    }
-
-    /**
-     * Returns a database operation for retrieving item for each of the identity given objects,
-     * or null values if no matching item is found, in the most efficient way possible. The results
-     * from the returned promise are in the same order than the identities.
-     */
-    public batchRetrieve(identities: Array<Identity<S, PK, V>>): SqlQuery<Array<S | null>> {
-        if (!identities.length) {
-            return { sql: '', params: [], deserialize: () => [] };
-        }
-        const { resource } = this;
-        const identitySerializer = resource
-            .pick([...resource.identifyBy, ...resource.versionBy])
-            .partial(resource.identifyBy);
-        const identityListSerializer = nestedList(identitySerializer);
-        const filtersList = identityListSerializer.validate(identities);
-        const query = batchSelectQuery(this, filtersList);
-        return {
-            ...query,
-            deserialize: (result) => {
-                const items = query.deserialize(result);
-                return filtersList.map((identity) => (
-                    items.find((item) => item && hasProperties(item, identity)) || null
-                ));
-            },
-        };
-    }
-
-    private getAggregationQueries(newValues: S | null, oldValues: S | null) {
+    public getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null) {
         const idValues = newValues || oldValues;
         if (!idValues) {
             // Both parameters are null
@@ -582,9 +437,10 @@ extends TableView<S, PK, V, D> implements Table<S, PK, V, D> {
         }
         // NOTE: Sorting by aggregation table names to ensure a consistent
         // order that minimizes possibility for deadlocks.
-        const aggregations = sort(this.aggregations, (agg) => agg.target.name);
+        const resourceAggregations = this.aggregationsBySource[resource.name] || [];
+        const aggregations = sort(resourceAggregations, (agg) => agg.target.name);
         return aggregations.map(({ target, by, field, filters }) => {
-            const identifier = transformValues(by, (pk) => idValues[pk]);
+            const identifier = transformValues(by, (pk) => idValues[pk as keyof S]);
             const mask = { ...filters, ...identifier };
             const isMatching = newValues != null && hasProperties(newValues, mask);
             const wasMatching = oldValues != null && hasProperties(oldValues, mask);
@@ -592,17 +448,32 @@ extends TableView<S, PK, V, D> implements Table<S, PK, V, D> {
             if (diff === 0) {
                 return null;
             }
-            return updateQuery(target, identifier, {[field]: increment(diff)});
+            return update(target, identifier, {[field]: increment(diff)});
         }).filter(isNotNully);
+    }
+
+    public addTable<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, options?: TableOptions<S, PK, V>): this {
+        this.tables.push(new DatabaseTable(resource, options && options.indexes || []));
+        this.defaultsByTable[resource.name] = options && options.migrate || {};
+        return this;
+    }
+
+    public aggregateCount<S, T, TPK extends Key<T>>(
+        source: Resource<S, any, any>,
+        target: Resource<T, TPK, any>,
+        field: string & FilteredKeys<T, number>,
+        by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
+        filters: Partial<S> = {},
+    ): this {
+        const aggregations = this.aggregationsBySource[source.name] || [];
+        aggregations.push({ target, field, by, filters, type: 'count' });
+        this.aggregationsBySource[source.name] = aggregations;
+        return this;
     }
 }
 
-/**
- * @param resource Resource that is stored to the table
- * @param name An unique name for the table
- */
-export function table<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, name: string): Table<S, PK, V, never> {
-    return new DatabaseTable<S, PK, V, never>(resource, name, {}, {}, []);
+export function database(): DatabaseDefinition {
+    return new DatabaseDefinition();
 }
 
 export function getResourceState(name: string, resource: Resource<any, Key<any>, Key<any>>, indexes: string[][]): TableState {
@@ -624,15 +495,8 @@ export function getResourceState(name: string, resource: Resource<any, Key<any>,
     };
 }
 
-function flattenIndexes<S>(idxTree: IndexTree<S>): Array<Array<Key<S>>> {
-    const indexes: Array<Array<Key<S>>> = [];
-    keys(idxTree).forEach((key) => {
-        const subIndexes = flattenIndexes(idxTree[key] as IndexTree<S>);
-        if (subIndexes.length) {
-            indexes.push([key]);
-        } else {
-            indexes.push(...subIndexes.map((subIndex) => [key, ...subIndex]));
-        }
-    });
-    return indexes;
+async function executeAll(connection: SqlConnection, db: Database, operations: Array<SqlOperation<any>>) {
+    for (const operation of operations) {
+        await operation(connection, db);
+    }
 }

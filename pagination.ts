@@ -26,7 +26,7 @@ export type OrderedQuery<T, O extends keyof T, D extends 'asc' | 'desc' = 'asc' 
     }
 }[O];
 
-export type PageResponse<T, U extends keyof T, O extends keyof T, F extends keyof T> = Page<T, Cursor<T, U, O, F>>;
+export type PageResponse<T> = Page<T, OrderedQuery<T, Key<T>> & Partial<T>>;
 
 /**
  * A "cursor" is a full query, including the ordering and slicing attributes,
