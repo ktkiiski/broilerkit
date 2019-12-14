@@ -426,9 +426,13 @@ function escapeValue(value: unknown): string {
     if (value === true) {
         return 'TRUE';
     }
-    const str = value instanceof Date
-        ? value.toISOString()
-        : String(value);
+    if (value instanceof Date) {
+        return escapeValue(value.toISOString());
+    }
+    if (typeof value === 'object') {
+        return `${escapeValue(JSON.stringify(value))}::jsonb`;
+    }
+    const str = String(value);
     if (typeof value === 'number') {
         return str;
     }
@@ -507,7 +511,7 @@ function parseRow<S>(
     }
 }
 
-const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|;)/g;
+const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|[;,\(\)\[\]])/g;
 
 function tokenize(sql: string): string[] {
     return sql.split(sqlTokenizerRegexp).filter((token) => !!token);
@@ -637,6 +641,7 @@ const keywords = [
     'COMPLETION',
     'CONDITION',
     'CONDITION_NUMBER',
+    'CONFLICT',
     'CONNECT',
     'CONNECTION',
     'CONNECTION_NAME',
