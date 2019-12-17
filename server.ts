@@ -2,22 +2,26 @@
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
-import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse, Unauthorized } from './http';
+import { EffectContext, getEffectHeaders, ResourceEffect } from './effects';
+import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
+import { authorize } from './permissions';
 import { Database, DatabaseClient, PostgreSqlPoolConnection } from './postgres';
+import { UserSession } from './sessions';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
+import { isNotNully } from './utils/compare';
 import { transformValues } from './utils/objects';
 
-export interface RequestContext {
+export interface HandlerContext extends EffectContext {
     db: DatabaseClient;
     users: UserPool;
 }
 
-export type Handler<I, O, R> = (input: I, request: R & RequestContext) => Promise<O>;
+export type Handler<I, O, R> = (input: I, request: R & HandlerContext) => Promise<O>;
 export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;
 
 type Implementables<I, O, R> = (
@@ -49,6 +53,8 @@ export interface ServerContext {
     sessionEncryptionKey: JWK.Key | null;
 }
 
+export interface RequestContext extends ServerContext, EffectContext {}
+
 export interface Controller {
     /**
      * All HTTP methods accepted by this endpoint.
@@ -64,7 +70,11 @@ export interface Controller {
      * - 501 HTTP error to indicate that the URL is not for this controller
      * - 405 HTTP error if the request method was one of the `methods`
      */
-    execute(request: HttpRequest, context: ServerContext): Promise<ApiResponse | HttpResponse>;
+    execute(request: HttpRequest, context: RequestContext): Promise<ApiResponse | HttpResponse>;
+    /**
+     * Related API operation, if any.
+     */
+    operation?: Operation<any, any, any>;
 }
 
 class ImplementedOperation implements Controller {
@@ -81,37 +91,21 @@ class ImplementedOperation implements Controller {
         this.pattern = route.pattern;
     }
 
-    public async execute(request: HttpRequest, context: ServerContext): Promise<ApiResponse> {
-        const {operation} = this;
-        const {authType, userIdAttribute, responseSerializer} = operation;
+    public async execute(request: HttpRequest, context: RequestContext): Promise<ApiResponse> {
+        const { operation } = this;
+        const { responseSerializer } = operation;
         const input = parseRequest(operation, request);
-        // Check the authentication
+        // Authorize the access
         const {auth, region, environment} = request;
-        const isAdmin = !!auth && auth.groups.indexOf('Administrators') < 0;
-        if (authType !== 'none') {
-            if (!auth) {
-                throw new Unauthorized(`Unauthorized`);
-            }
-            if (authType === 'admin' && !isAdmin) {
-                // Not an admin!
-                throw new Unauthorized(`Administrator rights are missing.`);
-            }
-            if (authType === 'owner') {
-                // Needs to be either owner or admin!
-                // TODO: Handle invalid configuration where auth == 'owner' && !userIdAttribute!
-                if (userIdAttribute && input[userIdAttribute] !== auth.id && !isAdmin) {
-                    throw new Unauthorized(`Unauthorized resource`);
-                }
-            }
-        }
+        authorize(operation, auth, input);
         // Handle the request
-        const { db, dbConnectionPool } = context;
+        const { db, dbConnectionPool, effects } = context;
         const dbClient = new DatabaseClient(db, async () => {
             if (!dbConnectionPool) {
                 throw new Error(`Database is not configured`);
             }
             const client = await dbConnectionPool.connect();
-            return new PostgreSqlPoolConnection(client);
+            return new PostgreSqlPoolConnection(client, context.effects);
         });
         const userPoolId = environment.UserPoolId;
         const users: UserPool = region === 'local' ? new LocalUserPool(dbClient)
@@ -119,15 +113,15 @@ class ImplementedOperation implements Controller {
             : new DummyUserPool();
         // TODO: Even though the client should always close the connection,
         // we should here ensure that all connections are released.
-        const handlerRequest = { ...request, db: dbClient, users };
-        const {data, ...response} = await this.handler(input, handlerRequest);
+        const handlerRequest = { ...request, db: dbClient, users, effects };
+        const { data, ...response } = await this.handler(input, handlerRequest);
         if (!responseSerializer) {
             // No response data should be available
             return response;
         }
         // Serialize the response data
         // TODO: Validation errors should result in 500 responses!
-        return {...response, data: responseSerializer.serialize(data)};
+        return { ...response, data: responseSerializer.serialize(data) };
     }
 }
 
@@ -141,7 +135,7 @@ function implement<I, O, R>(
             operation,
             async (input: I, request): Promise<OK<Page<O, any>>> => {
                 // TODO: Avoid force-typecasting of request!
-                const page: Page<any, any> = await implementation(input, request as unknown as R & RequestContext) as any;
+                const page: Page<any, any> = await implementation(input, request as unknown as R & HandlerContext) as any;
                 if (!page.next) {
                     return new OK(page);
                 }
@@ -156,7 +150,7 @@ function implement<I, O, R>(
             operation,
             async (input: I, request): Promise<OK<O>> => {
                 // TODO: Avoid force-typecasting of request!
-                return new OK(await implementation(input, request as unknown as R & RequestContext));
+                return new OK(await implementation(input, request as unknown as R & HandlerContext));
             },
         );
         case 'destroy':
@@ -164,7 +158,7 @@ function implement<I, O, R>(
             operation,
             async (input: I, request): Promise<NoContent> => {
                 // TODO: Avoid force-typecasting of request!
-                await implementation(input, request as unknown as R & RequestContext);
+                await implementation(input, request as unknown as R & HandlerContext);
                 return new NoContent();
             },
         );
@@ -190,16 +184,19 @@ export function implementAll<I, O, R>(
 export class ApiService {
 
     public readonly controllers: Controller[];
+    public readonly operations: Array<Operation<any, any, any>>;
 
     constructor(
-        public readonly controllersByName: Record<string, Controller>,
+        private readonly controllersByName: Record<string, Controller>,
     ) {
         // IMPORTANT: Sort controllers by pattern, because this way static path components
         // take higher priority than placeholders, e.g. `/api/foobar` comes before `/{path+}`
         this.controllers = sort(Object.values(controllersByName), ({pattern}) => pattern.pattern, 'asc');
+        this.operations = this.controllers.map(({ operation }) => operation).filter(isNotNully);
     }
 
     public execute = async (request: HttpRequest, context: ServerContext) => {
+        const { operations } = this;
         let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
         const controllers = Array.from(this.iterateForPath(request.path));
@@ -222,11 +219,14 @@ export class ApiService {
                 body: '',
             } as HttpResponse;
         }
+        const effects: ResourceEffect[] = [];
+        const requestContext = { ...context, effects };
         // Otherwise find the first implementation that processes the response
         for (const implementation of controllers) {
             try {
                 // Return response directly returned by the implementation
-                return await implementation.execute(request, context);
+                const response = await implementation.execute(request, requestContext);
+                return applyEffectHeaders(response, request.auth, effects, operations);
             } catch (error) {
                 // Thrown 405 or 501 response errors will have a special meaning
                 if (isResponse(error)) {
@@ -239,6 +239,9 @@ export class ApiService {
                         // so continue iterating, or finally return this 405 if not found.
                         errorResponse = error;
                         continue;
+                    } else {
+                        // Raise through but with side-effect headers
+                        throw applyEffectHeaders(error, request.auth, effects, operations);
                     }
                 }
                 // Raise through
@@ -289,4 +292,14 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
     const payload = parsePayload(payloadSerializer, body, contentTypeHeader);
     // TODO: Gather validation errors togeter?
     return {...urlParameters, ...payload};
+}
+
+function applyEffectHeaders<R extends HttpResponse | ApiResponse>(response: R, auth: UserSession | null, effects: ResourceEffect[], operations: Array<Operation<any, any, any>>): R {
+    return {
+        ...response,
+        headers: {
+            ...response.headers,
+            'Resource-State': getEffectHeaders(effects, operations, auth),
+        },
+    };
 }

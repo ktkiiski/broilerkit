@@ -1085,7 +1085,7 @@ export class Broiler {
             return async () => {
                 const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
                 await client.connect();
-                return new PostgreSqlConnection(client);
+                return new PostgreSqlConnection(client, []);
             };
         }
         const output = await this.cloudFormation.getStackOutput();

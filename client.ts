@@ -4,10 +4,12 @@ import { ResourceChange } from './collections';
 import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
 import { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import { Cursor } from './pagination';
-import { Url } from './url';
+import { Resource } from './resources';
+import { parseUrl, Url } from './url';
 import { getOrderedIndex } from './utils/arrays';
 import { hasProperties } from './utils/compare';
-import { Key, keys } from './utils/objects';
+import { Key, keys, pick } from './utils/objects';
+import { stripPrefix } from './utils/strings';
 
 export interface Retrieval<S = any, U extends Key<S> = any> {
     operation: RetrieveOperation<S, U, any, any>;
@@ -56,22 +58,28 @@ export interface CollectionState<S = any> {
 }
 
 interface CollectionListener {
-    resourceName: string;
+    resource: Resource<any, any, any>;
     callback: (collection: CollectionState) => void;
     minCount: number;
 }
 
 interface ResourceListener {
-    resourceName: string;
+    resource: Resource<any, any, any>;
     callback: (resource: ResourceState) => void;
+}
+
+interface StateEffect {
+    resourceName: string;
+    encodedResource: {[attr: string]: string};
+    available: boolean;
 }
 
 const doNothing = () => { /* Does nothing */ };
 
 abstract class BaseClient implements Client {
+    protected resourceListeners: ListMapping<ResourceListener> = {};
+    protected collectionListeners: ListMapping<CollectionListener> = {};
     private optimisticChanges: Array<ResourceChange<any, any>> = [];
-    private resourceListeners: ListMapping<ResourceListener> = {};
-    private collectionListeners: ListMapping<CollectionListener> = {};
     private uniqueIdCounter = 0;
 
     constructor(
@@ -93,7 +101,7 @@ abstract class BaseClient implements Client {
         }
         const unsubscribe = addToMapping(this.resourceListeners, url.toString(), {
             callback,
-            resourceName: op.endpoint.resource.name,
+            resource: op.endpoint.resource,
         });
         // Ensure that the resource is being loaded
         this.loadResource(url, op);
@@ -115,7 +123,7 @@ abstract class BaseClient implements Client {
         const unsubscribe = addToMapping(this.collectionListeners, url.toString(), {
             callback,
             minCount,
-            resourceName: op.endpoint.resource.name,
+            resource: op.endpoint.resource,
         });
         // Ensure that the collection is being loaded.
         // This needs to be after registering the listener.
@@ -171,12 +179,8 @@ abstract class BaseClient implements Client {
                 }
             }
         }
-        for (const url of changedResourceUrls) {
-            this.triggerResourceUrl(resourceName, url);
-        }
-        for (const url of changedCollectionUrls) {
-            this.triggerCollectionUrl(resourceName, url);
-        }
+        this.triggerResourceUrls(resourceName, changedResourceUrls);
+        this.triggerCollectionUrls(resourceName, changedCollectionUrls);
     }
 
     public generateUniqueId(): number {
@@ -184,6 +188,107 @@ abstract class BaseClient implements Client {
     }
 
     public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
+
+    protected applyResourceStates(states: StateEffect[]) {
+        if (!states.length) {
+            return;
+        }
+        const changedResourceUrlsByName: ListMapping<string> = {};
+        const changedCollectionUrlsByName: ListMapping<string> = {};
+        // Apply states to resource states
+        for (const { resourceName, encodedResource, available } of states) {
+            const resourcesByUrl = this.resourceCache[resourceName];
+            if (!resourcesByUrl) {
+                // Nothing related to this resource
+                continue;
+            }
+            if (!available) {
+                // Single resources do not support "removal"
+                continue;
+            }
+            for (const url of keys(this.resourceListeners)) {
+                const listeners = this.resourceListeners[url];
+                for (const { resource } of listeners) {
+                    // TODO: Support joins!
+                    if (resource.name === resourceName && !resource.joins.length) {
+                        // Apply state change to the resource
+                        const oldState = resourcesByUrl && resourcesByUrl[url];
+                        if (oldState && oldState.resource) {
+                            let attributes;
+                            let identity;
+                            try {
+                                attributes = resource.decode(encodedResource);
+                                identity = resource.identifier.decode(attributes);
+                            } catch {
+                                // tslint:disable-next-line:no-console
+                                console.warn(`Failed to decode resource "${resourceName}" state for a resource side-effect`);
+                                continue;
+                            }
+                            const newState = applyChangeToResource(
+                                oldState, { type: 'update', resourceName, resourceIdentity: identity, resource: attributes },
+                            );
+                            if (newState !== oldState) {
+                                resourcesByUrl[url] = newState;
+                                addToMapping(changedResourceUrlsByName, resourceName, url);
+                            }
+                        }
+                    }
+                    // TODO: Support joins!
+                }
+            }
+        }
+        // Apply states to collection states
+        for (const { resourceName, encodedResource, available } of states) {
+            const collectionsByUrl = this.collectionCache[resourceName];
+            if (!collectionsByUrl) {
+                // Nothing related to this collection
+                continue;
+            }
+            if (!available) {
+                // TODO: Support removal!
+                continue;
+            }
+            for (const url of keys(this.collectionListeners)) {
+                const listeners = this.collectionListeners[url];
+                for (const { resource } of listeners) {
+                    // TODO: Support joins!
+                    if (resource.name === resourceName && !resource.joins.length) {
+                        // Apply state change to the collection
+                        const oldState = collectionsByUrl && collectionsByUrl[url];
+                        if (oldState) {
+                            let attributes;
+                            let identity;
+                            try {
+                                attributes = resource.decode(encodedResource);
+                                identity = resource.identifier.decode(attributes);
+                            } catch {
+                                // tslint:disable-next-line:no-console
+                                console.warn(`Failed to decode resource "${resourceName}" state for a collection side-effect`);
+                                continue;
+                            }
+                            // TODO: Support additions!
+                            const newState = applyChangeToCollection(
+                                oldState, { type: 'update', resourceIdentity: identity, resource: attributes, resourceName },
+                            );
+                            if (newState !== oldState) {
+                                collectionsByUrl[url] = newState;
+                                addToMapping(changedCollectionUrlsByName, resourceName, url);
+                            }
+                        }
+                    }
+                    // TODO: Support joins!
+                }
+            }
+        }
+
+        // Trigger listeners for affected resource URLs
+        for (const resourceName of keys(changedResourceUrlsByName)) {
+            this.triggerResourceUrls(resourceName, changedResourceUrlsByName[resourceName]);
+        }
+        for (const resourceName of keys(changedCollectionUrlsByName)) {
+            this.triggerCollectionUrls(resourceName, changedCollectionUrlsByName[resourceName]);
+        }
+    }
 
     private async getToken(_: AuthenticationType): Promise<string | null> {
         // TODO: Remove this, as the authentication happens with a cookie
@@ -212,6 +317,12 @@ abstract class BaseClient implements Client {
         return true;
     }
 
+    private triggerResourceUrls(resourceName: string, urls: string[]) {
+        for (const url of urls) {
+            this.triggerResourceUrl(resourceName, url);
+        }
+    }
+
     private triggerResourceUrl(resourceName: string, url: string) {
         const listeners = this.resourceListeners[url];
         if (!listeners) {
@@ -220,10 +331,16 @@ abstract class BaseClient implements Client {
         const state = this.getResourceState(resourceName, url);
         if (state) {
             for (const listener of listeners) {
-                if (listener.resourceName === resourceName) {
+                if (listener.resource.name === resourceName) {
                     listener.callback(state);
                 }
             }
+        }
+    }
+
+    private triggerCollectionUrls(resourceName: string, urls: string[]) {
+        for (const url of urls) {
+            this.triggerCollectionUrl(resourceName, url);
         }
     }
 
@@ -235,7 +352,7 @@ abstract class BaseClient implements Client {
         const state = this.getCollectionState(resourceName, url);
         if (state) {
             for (const listener of listeners) {
-                if (listener.resourceName === resourceName) {
+                if (listener.resource.name === resourceName) {
                     listener.callback(state);
                 }
             }
@@ -243,17 +360,13 @@ abstract class BaseClient implements Client {
     }
 
     private triggerResourceByName(resourceName: string) {
-        const {resourceListeners} = this;
-        for (const url of keys(resourceListeners)) {
-            this.triggerResourceUrl(resourceName, url);
-        }
+        const { resourceListeners } = this;
+        this.triggerResourceUrls(resourceName, keys(resourceListeners));
     }
 
     private triggerCollectionByName(resourceName: string) {
         const {collectionListeners} = this;
-        for (const url of keys(collectionListeners)) {
-            this.triggerCollectionUrl(resourceName, url);
-        }
+        this.triggerCollectionUrls(resourceName, keys(collectionListeners));
     }
 
     private initResourceState<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): [Url | null, ResourceState<S>] {
@@ -457,8 +570,9 @@ export class BrowserClient extends BaseClient implements Client {
 
     public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null) {
         const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
+        let response;
         try {
-            return await ajax({
+            response = await ajax({
                 url: `${this.apiRoot}${url}`,
                 method, payload, headers,
             });
@@ -470,6 +584,19 @@ export class BrowserClient extends BaseClient implements Client {
             }
             throw error;
         }
+        const stateHeader = response.headers['Resource-State'];
+        const stateHeaders = Array.isArray(stateHeader) ? stateHeader : stateHeader && [stateHeader] || [];
+        const states: StateEffect[] = stateHeaders.map((header) => {
+            const removal = stripPrefix(header, '!');
+            const parsedHeader = parseUrl(removal || header);
+            return {
+                available: !removal,
+                resourceName: parsedHeader.path,
+                encodedResource: parsedHeader.queryParams,
+            };
+        });
+        this.applyResourceStates(states);
+        return response;
     }
 
     /**
@@ -517,13 +644,14 @@ export interface Bindable<T> {
 }
 
 function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChange<any, any>): ResourceState<T> {
-    const {resource} = state;
+    const { resource } = state;
     if (!resource || change.type !== 'update' || !hasProperties(resource, change.resourceIdentity)) {
         return state;
     }
+    const fields = keys(resource);
     return {
         ...state,
-        resource: { ...resource, ...change.resource },
+        resource: { ...resource, ...pick(change.resource, fields) },
     };
 }
 

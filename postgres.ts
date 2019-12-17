@@ -1,6 +1,7 @@
 import { RDSDataService } from 'aws-sdk';
 import { Client, ClientBase, PoolClient } from 'pg';
 import { Table } from './db';
+import { EffectContext, ResourceEffect } from './effects';
 import { scanCursor } from './postgres-cursor';
 import { Resource } from './resources';
 import { formatSql, Row, SqlQuery, SqlResult, TableDefaults } from './sql';
@@ -24,7 +25,7 @@ export interface Database {
     getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null): Array<SqlOperation<any>>;
 }
 
-export interface SqlConnection {
+export interface SqlConnection extends EffectContext {
     query(sql: string, params?: any[]): Promise<SqlResult>;
     queryAll(queries: Array<{sql: string, params?: any[]}>): Promise<SqlResult[]>;
     scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk>;
@@ -40,6 +41,10 @@ export type SqlScanOperation<S> = (connection: SqlConnection, db: Database) => A
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
     private transactionCount = 0;
+    private transactionEffectStack: ResourceEffect[][] = [];
+    constructor(
+        public readonly effects: ResourceEffect[],
+    ) {}
     public async query(sql: string, params?: any[]): Promise<SqlResult> {
         if (sql === '') {
             return { rowCount: 0, rows: [] };
@@ -71,11 +76,13 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             ? `SAVEPOINT t${this.transactionCount};`
             : `BEGIN;`;
         this.transactionCount += 1;
+        this.transactionEffectStack.push([]);
         try {
             await this.query(query);
         } catch (error) {
             // Failed to begin a transaction
             this.transactionCount -= 1;
+            this.transactionEffectStack.pop();
             throw error;
         }
     }
@@ -84,27 +91,38 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             throw new Error('Not in a transaction. Cannot rollback');
         }
         this.transactionCount -= 1;
+        this.transactionEffectStack.pop();
         const query = this.transactionCount
             ? `ROLLBACK TO SAVEPOINT t${this.transactionCount};`
             : `ROLLBACK;`;
         await this.query(query);
     }
     public async commitTransaction(): Promise<void> {
+        const effectStack = this.transactionEffectStack;
         if (!this.transactionCount) {
             throw new Error('Not in a transaction. Cannot commit');
         }
         this.transactionCount -= 1;
+        const effects = effectStack.pop();
+        const topTransactionEffects = effectStack[effectStack.length - 1];
         const query = this.transactionCount
             ? `RELEASE SAVEPOINT t${this.transactionCount};`
             : `COMMIT;`;
         await this.query(query);
+        if (effects) {
+            if (topTransactionEffects) {
+                topTransactionEffects.push(...effects);
+            } else {
+                this.effects.push(...effects);
+            }
+        }
     }
     public abstract disconnect(error?: any): Promise<void>;
 }
 
 export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> implements SqlConnection {
-    constructor(protected client: Client) {
-        super();
+    constructor(protected client: Client, effects: ResourceEffect[]) {
+        super(effects);
     }
     public async disconnect(): Promise<void> {
         this.client.end();
@@ -112,8 +130,8 @@ export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> imple
 }
 
 export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClient> implements SqlConnection {
-    constructor(protected client: PoolClient) {
-        super();
+    constructor(protected client: PoolClient, effects: ResourceEffect[]) {
+        super(effects);
     }
     public async disconnect(error?: any): Promise<void> {
         this.client.release(error);
@@ -121,6 +139,7 @@ export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClien
 }
 
 export class RemotePostgreSqlConnection implements SqlConnection {
+    public readonly effects: ResourceEffect[] = [];
     private rdsDataApi?: RDSDataService = new RDSDataService({
         apiVersion: '2018-08-01',
         region: this.region,

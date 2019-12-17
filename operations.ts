@@ -16,6 +16,7 @@ export interface Operation<I, O, R> {
     route: Route<any, any>;
     userIdAttribute?: string;
     responseSerializer: Serializer | null;
+    endpoint: Endpoint<any, any, any, any>;
     getPayloadSerializer(method: HttpMethod): Serializer | null;
     /**
      * This method only works as a hint to TypeScript to correctly

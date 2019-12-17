@@ -24,6 +24,7 @@ export interface Resource<T, PK extends Key<T>, V extends Key<T>> extends FieldS
     readonly columns: {[key: string]: Field<any>};
     readonly nestings: Relations<T>;
     readonly joins: Join[];
+    readonly identifier: Serializer<Pick<T, PK>>;
     subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): Resource<Pick<T, K>, PK & K, V & K>;
     /**
      * Join resource with another with an inner join.
@@ -40,6 +41,8 @@ export interface Resource<T, PK extends Key<T>, V extends Key<T>> extends FieldS
 type PrimaryKey<R> = R extends Resource<any, infer PK, any> ? PK : never;
 
 class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSerializer<T> implements Resource<T, PK, V> {
+    public readonly identifier: Serializer<Pick<T, PK>>;
+
     /**
      * @param name The identifying name of this type of resource.
      * @param columns Attribute names with their field definitions of the resource.
@@ -55,6 +58,7 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
         public readonly joins: Join[],
     ) {
         super(buildFields(columns, nestings, joins));
+        this.identifier = this.pick(this.identifyBy);
     }
     public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V & K> {
         const { identifyBy } = this;

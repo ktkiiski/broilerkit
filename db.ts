@@ -1,3 +1,4 @@
+import { addEffect } from './effects';
 import { NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
 import { OrderedQuery, PageResponse, prepareForCursor } from './pagination';
@@ -36,8 +37,7 @@ export function retrieve<S, PK extends Key<S>, V extends Key<S>>(
         ? resource
             .pick([...identifyBy, ...versionBy])
             .partial(identifyBy)
-        : resource
-            .pick(identifyBy);
+        : resource.identifier;
     const filters = identitySerializer.validate(query);
     return async (connection, db) => {
         const select = selectQuery(resource, db.defaultsByTable, filters, 1);
@@ -152,6 +152,8 @@ export function create<S>(
             ? await withTransaction(connection, async () => {
                 const res = await executeQuery(connection, query);
                 if (res) {
+                    // Register the addition
+                    addEffect(connection, resource, res.item, null);
                     // Update aggregations
                     await executeAll(connection, db, aggregationQueries);
                 }
@@ -199,6 +201,8 @@ export function initiate<S>(
             ? await withTransaction(connection, async () => {
                 const res = await executeQuery(connection, query);
                 if (res) {
+                    // Register the addition
+                    addEffect(connection, resource, res.item, null);
                     // Update aggregations
                     await executeAll(connection, db, aggregationQueries);
                 }
@@ -280,6 +284,8 @@ export function update<S, PK extends Key<S>, V extends Key<S>>(
             const updates = await executeQuery(connection, query);
             for (const [newItem, oldItem] of updates) {
                 // Row was actually updated
+                // Register the update
+                addEffect(connection, resource, newItem, oldItem);
                 // Update aggregations
                 const aggregationQueries = db.getAggregationQueries(resource, newItem, oldItem);
                 await executeAll(connection, db, aggregationQueries);
@@ -320,6 +326,9 @@ export function upsert<S, PK extends Key<S>, V extends Key<S>>(
         const query = insertQuery(resource, db.defaultsByTable, insertValues, updateValues);
         const res = await connection.query(query.sql, query.params);
         const insertion = query.deserialize(res);
+        // Register the upsert
+        addEffect(connection, resource, insertion.item, null);
+        // TODO: Aggregation queries when already exists!!!!
         if (insertion.wasCreated) {
             // Row was actually inserted
             // Update aggregations
@@ -347,6 +356,8 @@ export function destroy<S, PK extends Key<S>, V extends Key<S>>(
             const item = await executeQuery(connection, query);
             if (item) {
                 // Row was actually deleted
+                // Register the deletion
+                addEffect(connection, resource, null, item);
                 // Update aggregations
                 const aggregationQueries = db.getAggregationQueries(resource, null, item);
                 await executeAll(connection, db, aggregationQueries);
