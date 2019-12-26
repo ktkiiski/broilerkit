@@ -99,6 +99,28 @@ function getRetryDelay(startTime: number, retryAfter?: string): number {
     return Math.floor(Math.random() * totalDuration);
 }
 
+/**
+ * Utility for performing an action and possibly retrying it.
+ * If the function throws an error, the given function is called
+ * to check whether to retry the action or to pass through the error.
+ * @param fn Function that will be executed as many times necessary
+ * @param shouldRetry Function that returns whether retry
+ */
+export async function retry<T>(fn: (retryCount: number) => Promise<T>, shouldRetry: (error: any, retryCount: number) => boolean): Promise<T> {
+    let retryCount = 0;
+    while (true) {
+        try {
+            return await fn(retryCount);
+        } catch (error) {
+            retryCount += 1;
+            if (!shouldRetry(error, retryCount)) {
+                // Pass the error through
+                throw error;
+            }
+        }
+    }
+}
+
 const conflictStatusCodes = [
     HttpStatus.PreconditionFailed,
     HttpStatus.Conflict,
@@ -111,21 +133,15 @@ const conflictStatusCodes = [
  * @param fn Function that performs a "transaction"
  */
 export async function retryOptimistically<T>(fn: (retryCount: number) => Promise<T>, statusCodes = conflictStatusCodes): Promise<T> {
-    let retryCount = 0;
-    while (true) {
-        try {
-            return await fn(retryCount);
-        } catch (error) {
-            if (isErrorResponse(error)) {
-                const { statusCode } = error;
-                if (statusCodes.indexOf(statusCode) >= 0) {
-                    // There was a conflict. Try again.
-                    retryCount += 1;
-                    continue;
-                }
+    return retry(fn, (error) => {
+        if (isErrorResponse(error)) {
+            const { statusCode } = error;
+            if (statusCodes.indexOf(statusCode) >= 0) {
+                // There was a conflict. Try again.
+                return true;
             }
-            // Pass the error through
-            throw error;
         }
-    }
+        // Pass the error through
+        return false;
+    });
 }

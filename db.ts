@@ -2,7 +2,7 @@ import { addEffect } from './effects';
 import { NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
 import { OrderedQuery, PageResponse, prepareForCursor } from './pagination';
-import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation, withTransaction } from './postgres';
+import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation } from './postgres';
 import { Resource } from './resources';
 import { nestedList } from './serializers';
 import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
@@ -149,7 +149,7 @@ export function create<S>(
         const query = insertQuery(resource, db.defaultsByTable, insertedValues);
         const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
         const result = aggregationQueries.length
-            ? await withTransaction(connection, async () => {
+            ? await connection.transaction(async () => {
                 const res = await executeQuery(connection, query);
                 if (res) {
                     // Register the addition
@@ -198,7 +198,7 @@ export function initiate<S>(
         const query = insertQuery(resource, db.defaultsByTable, insertedValues);
         const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
         const result = aggregationQueries.length
-            ? await withTransaction(connection, async () => {
+            ? await connection.transaction(async () => {
                 const res = await executeQuery(connection, query);
                 if (res) {
                     // Register the addition
@@ -279,7 +279,7 @@ export function update<S, PK extends Key<S>, V extends Key<S>>(
         ...updateSerializer.validate(staticChanges as PartialUpdate<S, V>),
     } as PartialUpdate<S, V>;
     return async (connection, db) => {
-        const [result] = await withTransaction(connection, async () => {
+        const [result] = await connection.transaction(async () => {
             const query = updateQuery(resource, filters, values, db.defaultsByTable, true);
             const updates = await executeQuery(connection, query);
             for (const [newItem, oldItem] of updates) {
@@ -321,7 +321,7 @@ export function upsert<S, PK extends Key<S>, V extends Key<S>>(
     const updateSerializer = resource.partial(resource.versionBy);
     const insertValues = resource.validate(creation);
     const updateValues = updateSerializer.validate(changes);
-    return (connection, db) => withTransaction(connection, async () => {
+    return (connection, db) => connection.transaction(async () => {
         const aggregationQueries = db.getAggregationQueries(resource, insertValues, null);
         const query = insertQuery(resource, db.defaultsByTable, insertValues, updateValues);
         const res = await connection.query(query.sql, query.params);
@@ -352,7 +352,7 @@ export function destroy<S, PK extends Key<S>, V extends Key<S>>(
     const filters = identitySerializer.validate(identity);
     return async (connection, db) => {
         const query = deleteQuery(resource, filters, db.defaultsByTable);
-        const result = await withTransaction(connection, async () => {
+        const result = await connection.transaction(async () => {
             const item = await executeQuery(connection, query);
             if (item) {
                 // Row was actually deleted

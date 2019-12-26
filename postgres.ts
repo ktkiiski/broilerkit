@@ -2,8 +2,10 @@ import { RDSDataService } from 'aws-sdk';
 import { Client, ClientBase, PoolClient } from 'pg';
 import { Table } from './db';
 import { EffectContext, ResourceEffect } from './effects';
+import { HttpStatus } from './http';
 import { scanCursor } from './postgres-cursor';
 import { Resource } from './resources';
+import { retry } from './retry';
 import { formatSql, Row, SqlQuery, SqlResult, TableDefaults } from './sql';
 import { isNotNully } from './utils/compare';
 
@@ -29,10 +31,8 @@ export interface SqlConnection extends EffectContext {
     query(sql: string, params?: any[]): Promise<SqlResult>;
     queryAll(queries: Array<{sql: string, params?: any[]}>): Promise<SqlResult[]>;
     scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk>;
-    beginTransaction(): Promise<void>;
-    rollbackTransaction(): Promise<void>;
-    commitTransaction(): Promise<void>;
     disconnect(error?: any): Promise<void>;
+    transaction<R>(callback: () => Promise<R>): Promise<R>;
 }
 
 export type SqlOperation<R> = (connection: SqlConnection, db: Database) => Promise<R>;
@@ -41,7 +41,7 @@ export type SqlScanOperation<S> = (connection: SqlConnection, db: Database) => A
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
     private transactionCount = 0;
-    private transactionEffectStack: ResourceEffect[][] = [];
+    private snapshotEffects: ResourceEffect[] = [];
     constructor(
         public readonly effects: ResourceEffect[],
     ) {}
@@ -71,53 +71,54 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             yield { rows, rowCount: rows.length, isComplete: rows.length < chunkSize };
         }
     }
-    public async beginTransaction(): Promise<void> {
-        const query = this.transactionCount
-            ? `SAVEPOINT t${this.transactionCount};`
-            : `BEGIN;`;
-        this.transactionCount += 1;
-        this.transactionEffectStack.push([]);
-        try {
-            await this.query(query);
-        } catch (error) {
-            // Failed to begin a transaction
-            this.transactionCount -= 1;
-            this.transactionEffectStack.pop();
-            throw error;
-        }
-    }
-    public async rollbackTransaction(): Promise<void> {
-        if (!this.transactionCount) {
-            throw new Error('Not in a transaction. Cannot rollback');
-        }
-        this.transactionCount -= 1;
-        this.transactionEffectStack.pop();
-        const query = this.transactionCount
-            ? `ROLLBACK TO SAVEPOINT t${this.transactionCount};`
-            : `ROLLBACK;`;
-        await this.query(query);
-    }
-    public async commitTransaction(): Promise<void> {
-        const effectStack = this.transactionEffectStack;
-        if (!this.transactionCount) {
-            throw new Error('Not in a transaction. Cannot commit');
-        }
-        this.transactionCount -= 1;
-        const effects = effectStack.pop();
-        const topTransactionEffects = effectStack[effectStack.length - 1];
-        const query = this.transactionCount
-            ? `RELEASE SAVEPOINT t${this.transactionCount};`
-            : `COMMIT;`;
-        await this.query(query);
-        if (effects) {
-            if (topTransactionEffects) {
-                topTransactionEffects.push(...effects);
-            } else {
-                this.effects.push(...effects);
-            }
-        }
-    }
     public abstract disconnect(error?: any): Promise<void>;
+    public async transaction<R>(callback: () => Promise<R>): Promise<R> {
+        this.transactionCount += 1;
+        try {
+            if (this.transactionCount === 1) {
+                // Begin a new transaction
+                return await this.newTransaction(callback);
+            } else {
+                // Already in a transaction
+                return await callback();
+            }
+        } finally {
+            this.transactionCount -= 1;
+        }
+    }
+    private async newTransaction<R>(callback: () => Promise<R>): Promise<R> {
+        // Serializable transactions must be retried on serialization errors
+        return await retry(async () => {
+            // Save the effects so far
+            this.snapshotEffects = this.effects.slice();
+            let result;
+            // Begin the transaction
+            await this.query(`BEGIN ISOLATION LEVEL SERIALIZABLE;`);
+            let needsRollback = true;
+            try {
+                // Perform the operations
+                result = await callback();
+                needsRollback = false;
+                // Commit the transaction
+                await this.query(`COMMIT;`);
+            } catch (error) {
+                // There was an error.
+                // Rollback the effects
+                this.effects.length = 0;
+                this.effects.push(...this.snapshotEffects);
+                // Rollback the transaction
+                if (needsRollback) {
+                    await this.query(`ROLLBACK;`);
+                }
+                // Pass through the error, possibly starting a retry
+                throw error;
+            }
+            return result;
+        }, (error) => (
+            // Retry the transaction on serialization and conflict errors
+            String(error.code) === '40001' || error.statusCode === HttpStatus.Conflict
+        ));
+    }
 }
 
 export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> implements SqlConnection {
@@ -201,13 +202,7 @@ export class RemotePostgreSqlConnection implements SqlConnection {
             yield { rows, rowCount: rows.length, isComplete: !allRows.length };
         }
     }
-    public beginTransaction(): never {
-        throw new Error('Transactions not implemented.');
-    }
-    public rollbackTransaction(): never {
-        throw new Error('Transactions not implemented.');
-    }
-    public commitTransaction(): never {
+    public transaction(): never {
         throw new Error('Transactions not implemented.');
     }
     public async disconnect(): Promise<void> {
@@ -296,7 +291,7 @@ export class DatabaseClient {
 
     private async withTransaction<R>(callback: (connection: SqlConnection) => Promise<R>): Promise<R> {
         return this.withConnection(async (connection) => (
-            withTransaction(connection, () => callback(connection))
+            connection.transaction(() => callback(connection))
         ));
     }
 
@@ -320,21 +315,6 @@ export async function executeQueries<R>(connection: SqlConnection, queries: Arra
         results.push(query.deserialize(result));
     }
     return results;
-}
-
-export async function withTransaction<R>(connection: SqlConnection, callback: () => Promise<R>): Promise<R> {
-    let result;
-    try {
-        await connection.beginTransaction();
-        result = await callback();
-    } catch (error) {
-        // Something went wrong. Rollback the transaction
-        await connection.rollbackTransaction();
-        throw error;
-    }
-    // Commit the transaction
-    await connection.commitTransaction();
-    return result;
 }
 
 function encodeDataApiFieldValue(value: unknown) {

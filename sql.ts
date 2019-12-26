@@ -131,7 +131,8 @@ export function updateQuery<S>(
     if (returnPrevious) {
         // Join the current state to the query in order to return the previous state
         const columnSql = keys(columns).map(ref).join(', ');
-        const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql} FOR UPDATE`;
+        // NOTE: As we assume SERIALIZABLE transactions, we don't need `FOR UPDATE`
+        const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql}`;
         const prevAlias = '_previous';
         const prevRef = ref(prevAlias);
         const joinConditions = identifyBy.map((pk) => (
@@ -1201,11 +1202,14 @@ const minorKeywords = [
     'EXISTS',
     'IF',
     'IS',
+    'ISOLATION',
+    'LEVEL',
     'NOT',
     'NOTNULL',
     'NULL',
     'RELEASE',
     'SAVEPOINT',
+    'SERIALIZABLE',
     'TO',
     'TRANSACTION',
 ];
