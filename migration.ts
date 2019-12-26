@@ -188,7 +188,7 @@ export async function migrate(ev: MigrationCFRRequest) {
             throw new Error(`Database table cannot be moved from database ${oldDatabase} to ${newDatabase}!`);
         }
     }
-    const client = new Client({
+    const config = {
         host: parameters.Host,
         database: parameters.Database,
         port: parameters.Port,
@@ -196,7 +196,8 @@ export async function migrate(ev: MigrationCFRRequest) {
         password,
         connectionTimeoutMillis: 30 * 1000,
         statement_timeout: 5 * 60 * 1000,
-    });
+    };
+    const client = new Client(config);
     await client.connect();
     try {
         if (operation === 'Create') {
