@@ -3,16 +3,9 @@ import { SecretsManager } from 'aws-sdk';
 import * as https from 'https';
 import { Client } from 'pg';
 import * as url from 'url';
+import { logSql } from './sql-log';
 
 type RequestType = 'Create' | 'Update' | 'Delete';
-
-let formatSql: (sql: string, params?: any[]) => string;
-try {
-    formatSql = require('./sql').formatSql;
-} catch {
-    // The module is not available on migration Lambda
-    formatSql = (x: string) => x;
-}
 
 interface TableColumn {
     name: string;
@@ -63,28 +56,20 @@ function getIndexName(index: TableIndex, tableName: string): string {
     return `idx_${tableName}_${index.keys.join('_')}`;
 }
 
-function logSql(sql: string) {
-    console.log(formatSql(sql));
-}
-
 export async function createTable(client: Client, state: TableState) {
     const pkColumns = state.primaryKeys;
     const tableName = state.name;
     const pkKeys = pkColumns.map((col) => escapeRef(col.name)).join(', ');
     const pkDefs = pkColumns.map((col) => `${escapeRef(col.name)} ${col.type} NOT NULL`).join(', ');
     const sql = `CREATE TABLE IF NOT EXISTS ${escapeRef(tableName)} (${pkDefs}, PRIMARY KEY (${pkKeys}));`;
-    logSql(sql);
-    await client.query(sql);
-    console.info(`Successfully created the table ${tableName}`);
+    await logSql(sql, [], () => client.query(sql));
     // Need to create the other columns of the table
     return updateTable(client, state, undefined);
 }
 export async function deleteTable(client: Client, state: TableState) {
     const tableName = state.name;
     const sql = `DROP TABLE IF EXISTS ${escapeRef(tableName)};`;
-    logSql(sql);
-    await client.query(sql);
-    console.info(`Successfully dropped the table ${tableName}`);
+    await logSql(sql, [], () => client.query(sql));
 }
 export async function updateTable(client: Client, state: TableState, oldState: TableState | undefined) {
     const tableName = state.name;
@@ -93,15 +78,11 @@ export async function updateTable(client: Client, state: TableState, oldState: T
     if (oldTableName && tableName !== oldTableName) {
         // Renamte the table
         const sql = `ALTER TABLE ${escapeRef(oldTableName)} RENAME TO ${escapeRef(tableName)};`;
-        logSql(sql);
-        await client.query(sql);
-        console.info(`Renamed the table ${oldTableName} as ${tableName}`);
+        await logSql(sql, [], () => client.query(sql));
     }
     for (const column of columns) {
         const sql = `ALTER TABLE ${escapeRef(tableName)} ADD COLUMN IF NOT EXISTS ${escapeRef(column.name)} ${column.type} NULL;`;
-        logSql(sql);
-        await client.query(sql);
-        console.info(`Upserted the column ${column.name} to table ${tableName}`);
+        await logSql(sql, [], () => client.query(sql));
     }
     // Create and delete indexes
     const newIndexes = state.indexes.map((index) => ({
@@ -115,17 +96,13 @@ export async function updateTable(client: Client, state: TableState, oldState: T
     for (const index of createdIndexes) {
         const colDefs = index.keys.map(escapeRef).join(', ');
         const sql = `CREATE INDEX CONCURRENTLY IF NOT EXISTS ${escapeRef(index.name)} ON ${escapeRef(tableName)} (${colDefs});`;
-        logSql(sql);
-        await client.query(sql);
-        console.info(`Successfully created the index ${index.name} on table ${tableName} for keys: ${colDefs}`);
+        await logSql(sql, [], () => client.query(sql));
     }
     // Delete each index that no longer exist
     const deletedIndexNames = oldIndexNames.filter((idxName) => !newIndexNames.includes(idxName));
     for (const indexName of deletedIndexNames) {
         const sql = `DROP INDEX CONCURRENTLY ${escapeRef(indexName)};`;
-        logSql(sql);
-        await client.query(sql);
-        console.info(`Successfully deleted the index ${indexName} from table ${tableName}`);
+        await logSql(sql, [], () => client.query(sql));
     }
 }
 

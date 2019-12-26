@@ -1,19 +1,12 @@
 import { ClientBase } from 'pg';
+import { logSql } from './sql-log';
 const Cursor = require('pg-cursor');
 
 export async function *scanCursor<S>(client: ClientBase, chunkSize: number, sql: string, values?: any[]) {
     const cursor = client.query(new Cursor(sql, values));
     try {
         while (true) {
-            const items = await new Promise<S[]>((resolve, reject) => {
-                cursor.read(chunkSize, (error: any, rows: S[]) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        resolve(rows);
-                    }
-                });
-            });
+            const items = await logSql(sql, values, () => readCursor<S>(cursor, chunkSize));
             if (items.length) {
                 yield items;
             }
@@ -32,4 +25,16 @@ export async function *scanCursor<S>(client: ClientBase, chunkSize: number, sql:
             });
         });
     }
+}
+
+function readCursor<S>(cursor: any, chunkSize: number) {
+    return new Promise<S[]>((resolve, reject) => {
+        cursor.read(chunkSize, (error: any, rows: S[]) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve(rows);
+            }
+        });
+    });
 }

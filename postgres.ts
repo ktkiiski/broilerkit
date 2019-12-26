@@ -6,16 +6,9 @@ import { HttpStatus } from './http';
 import { scanCursor } from './postgres-cursor';
 import { Resource } from './resources';
 import { retry } from './retry';
-import { formatSql, Row, SqlQuery, SqlResult, TableDefaults } from './sql';
+import { Row, SqlQuery, SqlResult, TableDefaults } from './sql';
+import { logSql } from './sql-log';
 import { isNotNully } from './utils/compare';
-
-const verboseLogging = !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
-
-function logSql(sql: string, params?: any[]) {
-    const msg = verboseLogging ? formatSql(sql, params) : sql;
-    // tslint:disable-next-line:no-console
-    console.debug(msg);
-}
 
 interface SqlScanChunk extends SqlResult {
     isComplete: boolean;
@@ -50,8 +43,7 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             return { rowCount: 0, rows: [] };
         }
         const { client } = this;
-        logSql(sql, params);
-        return client.query(sql, params);
+        return await logSql(sql, params, () => client.query(sql, params));
     }
     public async queryAll(queries: Array<{ sql: string; params?: any[]; }>): Promise<SqlResult[]> {
         // TODO: Could probably be optimized as a single ';' separated query string in some cases
@@ -66,7 +58,6 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             return;
         }
         const { client } = this;
-        logSql(sql, params);
         for await (const rows of scanCursor<Row>(client, chunkSize, sql, params)) {
             yield { rows, rowCount: rows.length, isComplete: rows.length < chunkSize };
         }
