@@ -1,5 +1,5 @@
 import { addEffect } from './effects';
-import { NotFound, PreconditionFailed } from './http';
+import { Conflict, NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
 import { OrderedQuery, PageResponse, prepareForCursor } from './pagination';
 import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation } from './postgres';
@@ -7,7 +7,7 @@ import { Resource } from './resources';
 import { nestedList } from './serializers';
 import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
 import { sort } from './utils/arrays';
-import { hasProperties, isNotNully } from './utils/compare';
+import { hasProperties, isEqual, isNotNully } from './utils/compare';
 import { FilteredKeys, Key, pickBy, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
@@ -321,20 +321,38 @@ export function upsert<S, PK extends Key<S>, V extends Key<S>>(
     const updateSerializer = resource.partial(resource.versionBy);
     const insertValues = resource.validate(creation);
     const updateValues = updateSerializer.validate(changes);
+    // TODO: Support version or remove versioning
+    const filters = resource.identifier.validate(creation);
     return (connection, db) => connection.transaction(async () => {
-        const aggregationQueries = db.getAggregationQueries(resource, insertValues, null);
-        const query = insertQuery(resource, db.defaultsByTable, insertValues, updateValues);
-        const res = await connection.query(query.sql, query.params);
-        const insertion = query.deserialize(res);
-        // Register the upsert
-        addEffect(connection, resource, insertion.item, null);
-        // TODO: Aggregation queries when already exists!!!!
-        if (insertion.wasCreated) {
-            // Row was actually inserted
-            // Update aggregations
-            await executeAll(connection, db, aggregationQueries);
+        const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable, true);
+        const updates = await executeQuery(connection, query1);
+        for (const [newItem, oldItem] of updates) {
+            // Row exists
+            if (!isEqual(newItem, oldItem, 1)) {
+                // Row was actually updated
+                // Register the update
+                addEffect(connection, resource, newItem, oldItem);
+                // Update aggregations
+                const updateAggregationQueries = db.getAggregationQueries(resource, newItem, oldItem);
+                await executeAll(connection, db, updateAggregationQueries);
+            }
+            return newItem;
         }
-        return insertion.item;
+        // Row does not exist. Create a new one
+        const query2 = insertQuery(resource, db.defaultsByTable, insertValues);
+        const insertion = await executeQuery(connection, query2);
+        if (!insertion) {
+            // Row already exists after all? This means a conflict.
+            // Rollback and retry the transaction
+            throw new Conflict(`Insert conflict on upsert`);
+        }
+        const { item } = insertion;
+        // Register the insertion
+        addEffect(connection, resource, item, null);
+        // Update aggregations
+        const insertAggregationQueries = db.getAggregationQueries(resource, item, null);
+        await executeAll(connection, db, insertAggregationQueries);
+        return item;
     });
 }
 
