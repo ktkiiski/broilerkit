@@ -251,29 +251,53 @@ abstract class BaseClient implements Client {
             for (const url of keys(this.collectionListeners)) {
                 const listeners = this.collectionListeners[url];
                 for (const { resource } of listeners) {
-                    // TODO: Support joins!
-                    if (resource.name === resourceName && !resource.joins.length) {
-                        // Apply state change to the collection
-                        const oldState = collectionsByUrl && collectionsByUrl[url];
-                        if (oldState) {
-                            let attributes;
-                            let identity;
-                            try {
-                                attributes = resource.decode(encodedResource);
-                                identity = resource.identifier.decode(attributes);
-                            } catch {
-                                // tslint:disable-next-line:no-console
-                                console.warn(`Failed to decode resource "${resourceName}" state for a collection side-effect`);
-                                continue;
-                            }
-                            // TODO: Support additions!
-                            const newState = applyChangeToCollection(
-                                oldState, { type: 'update', resourceIdentity: identity, resource: attributes, resourceName },
-                            );
-                            if (newState !== oldState) {
-                                collectionsByUrl[url] = newState;
-                                addToMapping(changedCollectionUrlsByName, resourceName, url);
-                            }
+                    if (resource.name !== resourceName) {
+                        // Not this resource
+                        continue;
+                    }
+                    // Apply state change to the collection
+                    const oldState = collectionsByUrl && collectionsByUrl[url];
+                    if (!oldState) {
+                        // Nothing to update
+                        continue;
+                    }
+                    let identity;
+                    try {
+                        identity = resource.identifier.decode(encodedResource);
+                    } catch (error) {
+                        // tslint:disable-next-line:no-console
+                        console.warn(`Failed to decode resource identity "${resourceName}" state for a collection side-effect`, error);
+                        continue;
+                    }
+                    if (!available) {
+                        // Remove the resource instance from collections
+                        const newState = applyChangeToCollection(
+                            oldState, { type: 'removal', resourceIdentity: identity, resourceName },
+                        );
+                        if (newState !== oldState) {
+                            collectionsByUrl[url] = newState;
+                            addToMapping(changedCollectionUrlsByName, resourceName, url);
+                        }
+                    } else if (!resource.joins.length) {
+                        // TODO: Support joins!
+                        let attributes;
+                        try {
+                            attributes = resource.decode(encodedResource);
+                        } catch {
+                            // TODO: Support nested resources!
+                            continue;
+                        }
+                        // NOTE: The 'addition' here also works for updates
+                        const newState = applyChangeToCollection(oldState, {
+                            type: 'addition',
+                            collectionUrl: url,
+                            resourceIdentity: identity,
+                            resource: attributes,
+                            resourceName,
+                        });
+                        if (newState !== oldState) {
+                            collectionsByUrl[url] = newState;
+                            addToMapping(changedCollectionUrlsByName, resourceName, url);
                         }
                     }
                     // TODO: Support joins!

@@ -167,7 +167,6 @@ extends BaseApi<DestroyOperation<S, U, any, B>> {
         const resourceName = resource.name;
         const removal: ResourceRemoval<S, U> = {
             type: 'removal',
-            resourceUrl: url.path,
             resourceName,
             resourceIdentity,
         };

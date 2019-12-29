@@ -20,7 +20,6 @@ export interface ResourceUpdate<T, K extends keyof T> {
 export interface ResourceRemoval<T, K extends keyof T> {
     type: 'removal';
     resourceName: string;
-    resourceUrl: string;
     resourceIdentity: Pick<T, K>;
 }
 
