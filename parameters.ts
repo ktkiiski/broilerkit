@@ -1,8 +1,6 @@
-import chalk from 'chalk';
+import { bold } from 'chalk';
 import { ParameterConfig } from './index';
 import { readAnswer } from './readline';
-
-const { bold } = chalk;
 
 interface ParameterConfigs {
     [param: string]: ParameterConfig;

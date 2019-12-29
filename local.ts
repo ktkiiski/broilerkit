@@ -1,3 +1,4 @@
+import { cyan, dim, green, red, yellow } from 'chalk';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { URL } from 'url';
@@ -18,9 +19,6 @@ import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
-
-import chalk from 'chalk';
-const { cyan, green, red, yellow } = chalk;
 
 const rawSessionEncryptionKey = {
     kty: 'oct',
@@ -200,8 +198,8 @@ function createServer<P extends any[]>(handler: (request: http.IncomingMessage, 
             const contentTypes = response.headers['Content-Type'];
             const contentType = Array.isArray(contentTypes) ? contentTypes[0] : contentTypes;
             const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
-            const textColor = isHtml ? chalk.cyan :
-                httpRequest.method === 'OPTIONS' ? chalk.dim :
+            const textColor = isHtml ? cyan :
+                httpRequest.method === 'OPTIONS' ? dim :
                 (x: string) => x // no color
             ;
             // tslint:disable-next-line:no-console

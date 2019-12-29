@@ -1,5 +1,5 @@
 #! /usr/bin/env node
-import chalk from 'chalk';
+import { red } from 'chalk';
 import * as childProcess from 'child_process';
 import * as path from 'path';
 import * as yargs from 'yargs';
@@ -13,7 +13,7 @@ import * as tsNode from 'ts-node';
 const onError = (error: Error) => {
     process.exitCode = 1;
     // tslint:disable-next-line:no-console
-    console.error(chalk.red(String(error.stack || error)));
+    console.error(red(String(error.stack || error)));
 };
 
 interface CommandOptions {

@@ -1,10 +1,8 @@
-import chalk from 'chalk';
+import { cyan, dim, magenta, red } from 'chalk';
 import { Resource } from './resources';
 import { Fields, Serializer } from './serializers';
 import { isNotNully, isNully } from './utils/compare';
 import { Key, keys } from './utils/objects';
-
-const { cyan, magenta, dim, red } = chalk;
 
 export interface SqlQuery<R> {
     sql: string;

@@ -8,7 +8,7 @@ export async function logSql<S>(sql: string, params: any[] | undefined, action: 
     let dim = noFormat;
     if (verboseLogging) {
         const sqlModule = await import('./sql');
-        const { default: chalk } = await import('chalk');
+        const chalk = await import('chalk');
         formatSql = sqlModule.formatSql;
         green = chalk.green;
         red = chalk.red;

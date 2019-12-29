@@ -1,6 +1,6 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, S3 } from 'aws-sdk';
-import chalk from 'chalk';
+import { bold, cyan, dim, green, red, underline, yellow } from 'chalk';
 import * as mime from 'mime';
 import * as path from 'path';
 import { Client, Pool } from 'pg';
@@ -41,8 +41,6 @@ import { forEachKey, toPairs } from './utils/objects';
 import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';
-
-const { red, bold, green, underline, yellow, cyan, dim } = chalk;
 
 export interface IFileUpload {
     file: File;
