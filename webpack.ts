@@ -343,6 +343,8 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
             async: false,
             // Do not log anything. Any failure will become visible anyway
             silent: true,
+            // Use faster incemental API
+            useTypescriptIncrementalApi: true,
             // Use the tsconfig.json in the project folder (not in this library)
             tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
             // Use the tslint.json in the project folder (not in this library)
