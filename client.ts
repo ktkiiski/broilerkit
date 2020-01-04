@@ -118,7 +118,13 @@ abstract class BaseClient implements Client {
         if (!state || !(state.isLoading || state.isLoaded)) {
             this.loadResource(url, op);
         }
-        return unsubscribe;
+        // Resource needs to be reloaded when becoming online
+        const onOnline = () => this.loadResource(url, op);
+        window.addEventListener('online', onOnline);
+        return () => {
+            window.removeEventListener('online', onOnline);
+            unsubscribe();
+        };
     }
 
     public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S> {
@@ -147,7 +153,13 @@ abstract class BaseClient implements Client {
             // This needs to be after registering the listener.
             this.loadCollection(url, op, input);
         }
-        return unsubscribe;
+        // Collection needs to be reloaded when becoming online
+        const onOnline = () => this.loadCollection(url, op, input);
+        window.addEventListener('online', onOnline);
+        return () => {
+            window.removeEventListener('online', onOnline);
+            unsubscribe();
+        };
     }
 
     public registerOptimisticChange(change: ResourceChange<any, any>): () => void {
