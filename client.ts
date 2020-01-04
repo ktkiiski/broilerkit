@@ -1,4 +1,5 @@
 import { ajax } from './ajax';
+import { wait } from './async';
 import { AuthClient, DummyAuthClient } from './auth';
 import { ResourceChange } from './collections';
 import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
@@ -35,6 +36,7 @@ export interface Client {
     subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>, minCount: number, listener: (collection: CollectionState) => void): () => void;
     registerOptimisticChange(change: ResourceChange<any, any>): () => void;
     commitChange(change: ResourceChange<any, any>): void;
+    refreshAll(): Promise<void>;
     generateUniqueId(): number;
 }
 
@@ -59,11 +61,16 @@ export interface CollectionState<S = any> {
 
 interface CollectionListener {
     resource: Resource<any, any, any>;
+    url: Url;
+    op: ListOperation<any, any, any, any, any, any>;
+    input: Cursor<any, any, any, any>;
     callback: (collection: CollectionState) => void;
     minCount: number;
 }
 
 interface ResourceListener {
+    url: Url;
+    op: RetrieveOperation<any, any, any, any>;
     resource: Resource<any, any, any>;
     callback: (resource: ResourceState) => void;
 }
@@ -79,6 +86,8 @@ const doNothing = () => { /* Does nothing */ };
 abstract class BaseClient implements Client {
     protected resourceListeners: ListMapping<ResourceListener> = {};
     protected collectionListeners: ListMapping<CollectionListener> = {};
+    private pendingLoads = new Set<string>();
+    private runningLoads = new Map<string, Promise<any>>();
     private optimisticChanges: Array<ResourceChange<any, any>> = [];
     private uniqueIdCounter = 0;
 
@@ -99,12 +108,16 @@ abstract class BaseClient implements Client {
         if (!url) {
             return doNothing;
         }
-        const unsubscribe = addToMapping(this.resourceListeners, url.toString(), {
-            callback,
-            resource: op.endpoint.resource,
+        const resourceUrl = url.toString();
+        const { resource } = op.endpoint;
+        const unsubscribe = addToMapping(this.resourceListeners, resourceUrl, {
+            url, op, callback, resource,
         });
-        // Ensure that the resource is being loaded
-        this.loadResource(url, op);
+        // If the resource has not yet been loaded, then ensure that it will be
+        const state = this.getRealResourceState(resource.name, resourceUrl);
+        if (!state || !(state.isLoading || state.isLoaded)) {
+            this.loadResource(url, op);
+        }
         return unsubscribe;
     }
 
@@ -120,14 +133,20 @@ abstract class BaseClient implements Client {
         if (!url) {
             return doNothing;
         }
-        const unsubscribe = addToMapping(this.collectionListeners, url.toString(), {
-            callback,
-            minCount,
+        const collectionUrl = url.toString();
+        const { resource } = op.endpoint;
+        const unsubscribe = addToMapping(this.collectionListeners, collectionUrl, {
+            op, url, input,
+            callback, minCount,
             resource: op.endpoint.resource,
         });
-        // Ensure that the collection is being loaded.
-        // This needs to be after registering the listener.
-        this.loadCollection(url, op, input);
+        // If the collection has not yet been loaded, then ensure that it will be
+        const state = this.getRealCollectionState(resource.name, collectionUrl);
+        if (!state || !(state.isLoading || state.isLoaded)) {
+            // Ensure that the collection is being loaded.
+            // This needs to be after registering the listener.
+            this.loadCollection(url, op, input);
+        }
         return unsubscribe;
     }
 
@@ -185,6 +204,22 @@ abstract class BaseClient implements Client {
 
     public generateUniqueId(): number {
         return (this.uniqueIdCounter += 1);
+    }
+
+    public async refreshAll(): Promise<void> {
+        const { resourceListeners, collectionListeners } = this;
+        const promises: Array<Promise<void>> = [];
+        Object.keys(resourceListeners).forEach((resourceUrl) => {
+            for (const { url, op } of resourceListeners[resourceUrl]) {
+                promises.push(this.loadResource(url, op));
+            }
+        });
+        Object.keys(collectionListeners).forEach((collectionUrl) => {
+            for (const { url, op, input } of collectionListeners[collectionUrl]) {
+                promises.push(this.loadCollection(url, op, input));
+            }
+        });
+        await Promise.all(promises.map((promise) => promise.catch(doNothing)));
     }
 
     public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
@@ -450,9 +485,12 @@ abstract class BaseClient implements Client {
             }];
         }
     }
-    private getResourceState(resourceName: string, url: string): ResourceState | null {
+    private getRealResourceState(resourceName: string, url: string): ResourceState | null {
         const resourcesByUrl = this.resourceCache[resourceName];
-        const state = resourcesByUrl && resourcesByUrl[url];
+        return (resourcesByUrl && resourcesByUrl[url]) || null;
+    }
+    private getResourceState(resourceName: string, url: string): ResourceState | null {
+        const state = this.getRealResourceState(resourceName, url);
         if (!state) {
             return null;
         }
@@ -464,10 +502,12 @@ abstract class BaseClient implements Client {
             )
         ;
     }
-
-    private getCollectionState(resourceName: string, url: string): CollectionState | null {
+    private getRealCollectionState(resourceName: string, url: string): CollectionState | null {
         const collectionsByUrl = this.collectionCache[resourceName];
-        const state = collectionsByUrl && collectionsByUrl[url];
+        return (collectionsByUrl && collectionsByUrl[url]) || null;
+    }
+    private getCollectionState(resourceName: string, url: string): CollectionState | null {
+        const state = this.getRealCollectionState(resourceName, url);
         if (!state) {
             return null;
         }
@@ -480,14 +520,54 @@ abstract class BaseClient implements Client {
         ;
     }
 
-    private async loadResource<S, U extends Key<S>>(url: Url, op: RetrieveOperation<S, U, any, any>) {
+    private async loadResource<S, U extends Key<S>>(url: Url, op: RetrieveOperation<S, U, any, any>): Promise<void> {
+        return this.requestLoad(url.toString(), () => this.requestResource(url, op));
+    }
+
+    private async loadCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(url: Url, op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): Promise<void> {
+        return this.requestLoad(url.toString(), () => this.requestCollection(url, op, input));
+    }
+
+    private async requestLoad<S>(url: string, startRequest: () => Promise<S>): Promise<S> {
+        const { runningLoads, pendingLoads } = this;
+        // Is already loading?
+        const load = runningLoads.get(url);
+        if (!load) {
+            // Not yet loading. Mark pending
+            pendingLoads.add(url);
+            // Start loading
+            const newLoad = startRequest().finally(() => {
+                if (runningLoads.get(url) === newLoad) {
+                    runningLoads.delete(url);
+                }
+            });
+            runningLoads.set(url, newLoad);
+            return newLoad;
+        }
+        // If pending, then we can use the existing load as-is
+        if (pendingLoads.has(url)) {
+            return load;
+        }
+        // A reload is required after the on-going request is completed
+        pendingLoads.add(url);
+        const reload = load
+            .then(() => startRequest())
+            .finally(() => {
+                if (runningLoads.get(url) === reload) {
+                    runningLoads.delete(url);
+                }
+            });
+        runningLoads.set(url, reload);
+        return reload;
+    }
+
+    private async requestResource<S, U extends Key<S>>(url: Url, op: RetrieveOperation<S, U, any, any>): Promise<void> {
         const resourceName = op.endpoint.resource.name;
-        const resourcesByUrl = this.resourceCache[resourceName];
         const resourceUrl = url.toString();
-        const currentState = resourcesByUrl && resourcesByUrl[resourceUrl] as ResourceState<S> | undefined;
-        if (currentState && (currentState.isLoading || currentState.isLoaded)) {
-            // Already loading or loaded
-            return;
+        const currentState = this.getRealResourceState(resourceName, resourceUrl);
+        if (currentState && currentState.isLoading) {
+            // tslint:disable-next-line:no-console
+            console.warn(`Started loading resource while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
         let state: ResourceState<S> = {
@@ -499,6 +579,12 @@ abstract class BaseClient implements Client {
         };
         this.setResourceState(resourceName, resourceUrl, state);
         try {
+            // A short debounce to ensure that rapid set of load attempts will result
+            // in only one load, without triggering unnecessary reload
+            await wait();
+            // Reset that the resource load is not pending any more
+            this.pendingLoads.delete(resourceUrl);
+            // Start actual loading
             const token = await this.getToken(op.authType);
             const response = await this.request(url, 'GET', null, token);
             const resource = op.responseSerializer.deserialize(response.data);
@@ -515,15 +601,15 @@ abstract class BaseClient implements Client {
         }
     }
 
-    private async loadCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(url: Url, op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>) {
+    private async requestCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(url: Url, op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>) {
         const { direction, ordering, since, ...filters } = input;
-        const resourceName = op.endpoint.resource.name;
-        const collectionsByUrl = this.collectionCache[resourceName] || {};
+        const { resource } = op.endpoint;
+        const resourceName = resource.name;
         const collectionUrl = url.toString();
-        const currentState = collectionsByUrl[collectionUrl] as CollectionState<S> | undefined;
-        if (currentState && (currentState.isLoading || currentState.isLoaded)) {
-            // Already loading or loaded
-            return;
+        const currentState = this.getRealCollectionState(resourceName, collectionUrl);
+        if (currentState && currentState.isLoading) {
+            // tslint:disable-next-line:no-console
+            console.warn(`Started loading collection while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
         let loadedResources: S[] = [];
@@ -541,6 +627,12 @@ abstract class BaseClient implements Client {
         };
         this.setCollectionState(resourceName, collectionUrl, state);
         try {
+            // A short debounce to ensure that rapid set of load attempts will result
+            // in only one load, without triggering unnecessary reload
+            await wait();
+            // Reset that the resource load is not pending any more
+            this.pendingLoads.delete(collectionUrl);
+            // Start actual loading
             let nextUrl: Url | null = url;
             while (nextUrl) {
                 // Ensure that there are listeners
@@ -553,8 +645,7 @@ abstract class BaseClient implements Client {
                 const response = await this.request(nextUrl, 'GET', null, token);
                 const {next, results} = op.responseSerializer.deserialize(response.data);
                 // Add loaded results to the resources
-                // TODO: Prevent duplicates!!!
-                loadedResources = loadedResources.concat(results);
+                loadedResources = addResourcesToCollection(loadedResources, results, resource);
                 state = {
                     ...state,
                     error: null,
@@ -665,6 +756,19 @@ export class DummyClient extends BaseClient implements Client {
 
 export interface Bindable<T> {
     bind(client: Client): T;
+}
+
+function addResourcesToCollection<T>(collection: T[], items: T[], resource: Resource<T, any, any>): T[] {
+    if (!items.length) {
+        return collection;
+    }
+    const { identifyBy } = resource;
+    const results: T[] = collection.filter((existing) => {
+        const identity = pick(existing, identifyBy);
+        return !items.some((item) => hasProperties(item, identity));
+    });
+    results.push(...items);
+    return results;
 }
 
 function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChange<any, any>): ResourceState<T> {
