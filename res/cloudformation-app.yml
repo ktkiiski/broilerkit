@@ -253,7 +253,7 @@ Resources:
       MemorySize: 1024
       Role:
         Fn::GetAtt: LambdaExecutionIamRole.Arn
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 300  # = 5 minutes
     DependsOn:
     - ServerLambdaFunctionLogGroup

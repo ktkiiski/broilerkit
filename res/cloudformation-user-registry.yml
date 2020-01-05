@@ -250,7 +250,7 @@ Resources:
         Fn::GetAtt: LambdaExecutionIamRole.Arn
       Code:
         ZipFile: !Include "./lambda-user-pre-token-generation.js"
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 3
 
   # Grant the permission for the AWS Cognito to execute the Lambda trigger function
@@ -275,7 +275,7 @@ Resources:
         Fn::GetAtt: LambdaExecutionIamRole.Arn
       Code:
         ZipFile: !Include "./lambda-user-pre-signup.js"
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 30
       Environment:
         Variables:

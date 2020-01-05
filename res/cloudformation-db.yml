@@ -29,7 +29,7 @@ Resources:
           Ref: DatabaseTableMigrationDeploymentPackageS3Key
       FunctionName:
         Fn::Sub: "${AWS::StackName}-db-table-migration"
-      Runtime: nodejs10.x
+      Runtime: nodejs12.x
       Timeout: 900  # = 15 minutes
       VpcConfig:
         SecurityGroupIds:
