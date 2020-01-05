@@ -2,13 +2,8 @@ import { iterate } from './iteration';
 import { compare } from './utils/compare';
 
 export function wait(ms?: number): Promise<void> {
-    if (ms == null) {
-        return new Promise((resolve) => {
-            setImmediate(resolve);
-        });
-    }
     return new Promise((resolve) => {
-        setTimeout(resolve, ms);
+        setTimeout(resolve, ms ?? 0);
     });
 }
 
