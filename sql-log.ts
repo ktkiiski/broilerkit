@@ -1,18 +1,13 @@
+import { dim, green, red } from './palette';
+
 const verboseLogging = !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
 const noFormat = (x: string, ..._: any[]) => x;
 
 export async function logSql<S>(sql: string, params: any[] | undefined, action: () => Promise<S>): Promise<S> {
     let formatSql = noFormat;
-    let green = noFormat;
-    let red = noFormat;
-    let dim = noFormat;
     if (verboseLogging) {
         const sqlModule = await import('./sql');
-        const chalk = await import('chalk');
         formatSql = sqlModule.formatSql;
-        green = chalk.green;
-        red = chalk.red;
-        dim = chalk.dim;
     }
     const formattedSql = formatSql(sql, params);
     const startTime = new Date().getTime();

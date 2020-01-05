@@ -1,11 +1,11 @@
 #! /usr/bin/env node
-import { red } from 'chalk';
 import * as childProcess from 'child_process';
 import * as path from 'path';
 import * as yargs from 'yargs';
 import { Broiler } from './broiler';
 import { escapeForShell } from './exec';
 import { App } from './index';
+import { red } from './palette';
 
 // Allow executing TypeScript (.ts) files
 import * as tsNode from 'ts-node';

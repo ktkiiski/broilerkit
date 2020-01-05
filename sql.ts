@@ -1,4 +1,4 @@
-import { cyan, dim, magenta, red } from 'chalk';
+import { cyan, dim, magenta, red } from './palette';
 import { Resource } from './resources';
 import { Fields, Serializer } from './serializers';
 import { isNotNully, isNully } from './utils/compare';

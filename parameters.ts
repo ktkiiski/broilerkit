@@ -1,5 +1,5 @@
-import { bold } from 'chalk';
 import { ParameterConfig } from './index';
+import { bold } from './palette';
 import { readAnswer } from './readline';
 
 interface ParameterConfigs {

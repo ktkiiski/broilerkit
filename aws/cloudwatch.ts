@@ -1,6 +1,6 @@
 import { CloudWatchLogs } from 'aws-sdk';
-import { cyan, dim, red } from 'chalk';
 import { mergeAsync, toArray, wait } from '../async';
+import { cyan, dim, red } from '../palette';
 import { indent, stripPrefix } from '../utils/strings';
 import { retrievePages } from './utils';
 

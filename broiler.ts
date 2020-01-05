@@ -1,6 +1,5 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, S3 } from 'aws-sdk';
-import { bold, cyan, dim, green, red, underline, yellow } from 'chalk';
 import * as mime from 'mime';
 import * as path from 'path';
 import { Client, Pool } from 'pg';
@@ -27,6 +26,7 @@ import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
 import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from './oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from './oauth';
+import { bold, cyan, dim, green, red, underline, yellow } from './palette';
 import { askParameters } from './parameters';
 import { Database, DatabaseClient, PostgreSqlConnection, RemotePostgreSqlConnection, SqlConnection } from './postgres';
 import { readAnswer } from './readline';

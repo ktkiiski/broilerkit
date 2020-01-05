@@ -1,4 +1,3 @@
-import { cyan, dim, green, red, yellow } from 'chalk';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { URL } from 'url';
@@ -9,6 +8,7 @@ import { readFile, readStream } from './fs';
 import { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
 import { middleware, requestMiddleware } from './middleware';
 import { authenticationMiddleware } from './oauth';
+import { cyan, dim, green, red, yellow } from './palette';
 import { Database } from './postgres';
 import { ApiService, ServerContext } from './server';
 import { transformValues } from './utils/objects';
