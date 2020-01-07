@@ -1,14 +1,14 @@
 import { ajax } from './ajax';
 import { wait } from './async';
 import { AuthClient, DummyAuthClient } from './auth';
-import { ResourceChange } from './collections';
+import { ResourceAddition, ResourceChange, ResourceRemoval } from './collections';
 import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
 import { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import { Cursor } from './pagination';
 import { Resource } from './resources';
 import { parseUrl, Url } from './url';
 import { getOrderedIndex } from './utils/arrays';
-import { hasProperties } from './utils/compare';
+import { hasProperties, isEqual } from './utils/compare';
 import { Key, keys, pick } from './utils/objects';
 import { stripPrefix } from './utils/strings';
 
@@ -204,7 +204,10 @@ abstract class BaseClient implements Client {
             for (const url of Object.keys(collectionsByUrl)) {
                 const oldState = collectionsByUrl[url];
                 const newState = applyChangeToCollection(oldState, change);
-                if (newState !== oldState) {
+                if (newState == null) {
+                    // Re-load required
+                    this.loadCollectionByUrl(url);
+                } else if (newState !== oldState) {
                     collectionsByUrl[url] = newState;
                     changedCollectionUrls.push(url);
                 }
@@ -244,39 +247,49 @@ abstract class BaseClient implements Client {
         const changedCollectionUrlsByName: ListMapping<string> = {};
         // Apply states to resource states
         for (const { resourceName, encodedResource, available } of states) {
+            if (!available) {
+                // Single resources do not support "removal"
+                continue;
+            }
             const resourcesByUrl = this.resourceCache[resourceName];
             if (!resourcesByUrl) {
                 // Nothing related to this resource
                 continue;
             }
-            if (!available) {
-                // Single resources do not support "removal"
-                continue;
-            }
             for (const url of keys(this.resourceListeners)) {
                 const listeners = this.resourceListeners[url];
-                for (const { resource } of listeners) {
+                for (const listener of listeners) {
+                    const { resource } = listener;
                     // TODO: Support joins!
                     if (resource.name === resourceName && !resource.joins.length) {
                         // Apply state change to the resource
                         const oldState = resourcesByUrl && resourcesByUrl[url];
                         if (oldState && oldState.resource) {
-                            let attributes;
-                            let identity;
+                            let attributes: any;
+                            let identity: any;
                             try {
-                                attributes = resource.decode(encodedResource);
-                                identity = resource.identifier.decode(attributes);
+                                identity = resource.identifier.decode(encodedResource);
+                                attributes = resource
+                                    .omit(resource.identifyBy)
+                                    .fullPartial()
+                                    .decode(encodedResource);
                             } catch {
                                 // tslint:disable-next-line:no-console
                                 console.warn(`Failed to decode resource "${resourceName}" state for a resource side-effect`);
                                 continue;
                             }
-                            const newState = applyChangeToResource(
-                                oldState, { type: 'update', resourceName, resourceIdentity: identity, resource: attributes },
-                            );
-                            if (newState !== oldState) {
-                                resourcesByUrl[url] = newState;
-                                addToMapping(changedResourceUrlsByName, resourceName, url);
+                            // If there are any changes to properties that are used for nested resources,
+                            // then the resource needs to be reloaded
+                            if (hasRelationReferenceChanges(attributes, resource)) {
+                                this.loadResource(listener.url, listener.op);
+                            } else {
+                                const newState = applyChangeToResource(
+                                    oldState, { type: 'update', resourceName, resourceIdentity: identity, resource: attributes },
+                                );
+                                if (newState !== oldState) {
+                                    resourcesByUrl[url] = newState;
+                                    addToMapping(changedResourceUrlsByName, resourceName, url);
+                                }
                             }
                         }
                     }
@@ -297,7 +310,8 @@ abstract class BaseClient implements Client {
             }
             for (const url of keys(this.collectionListeners)) {
                 const listeners = this.collectionListeners[url];
-                for (const { resource } of listeners) {
+                for (const listener of listeners) {
+                    const { resource } = listener;
                     if (resource.name !== resourceName) {
                         // Not this resource
                         continue;
@@ -327,24 +341,44 @@ abstract class BaseClient implements Client {
                         }
                     } else if (!resource.joins.length) {
                         // TODO: Support joins!
-                        let attributes;
+                        let attributes: any;
+                        let action: 'addition' | 'update';
                         try {
                             attributes = resource.decode(encodedResource);
+                            action = 'addition';
                         } catch {
-                            // TODO: Support nested resources!
-                            continue;
+                            // Is not a full resource?
+                            // Is it a partial?
+                            try {
+                                attributes = resource
+                                    .omit(resource.identifyBy)
+                                    .fullPartial()
+                                    .decode(encodedResource);
+                            } catch {
+                                // Not valid at all
+                                continue;
+                            }
+                            action = 'update';
                         }
-                        // NOTE: The 'addition' here also works for updates
-                        const newState = applyChangeToCollection(oldState, {
-                            type: 'addition',
-                            collectionUrl: url,
-                            resourceIdentity: identity,
-                            resource: attributes,
-                            resourceName,
-                        });
-                        if (newState !== oldState) {
-                            collectionsByUrl[url] = newState;
-                            addToMapping(changedCollectionUrlsByName, resourceName, url);
+                        // If there are any changes to properties that refer to nested resources,
+                        // then the collection needs to be reloaded
+                        if (hasRelationReferenceChanges(attributes, resource)) {
+                            this.loadCollection(listener.url, listener.op, listener.input);
+                        } else {
+                            const newState = applyChangeToCollection(oldState, {
+                                type: action,
+                                collectionUrl: url,
+                                resourceIdentity: identity,
+                                resource: attributes,
+                                resourceName,
+                            });
+                            if (newState == null) {
+                                // Re-load is required
+                                this.loadCollection(listener.url, listener.op, listener.input);
+                            } else if (newState !== oldState) {
+                                collectionsByUrl[url] = newState;
+                                addToMapping(changedCollectionUrlsByName, resourceName, url);
+                            }
                         }
                     }
                     // TODO: Support joins!
@@ -527,9 +561,19 @@ abstract class BaseClient implements Client {
         return this.optimisticChanges
             .filter((change) => change.resourceName === resourceName)
             .reduce(
-                (result, change) => applyChangeToCollection(result, change), state,
+                (result, change) => applyChangeToCollection(result, change) || result, state,
             )
         ;
+    }
+
+    private async loadCollectionByUrl(url: string): Promise<void> {
+        const listeners = this.collectionListeners[url];
+        if (listeners) {
+            for (const listener of listeners) {
+                await this.loadCollection(listener.url, listener.op, listener.input);
+                break;
+            }
+        }
     }
 
     private async loadResource<S, U extends Key<S>>(url: Url, op: RetrieveOperation<S, U, any, any>): Promise<void> {
@@ -795,7 +839,9 @@ function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChang
     };
 }
 
-function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> {
+function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceAddition<any, any> | ResourceRemoval<any, any>): CollectionState<T>;
+function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> | null;
+function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> | null {
     const isChangedResource = (item: any) => hasProperties(item, change.resourceIdentity, 0);
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
@@ -824,10 +870,11 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         }
     } else if (change.type === 'update') {
         // Apply the update to the matching resource
+        const { filters } = state;
         const resources = iMapFilter(state.resources, (resource) => {
             if (isChangedResource(resource)) {
                 const updatedState = { ...resource, ...change.resource };
-                if (hasProperties(updatedState, state.filters)) {
+                if (hasProperties(updatedState, filters)) {
                     return updatedState;
                 }
                 // Resource no more matches the filters!
@@ -840,8 +887,38 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         if (state.resources !== resources) {
             return { ...state, resources };
         }
+        // If the resource was not found from the collection,
+        // and the update indicates that the resource would start matching
+        // the filters, then we need to reload the collection.
+        const filterKeys = Object.keys(filters);
+        const update = change.resource;
+        const hasMatchingFilterProp = filterKeys.some((key) => (
+            typeof update[key] !== 'undefined' && isEqual(update[key], filters[key as keyof T])
+        ));
+        const hasUnmatchingFilterProp = filterKeys.some((key) => (
+            typeof update[key] !== 'undefined' && !isEqual(update[key], filters[key as keyof T])
+        ));
+        if (hasMatchingFilterProp && !hasUnmatchingFilterProp) {
+            // The updated resource COULD match these filters, so the resource COULD
+            // have become a member of this collection. Must reload.
+            return null; // means "unknown" => "reload required"
+        }
     }
     return state;
+}
+
+function hasRelationReferenceChanges(attributes: any, resource: Resource<any, any, any>): boolean {
+    for (const nestingKey of Object.keys(resource.nestings)) {
+        if (typeof attributes[nestingKey] === 'undefined') {
+            const nesting = resource.nestings[nestingKey];
+            for (const relationProp of Object.values(nesting.on)) {
+                if (typeof attributes[relationProp] !== 'undefined') {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 function without<T>(array: T[], cb: (value: T) => boolean) {

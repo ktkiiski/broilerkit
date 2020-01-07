@@ -1,4 +1,5 @@
 import {__assign, __rest} from 'tslib';
+import { isEqual } from './compare';
 
 export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<T>;
 export type Require<T, K extends keyof T> = Pick<T, K> & Partial<T>;
@@ -191,6 +192,25 @@ export function omitUndefined<T>(obj: T): ExcludedValues<T, undefined> {
  */
 export function omit<T, K extends Key<T>>(obj: T, props: K[]): Omit<T, K> {
     return __rest(obj, props as string[]);
+}
+
+/**
+ * Determines which properties at the 2nd parameter has
+ * different values than the 1st parameter, and returns an
+ * object with those properties.
+ * @param oldObj the old state of an object
+ * @param newObj the new state of an object
+ */
+export function getObjectChanges<T>(oldObj: {[key: string]: T}, newObj: {[key: string]: T}, depth?: number): {[key: string]: T};
+export function getObjectChanges<T>(oldObj: T, newObj: T, depth?: number): Partial<T>;
+export function getObjectChanges<T>(oldObj: T, newObj: T, depth?: number): Partial<T> {
+    const result: Partial<T> = {};
+    forEachProperty(newObj, (key, value) => {
+        if (!isEqual(value, oldObj[key], depth)) {
+            result[key] = value;
+        }
+    });
+    return result;
 }
 
 export function hasOwnStringProperty<T>(obj: T, propName: string | number | symbol): propName is Key<T> {
