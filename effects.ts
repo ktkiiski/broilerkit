@@ -35,11 +35,11 @@ export function getEffectHeaders(effects: ResourceEffect[], operations: Array<Op
         if (newState && oldState) {
             // Resource is and was "visible" for the user
             // Only send the difference (and identifying keys)
-            const stateDiff = {
-                ...getObjectChanges(oldState, newState, 0),
-                ...pick(newState, identifyBy),
-            };
-            headers.push(`${name}?${buildQuery(stateDiff)}`);
+            const objectDelta = getObjectChanges(oldState, newState, 0);
+            if (Object.keys(objectDelta).length > 0) {
+                const stateDiff = { ...objectDelta, ...pick(newState, identifyBy) };
+                headers.push(`${name}?${buildQuery(stateDiff)}`);
+            }
         } else if (newState) {
             // Resource become "visible" for the user
             headers.push(`${name}?${buildQuery(newState)}`);

@@ -45,7 +45,6 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         const resourceName = resource.name;
         this.client.commitChange({
             type: 'addition',
-            collectionUrl: url.path,
             resourceName,
             resource: item,
             resourceIdentity,
@@ -65,7 +64,6 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
         const resourceName = resource.name;
         const addition: ResourceAddition<S, any> = {
             type: 'addition',
-            collectionUrl: url.path,
             resource: input,
             resourceName,
             resourceIdentity,
@@ -75,7 +73,6 @@ extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
             const responseResource = await resource$;
             client.commitChange({
                 type: 'addition',
-                collectionUrl: url.path,
                 resource: responseResource,
                 resourceName,
                 resourceIdentity,
@@ -211,7 +208,6 @@ extends BaseApi<UploadOperation<S, F, U, R, O, D, any, B>> {
         const resourceName = resource.name;
         this.client.commitChange({
             type: 'addition',
-            collectionUrl: url.path,
             resourceName,
             resource: item,
             resourceIdentity,

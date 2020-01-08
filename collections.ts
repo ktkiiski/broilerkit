@@ -4,7 +4,6 @@ import { hasOwnProperty } from './utils/objects';
 
 export interface ResourceAddition<T, K extends keyof T> {
     type: 'addition';
-    collectionUrl: string;
     resourceName: string;
     resourceIdentity: Pick<T, K>;
     resource: T;

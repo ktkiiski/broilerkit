@@ -7,9 +7,9 @@ import { AuthenticationType, ListOperation, RetrieveOperation } from './operatio
 import { Cursor } from './pagination';
 import { Resource } from './resources';
 import { parseUrl, Url } from './url';
-import { getOrderedIndex } from './utils/arrays';
+import { difference, getOrderedIndex } from './utils/arrays';
 import { hasProperties, isEqual } from './utils/compare';
-import { Key, keys, pick } from './utils/objects';
+import { forEachKey, Key, keys, pick } from './utils/objects';
 import { stripPrefix } from './utils/strings';
 
 export interface Retrieval<S = any, U extends Key<S> = any> {
@@ -239,150 +239,59 @@ abstract class BaseClient implements Client {
 
     public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
 
-    protected applyResourceStates(states: StateEffect[]) {
-        if (!states.length) {
+    protected applyStateEffects(effects: StateEffect[]) {
+        if (!effects.length) {
             return;
         }
         const changedResourceUrlsByName: ListMapping<string> = {};
         const changedCollectionUrlsByName: ListMapping<string> = {};
         // Apply states to resource states
-        for (const { resourceName, encodedResource, available } of states) {
-            if (!available) {
-                // Single resources do not support "removal"
-                continue;
-            }
-            const resourcesByUrl = this.resourceCache[resourceName];
-            if (!resourcesByUrl) {
-                // Nothing related to this resource
-                continue;
-            }
-            for (const url of keys(this.resourceListeners)) {
-                const listeners = this.resourceListeners[url];
-                for (const listener of listeners) {
-                    const { resource } = listener;
-                    // TODO: Support joins!
-                    if (resource.name === resourceName && !resource.joins.length) {
-                        // Apply state change to the resource
-                        const oldState = resourcesByUrl && resourcesByUrl[url];
-                        if (oldState && oldState.resource) {
-                            let attributes: any;
-                            let identity: any;
-                            try {
-                                identity = resource.identifier.decode(encodedResource);
-                                attributes = resource
-                                    .omit(resource.identifyBy)
-                                    .fullPartial()
-                                    .decode(encodedResource);
-                            } catch {
-                                // tslint:disable-next-line:no-console
-                                console.warn(`Failed to decode resource "${resourceName}" state for a resource side-effect`);
-                                continue;
-                            }
-                            // If there are any changes to properties that are used for nested resources,
-                            // then the resource needs to be reloaded
-                            if (hasRelationReferenceChanges(attributes, resource)) {
-                                this.loadResource(listener.url, listener.op);
-                            } else {
-                                const newState = applyChangeToResource(
-                                    oldState, { type: 'update', resourceName, resourceIdentity: identity, resource: attributes },
-                                );
-                                if (newState !== oldState) {
-                                    resourcesByUrl[url] = newState;
-                                    addToMapping(changedResourceUrlsByName, resourceName, url);
-                                }
-                            }
+        for (const url of keys(this.resourceListeners)) {
+            const listeners = this.resourceListeners[url];
+            for (const listener of listeners) {
+                const { resource } = listener;
+                const resourceName = resource.name;
+                const resourcesByUrl = this.resourceCache[resourceName];
+                const oldState = resourcesByUrl && resourcesByUrl[url];
+                if (resourcesByUrl && oldState && oldState.resource) {
+                    for (const effect of effects) {
+                        const newState = applyStateEffectToResource(effect, oldState, resource);
+                        if (newState == null) {
+                            this.loadResource(listener.url, listener.op);
+                        } else if (newState !== oldState) {
+                            resourcesByUrl[url] = newState;
+                            addToMapping(changedResourceUrlsByName, resourceName, url);
                         }
                     }
-                    // TODO: Support joins!
                 }
+                // We only need to process the first listener, as all the listeners
+                // share the state and resource type
+                break;
             }
         }
         // Apply states to collection states
-        for (const { resourceName, encodedResource, available } of states) {
-            const collectionsByUrl = this.collectionCache[resourceName];
-            if (!collectionsByUrl) {
-                // Nothing related to this collection
-                continue;
-            }
-            if (!available) {
-                // TODO: Support removal!
-                continue;
-            }
-            for (const url of keys(this.collectionListeners)) {
-                const listeners = this.collectionListeners[url];
-                for (const listener of listeners) {
-                    const { resource } = listener;
-                    if (resource.name !== resourceName) {
-                        // Not this resource
-                        continue;
-                    }
-                    // Apply state change to the collection
-                    const oldState = collectionsByUrl && collectionsByUrl[url];
-                    if (!oldState) {
-                        // Nothing to update
-                        continue;
-                    }
-                    let identity;
-                    try {
-                        identity = resource.identifier.decode(encodedResource);
-                    } catch (error) {
-                        // tslint:disable-next-line:no-console
-                        console.warn(`Failed to decode resource identity "${resourceName}" state for a collection side-effect`, error);
-                        continue;
-                    }
-                    if (!available) {
-                        // Remove the resource instance from collections
-                        const newState = applyChangeToCollection(
-                            oldState, { type: 'removal', resourceIdentity: identity, resourceName },
-                        );
-                        if (newState !== oldState) {
+        for (const url of keys(this.collectionListeners)) {
+            const listeners = this.collectionListeners[url];
+            for (const listener of listeners) {
+                const { resource } = listener;
+                const resourceName = resource.name;
+                const collectionsByUrl = this.collectionCache[resourceName];
+                const oldState = collectionsByUrl && collectionsByUrl[url];
+                if (collectionsByUrl && oldState) {
+                    for (const effect of effects) {
+                        // Apply state change to the collection
+                        const newState = applyStateEffectToCollection(effect, oldState, resource);
+                        if (newState == null) {
+                            this.loadCollection(listener.url, listener.op, listener.input);
+                        } else if (newState !== oldState) {
                             collectionsByUrl[url] = newState;
                             addToMapping(changedCollectionUrlsByName, resourceName, url);
                         }
-                    } else if (!resource.joins.length) {
-                        // TODO: Support joins!
-                        let attributes: any;
-                        let action: 'addition' | 'update';
-                        try {
-                            attributes = resource.decode(encodedResource);
-                            action = 'addition';
-                        } catch {
-                            // Is not a full resource?
-                            // Is it a partial?
-                            try {
-                                attributes = resource
-                                    .omit(resource.identifyBy)
-                                    .fullPartial()
-                                    .decode(encodedResource);
-                            } catch {
-                                // Not valid at all
-                                continue;
-                            }
-                            action = 'update';
-                        }
-                        // If there are any changes to properties that refer to nested resources,
-                        // then the collection needs to be reloaded
-                        if (hasRelationReferenceChanges(attributes, resource)) {
-                            this.loadCollection(listener.url, listener.op, listener.input);
-                        } else {
-                            const newState = applyChangeToCollection(oldState, {
-                                type: action,
-                                collectionUrl: url,
-                                resourceIdentity: identity,
-                                resource: attributes,
-                                resourceName,
-                            });
-                            if (newState == null) {
-                                // Re-load is required
-                                this.loadCollection(listener.url, listener.op, listener.input);
-                            } else if (newState !== oldState) {
-                                collectionsByUrl[url] = newState;
-                                addToMapping(changedCollectionUrlsByName, resourceName, url);
-                            }
-                        }
                     }
-                    // TODO: Support joins!
                 }
+                // We only need to process the first listener, as all the listeners
+                // share the state and resource type
+                break;
             }
         }
 
@@ -756,17 +665,19 @@ export class BrowserClient extends BaseClient implements Client {
             throw error;
         }
         const stateHeader = response.headers['Resource-State'];
-        const stateHeaders = Array.isArray(stateHeader) ? stateHeader : stateHeader && [stateHeader] || [];
-        const states: StateEffect[] = stateHeaders.map((header) => {
-            const removal = stripPrefix(header, '!');
-            const parsedHeader = parseUrl(removal || header);
-            return {
-                available: !removal,
-                resourceName: parsedHeader.path,
-                encodedResource: parsedHeader.queryParams,
-            };
-        });
-        this.applyResourceStates(states);
+        const effects: StateEffect[] = [];
+        for (const header of Array.isArray(stateHeader) ? stateHeader : stateHeader && [stateHeader] || []) {
+            for (const state of header.split(/,\s+/g)) {
+                const removal = stripPrefix(state, '!');
+                const parsedHeader = parseUrl(removal || state);
+                effects.push({
+                    available: !removal,
+                    resourceName: parsedHeader.path,
+                    encodedResource: parsedHeader.queryParams,
+                });
+            }
+        }
+        this.applyStateEffects(effects);
         return response;
     }
 
@@ -829,7 +740,7 @@ function addResourcesToCollection<T>(collection: T[], items: T[], resource: Reso
 
 function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChange<any, any>): ResourceState<T> {
     const { resource } = state;
-    if (!resource || change.type !== 'update' || !hasProperties(resource, change.resourceIdentity)) {
+    if (!resource || change.type === 'removal' || !hasProperties(resource, change.resourceIdentity)) {
         return state;
     }
     const fields = keys(resource);
@@ -843,9 +754,10 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceA
 function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> | null;
 function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> | null {
     const isChangedResource = (item: any) => hasProperties(item, change.resourceIdentity, 0);
+    const isNotChangedResource = (item: any) => !hasProperties(item, change.resourceIdentity, 0);
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
-        const resources = without(state.resources, isChangedResource);
+        const resources = iFilter(state.resources, isNotChangedResource);
         if (state.resources !== resources) {
             return { ...state, resources };
         }
@@ -856,7 +768,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
             return state;
         }
         // Ensure that the item won't show up from the original collection
-        const resources = without(state.resources, isChangedResource);
+        const resources = iFilter(state.resources, isNotChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
         const sortedIndex = getOrderedIndex(
             resources, change.resource,
@@ -907,6 +819,146 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
     return state;
 }
 
+function applyStateEffectToResource(
+    effect: StateEffect, oldState: ResourceState, resource: Resource<any, any, any>,
+): ResourceState | null {
+    if (!oldState.resource) {
+        // Resource not available yet, so nothing to apply
+        return oldState;
+    }
+    const results = convertEffectToResourceChanges(effect, resource);
+    if (!results) {
+        return null; // Means reload!
+    }
+    return results.reduce(
+        (state, change) => applyChangeToResource(state, change),
+        oldState,
+    );
+}
+
+function applyStateEffectToCollection(
+    effect: StateEffect, oldState: CollectionState, resource: Resource<any, any, any>,
+) {
+    const results = convertEffectToResourceChanges(effect, resource);
+    if (!results) {
+        return null; // Means reload!
+    }
+    let newState = oldState;
+    for (const change of results) {
+        const updatedState = applyChangeToCollection(newState, change);
+        if (!updatedState) {
+            return null; // Needs reload
+        }
+        newState = updatedState;
+    }
+    return newState;
+}
+
+function convertEffectToResourceChanges(
+    effect: StateEffect, resource: Resource<any, any, any>,
+): Array<ResourceChange<any, any>> | null {
+    const resourceName = resource.name;
+    const { encodedResource, available } = effect;
+    const results: Array<ResourceChange<any, any>> = [];
+    // Try to apply the effect to the non-joined resource
+    if (effect.resourceName === resourceName) {
+        try {
+            const resourceIdentity = resource.identifier.decode(encodedResource);
+            if (!available) {
+                results.push({
+                    type: 'removal',
+                    resourceIdentity,
+                    resourceName,
+                });
+            } else {
+                try {
+                    // Try to add the full resource
+                    results.push({
+                        type: 'addition',
+                        resourceIdentity,
+                        resourceName,
+                        resource: resource.decode(encodedResource),
+                    });
+                } catch {
+                    // Not full attributes. Assume an update
+                    const updatedAttrs = resource
+                        .omit(resource.identifyBy)
+                        .fullPartial()
+                        .decode(encodedResource);
+                    results.push({
+                        type: 'update',
+                        resourceName,
+                        resourceIdentity,
+                        resource: updatedAttrs,
+                    });
+                }
+            }
+        } catch (error) {
+            // tslint:disable-next-line:no-console
+            console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
+        }
+    }
+    // Try to apply the effect to joined resources
+    joinLoop:
+    for (const join of resource.joins) {
+        if (join.resource.name === resourceName) {
+            let joinResourceProperties: any;
+            try {
+                const joinResourceKeys = Object.keys(join.resource.fields);
+                const joinResourceSerializer = join.resource.optional({
+                    required: join.resource.identifyBy,
+                    optional: difference(joinResourceKeys, join.resource.identifyBy),
+                    defaults: {},
+                });
+                joinResourceProperties = joinResourceSerializer.decode(encodedResource);
+            } catch {
+                // tslint:disable-next-line:no-console
+                console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
+                continue;
+            }
+            const resourceIdentity: any = {};
+            for (const sourceKey of Object.keys(join.on)) {
+                const resKey = join.on[sourceKey];
+                const value = joinResourceProperties[sourceKey];
+                const oldValue = resourceIdentity[resKey];
+                if (typeof oldValue !== 'undefined' && oldValue !== value) {
+                    continue joinLoop;
+                }
+                resourceIdentity[resKey] = value;
+            }
+            if (!available) {
+                results.push({
+                    type: 'removal',
+                    resourceIdentity,
+                    resourceName,
+                });
+                continue;
+            }
+            const attributes: any = {};
+            forEachKey(join.fields, (resKey, sourceKey) => {
+                const value = joinResourceProperties[sourceKey];
+                if (typeof value !== 'undefined') {
+                    attributes[resKey] = value;
+                }
+            });
+            if (attributes) {
+                results.push({
+                    type: 'update',
+                    resourceIdentity,
+                    resourceName,
+                    resource: attributes,
+                });
+            }
+        }
+    }
+    // If there are any changes to properties that are used for nested resources,
+    // then the resource needs to be reloaded
+    if (results.some((result) => result.type === 'update' && hasRelationReferenceChanges(result.resource, resource))) {
+        return null; // Means reload!
+    }
+    return results;
+}
+
 function hasRelationReferenceChanges(attributes: any, resource: Resource<any, any, any>): boolean {
     for (const nestingKey of Object.keys(resource.nestings)) {
         if (typeof attributes[nestingKey] === 'undefined') {
@@ -921,14 +973,16 @@ function hasRelationReferenceChanges(attributes: any, resource: Resource<any, an
     return false;
 }
 
-function without<T>(array: T[], cb: (value: T) => boolean) {
-    const index = array.findIndex(cb);
-    if (index < 0) {
-        return array;
-    }
-    array = array.slice();
-    array.splice(index, 1);
-    return array;
+function iFilter<T>(array: T[], cb: (value: T) => boolean): T[] {
+    let counter = 0;
+    const result = array.filter((value) => {
+        if (cb(value)) {
+            return true;
+        }
+        counter += 1;
+        return false;
+    });
+    return counter > 0 ? result : array;
 }
 
 function iMapFilter<T>(array: T[], cb: (value: T) => T | void): T[] {
