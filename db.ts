@@ -320,9 +320,14 @@ export function upsert<S, PK extends Key<S>, V extends Key<S>>(
 ): SqlOperation<S> {
     const updateSerializer = resource.partial(resource.versionBy);
     const insertValues = resource.validate(creation);
-    const updateValues = updateSerializer.validate(changes);
     // TODO: Support version or remove versioning
     const filters = resource.identifier.validate(creation);
+    const dynamicChanges = pickBy(changes, (_, value) => value instanceof Increment);
+    const staticChanges = pickBy(changes, (_, value) => !(value instanceof Increment));
+    const updateValues = {
+        ...dynamicChanges,
+        ...updateSerializer.validate(staticChanges as PartialUpdate<S, V>),
+    } as PartialUpdate<S, V>;
     return (connection, db) => connection.transaction(async () => {
         const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable, true);
         const updates = await executeQuery(connection, query1);
@@ -477,7 +482,8 @@ class DatabaseDefinition implements Database {
             if (diff === 0) {
                 return null;
             }
-            return update(target, identifier, {[field]: increment(diff)});
+            const insertion = { ...identifier, [field]: Math.max(diff, 0) };
+            return upsert(target, insertion, {[field]: increment(diff)});
         }).filter(isNotNully);
     }
 
