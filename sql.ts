@@ -276,8 +276,11 @@ function getSelectColumnsSql(resource: Resource<any, any, any>, params: any[], d
         const joinName = `${name}._join${index}`;
         for (const columnName of Object.keys(join.fields)) {
             const sourceName = join.fields[columnName];
+            const defaultValue = join.type === 'left' ? join.defaults[columnName] : undefined;
             selectSqls.push(selectColumn(
-                joinName, sourceName, `${name}.${columnName}`, defaults[sourceName], params,
+                joinName, sourceName, `${name}.${columnName}`,
+                typeof defaultValue === 'undefined' ? defaults[sourceName] : undefined,
+                params,
             ));
         }
     });
@@ -293,7 +296,7 @@ function getJoinSql(baseName: string, resource: Resource<any, any, any>): string
     const joinSqlCmps: string[] = [];
     // Regular inner joins
     resource.joins.forEach((join, index) => {
-        const { on } = join;
+        const { on, type } = join;
         const joinName = `${baseName}._join${index}`;
         const joinConditions: string[] = [];
         Object.keys(on).forEach((targetKey) => {
@@ -304,7 +307,8 @@ function getJoinSql(baseName: string, resource: Resource<any, any, any>): string
             }
         });
         const onSql = joinConditions.join(' AND ');
-        joinSqlCmps.push(` INNER JOIN ${ref(join.resource.name)} AS ${ref(joinName)} ON ${onSql}`);
+        const joinOp = type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
+        joinSqlCmps.push(` ${joinOp} ${ref(join.resource.name)} AS ${ref(joinName)} ON ${onSql}`);
         joinSqlCmps.push(getJoinSql(joinName, join.resource));
     });
     // Nesting joins
@@ -374,21 +378,19 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
 
 function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): Array<[string, string]> {
     const refs: Array<[string, string]> = [];
-    if ('joins' in resource) {
-        resource.joins.forEach((join, index) => {
-            const joinName = `${baseName}._join${index}`;
-            const source = join.fields[columnName];
-            if (source != null) {
-                refs.push([joinName, source]);
+    resource.joins.forEach((join, index) => {
+        const joinName = `${baseName}._join${index}`;
+        const source = join.fields[columnName];
+        if (source != null) {
+            refs.push([joinName, source]);
+        }
+        Object.keys(join.on).forEach((targetKey) => {
+            const sourceKey = join.on[targetKey];
+            if (sourceKey === columnName && !refs.some(([x, y]) => x === joinName && y === targetKey)) {
+                refs.push([joinName, targetKey]);
             }
-            Object.keys(join.on).forEach((targetKey) => {
-                const sourceKey = join.on[targetKey];
-                if (sourceKey === columnName && !refs.some(([x, y]) => x === joinName && y === targetKey)) {
-                    refs.push([joinName, targetKey]);
-                }
-            });
         });
-    }
+    });
     if (resource.columns[columnName]) {
         refs.push([baseName, columnName]);
     }
