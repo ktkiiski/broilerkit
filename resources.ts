@@ -2,10 +2,12 @@ import { Field, nullable } from './fields';
 import { Fields, FieldSerializer, nested, Serializer } from './serializers';
 import { FilteredKeys, Key, omitUndefined, pick } from './utils/objects';
 
+type JoinCondition = string | { value: any };
+
 interface BaseJoin {
     resource: Resource<any, any, any>;
-    on: {[pk: string]: string};
-    fields: {[key: string]: string};
+    on: { [pk: string]: JoinCondition };
+    fields: { [key: string]: string };
 }
 
 interface InnerJoin extends BaseJoin {
@@ -14,14 +16,14 @@ interface InnerJoin extends BaseJoin {
 
 interface LeftJoin extends BaseJoin {
     type: 'left';
-    defaults: {[key: string]: any};
+    defaults: { [key: string]: any };
 }
 
 type Join = InnerJoin | LeftJoin;
 
 interface Nesting<R = any, PK extends Key<R> = any, T = any> {
     resource: Resource<R, PK, any>;
-    on: {[P in PK]: FilteredKeys<T, R[PK]>};
+    on: { [P in PK]: FilteredKeys<T, R[PK]> };
 }
 
 type Relations<S = any, R extends {[name: string]: Resource<any, any, any>} = any> = {
@@ -40,11 +42,11 @@ export interface Resource<T, PK extends Key<T>, V extends Key<T>> extends FieldS
     /**
      * Join another resource with an inner join.
      */
-    join<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: string & FilteredKeys<T, S2[P]>}, columns: U): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), V>;
+    join<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), V>;
     /**
      * Join another resource with an left outer join.
      */
-    leftJoin<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: string & FilteredKeys<T, S2[P]>}, columns: U, defaults: {[P in keyof U]: S2[U[P]]}): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), V>;
+    leftJoin<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U, defaults: {[P in keyof U]: S2[U[P]]}): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), V>;
     /**
      * Nest related resource as a property to this resource.
      * The join is a left join, meaning that the property
@@ -102,7 +104,7 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
 
     public join<S2, PK2 extends Key<S2>>(
         other: Resource<S2, PK2 & Key<S2>, any>,
-        on: {[P in any]?: string},
+        on: {[P in any]?: JoinCondition},
         fields: {[column: string]: string},
     ): Resource<any, any, any> {
         const joins: Join[] = this.joins.concat([{
@@ -117,7 +119,7 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
     }
     public leftJoin<S2, PK2 extends Key<S2>>(
         other: Resource<S2, PK2 & Key<S2>, any>,
-        on: {[P in any]?: string},
+        on: {[P in any]?: JoinCondition},
         fields: {[column: string]: string},
         defaults: {[column: string]: any},
     ): Resource<any, any, any> {

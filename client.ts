@@ -920,11 +920,15 @@ function convertEffectToResourceChanges(
             for (const sourceKey of Object.keys(join.on)) {
                 const resKey = join.on[sourceKey];
                 const value = joinResourceProperties[sourceKey];
-                const oldValue = resourceIdentity[resKey];
+                const oldValue = typeof resKey === 'string' ? resourceIdentity[resKey] : resKey.value;
                 if (typeof oldValue !== 'undefined' && oldValue !== value) {
                     continue joinLoop;
                 }
-                resourceIdentity[resKey] = value;
+                if (typeof resKey === 'string') {
+                    resourceIdentity[resKey] = value;
+                } else {
+                    // TODO: What should be done here?
+                }
             }
             if (!available) {
                 results.push({

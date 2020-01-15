@@ -44,7 +44,7 @@ export function selectQuery<S>(
     const params: any[] = [];
     const { name } = resource;
     let sql = `SELECT ${getSelectColumnsSql(resource, params, defaultsByTable)} FROM ${ref(name)}`;
-    sql += getJoinSql(name, resource);
+    sql += getJoinSql(name, resource, params, defaultsByTable);
     const filtersSql = filterConditionSql(filters, resource, params, defaultsByTable);
     const conditions = filtersSql ? [filtersSql] : [];
     if (ordering && direction && since != null) {
@@ -279,7 +279,7 @@ function getSelectColumnsSql(resource: Resource<any, any, any>, params: any[], d
             const defaultValue = join.type === 'left' ? join.defaults[columnName] : undefined;
             selectSqls.push(selectColumn(
                 joinName, sourceName, `${name}.${columnName}`,
-                typeof defaultValue === 'undefined' ? defaults[sourceName] : undefined,
+                typeof defaultValue === 'undefined' ? defaults[sourceName] : defaultValue,
                 params,
             ));
         }
@@ -292,24 +292,45 @@ function getSelectColumnsSql(resource: Resource<any, any, any>, params: any[], d
     return selectSqls.join(', ');
 }
 
-function getJoinSql(baseName: string, resource: Resource<any, any, any>): string {
+function getJoinSql(baseName: string, resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults): string {
     const joinSqlCmps: string[] = [];
+    const { joins } = resource;
     // Regular inner joins
-    resource.joins.forEach((join, index) => {
+    joins.forEach((join, index) => {
         const { on, type } = join;
+        const joinResourceName = join.resource.name;
+        const defaults = defaultsByTable[joinResourceName];
         const joinName = `${baseName}._join${index}`;
         const joinConditions: string[] = [];
         Object.keys(on).forEach((targetKey) => {
-            for (const [sourceTable, sourceKey] of resolveColumnRefs(baseName, on[targetKey], resource)) {
+            const onCond = on[targetKey];
+            if (typeof onCond === 'string') {
+                if (resource.columns[onCond]) {
+                    joinConditions.push(
+                        `${ref(joinName)}.${ref(targetKey)} = ${ref(baseName)}.${ref(onCond)}`,
+                    );
+                } else {
+                    joins.slice(0, index).forEach((prevJoin, prevIndex) => {
+                        const prevJoinName = `${baseName}._join${prevIndex}`;
+                        const source = prevJoin.fields[onCond];
+                        if (source != null) {
+                            joinConditions.push(
+                                `${ref(joinName)}.${ref(targetKey)} = ${ref(prevJoinName)}.${ref(source)}`,
+                            );
+                        }
+                    });
+                }
+            } else {
+                const defaultValue = defaults && defaults[targetKey];
                 joinConditions.push(
-                    `${ref(joinName)}.${ref(targetKey)} = ${ref(sourceTable)}.${ref(sourceKey)}`,
+                    filterSql(joinName, targetKey, onCond.value, params, defaultValue),
                 );
             }
         });
         const onSql = joinConditions.join(' AND ');
         const joinOp = type === 'left' ? 'LEFT JOIN' : 'INNER JOIN';
-        joinSqlCmps.push(` ${joinOp} ${ref(join.resource.name)} AS ${ref(joinName)} ON ${onSql}`);
-        joinSqlCmps.push(getJoinSql(joinName, join.resource));
+        joinSqlCmps.push(` ${joinOp} ${ref(joinResourceName)} AS ${ref(joinName)} ON ${onSql}`);
+        joinSqlCmps.push(getJoinSql(joinName, join.resource, params, defaultsByTable));
     });
     // Nesting joins
     Object.keys(resource.nestings).forEach((key) => {
@@ -325,7 +346,7 @@ function getJoinSql(baseName: string, resource: Resource<any, any, any>): string
         });
         const onSql = joinConditions.join(' AND ');
         joinSqlCmps.push(` LEFT JOIN ${ref(nesting.resource.name)} AS ${ref(joinName)} ON ${onSql}`);
-        joinSqlCmps.push(getJoinSql(joinName, nesting.resource));
+        joinSqlCmps.push(getJoinSql(joinName, nesting.resource, params, defaultsByTable));
     });
     return joinSqlCmps.join('');
 }
@@ -379,6 +400,9 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
 function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): Array<[string, string]> {
     const refs: Array<[string, string]> = [];
     resource.joins.forEach((join, index) => {
+        if (join.type === 'left') {
+            return;
+        }
         const joinName = `${baseName}._join${index}`;
         const source = join.fields[columnName];
         if (source != null) {
