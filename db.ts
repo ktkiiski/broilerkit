@@ -6,8 +6,8 @@ import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation }
 import { Resource } from './resources';
 import { nestedList } from './serializers';
 import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
-import { sort } from './utils/arrays';
-import { hasProperties, isEqual, isNotNully } from './utils/compare';
+import { flatMap, sort } from './utils/arrays';
+import { hasProperties, isEqual } from './utils/compare';
 import { FilteredKeys, Key, pickBy, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
@@ -473,18 +473,31 @@ class DatabaseDefinition implements Database {
         // order that minimizes possibility for deadlocks.
         const resourceAggregations = this.aggregationsBySource[resource.name] || [];
         const aggregations = sort(resourceAggregations, (agg) => agg.target.name);
-        return aggregations.map(({ target, by, field, filters }) => {
-            const identifier = transformValues(by, (pk) => idValues[pk as keyof S]);
-            const mask = { ...filters, ...identifier };
-            const isMatching = newValues != null && hasProperties(newValues, mask);
-            const wasMatching = oldValues != null && hasProperties(oldValues, mask);
-            const diff = (isMatching ? 1 : 0) - (wasMatching ? 1 : 0);
-            if (diff === 0) {
-                return null;
+        return flatMap(aggregations, ({ target, by, field, filters }) => {
+            const newIdentifier = newValues && transformValues(by, (pk) => newValues[pk as keyof S]);
+            const oldIdentifier = oldValues && transformValues(by, (pk) => oldValues[pk as keyof S]);
+            const isMatching = newValues != null && hasProperties(newValues, filters);
+            const wasMatching = oldValues != null && hasProperties(oldValues, filters);
+            const operations: Array<SqlOperation<any>> = [];
+            if (newIdentifier && oldIdentifier && isEqual(newIdentifier, oldIdentifier)) {
+                // Only max one upsert is required
+                const diff = (isMatching ? 1 : 0) - (wasMatching ? 1 : 0);
+                if (diff !== 0) {
+                    const insertion = { ...newIdentifier, [field]: Math.max(diff, 0) };
+                    operations.push(upsert(target, insertion, {[field]: increment(diff)}));
+                }
+            } else {
+                // Need to increase one and decrease another
+                if (wasMatching && oldIdentifier) {
+                    operations.push(update(target, oldIdentifier, {[field]: increment(-1)}));
+                }
+                if (isMatching && newIdentifier) {
+                    const insertion = { ...newIdentifier, [field]: 1 };
+                    operations.push(upsert(target, insertion, {[field]: increment(1)}));
+                }
             }
-            const insertion = { ...identifier, [field]: Math.max(diff, 0) };
-            return upsert(target, insertion, {[field]: increment(diff)});
-        }).filter(isNotNully);
+            return operations;
+        });
     }
 
     public addTable<S, PK extends Key<S>, V extends Key<S>>(resource: Resource<S, PK, V>, options?: TableOptions<S, PK, V>): this {
