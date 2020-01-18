@@ -481,7 +481,7 @@ function escapeValue(value: unknown): string {
     }
     const str = String(value);
     if (typeof value === 'number') {
-        return str;
+        return value < 0 ? `(${str})` : str;
     }
     return `'${str.replace(/'/g, '\'\'')}'`;
 }
