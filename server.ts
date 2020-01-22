@@ -2,10 +2,11 @@
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
+import { list, retrieve } from './db';
 import { EffectContext, getEffectHeaders, ResourceEffect } from './effects';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
-import { AuthenticationType, Operation } from './operations';
+import { AuthenticationType, Operation, OperationType } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
 import { authorize } from './permissions';
@@ -14,7 +15,7 @@ import { UserSession } from './sessions';
 import { Url, UrlPattern } from './url';
 import { sort } from './utils/arrays';
 import { isNotNully } from './utils/compare';
-import { transformValues } from './utils/objects';
+import { ExcludedKeys, FilteredKeys, transformValues } from './utils/objects';
 
 export interface HandlerContext extends EffectContext {
     db: DatabaseClient;
@@ -24,13 +25,16 @@ export interface HandlerContext extends EffectContext {
 export type Handler<I, O, R> = (input: I, request: R & HandlerContext) => Promise<O>;
 export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;
 
-type Implementables<I, O, R> = (
-    {[P in keyof I]: Operation<I[P], any, any>} &
-    {[P in keyof O]: Operation<any, O[P], any>} &
-    {[P in keyof R]: Operation<any, any, R[P]>}
+type Implementables<I, O, R, T extends Record<string, OperationType>> = (
+    {[P in keyof I]: Operation<I[P], any, any, any>} &
+    {[P in keyof O]: Operation<any, O[P], any, any>} &
+    {[P in keyof R]: Operation<any, any, R[P], any>} &
+    {[P in keyof T]: Operation<any, any, any, T[P]>}
 );
-type OperationImplementors<I, O, R> = {
-    [P in keyof I & keyof O & keyof R]: Handler<I[P], O[P], R[P]>;
+type OperationImplementors<I, O, R, T> = {
+    [P in keyof I & keyof O & keyof R & ExcludedKeys<T, 'retrieve' | 'list'>]: Handler<I[P], O[P], R[P]>;
+} & {
+    [P in keyof I & keyof O & keyof R & FilteredKeys<T, 'retrieve' | 'list'>]?: Handler<I[P], O[P], R[P]>;
 };
 
 /**
@@ -168,15 +172,34 @@ function implement<I, O, R>(
     }
 }
 
-export function implementAll<I, O, R>(
-    operations: Implementables<I, O, R>,
+export function implementAll<I, O, R, T extends Record<string, OperationType>>(
+    operations: Implementables<I, O, R, T>,
 ) {
     function using(
-        implementors: OperationImplementors<I, O, R>,
-    ): Record<keyof I & keyof O & keyof R, Controller> {
-        return transformValues(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => (
-            implement(operation, implementors[key as keyof I & keyof O & keyof R])
-        )) as Record<keyof I & keyof O & keyof R, Controller>;
+        implementors: OperationImplementors<I, O, R, T>,
+    ): Record<keyof I & keyof O & keyof R & keyof T, Controller> {
+        return transformValues(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => {
+            const implementor = (implementors as any)[key as keyof I & keyof O & keyof R & keyof T];
+            if (implementor) {
+                return implement(operation, implementor);
+            }
+            // Default implementation for retrieve API
+            const { type } = operation;
+            const { resource, pattern } = operation.endpoint;
+            if (type === 'retrieve') {
+                return implement(
+                    operation,
+                    async (query, {db}) => db.run(retrieve(resource, query)),
+                );
+            }
+            if (type === 'list') {
+                return implement(
+                    operation,
+                    async (query, {db}) => db.run(list(resource, query)),
+                );
+            }
+            throw new Error(`Missing implementation for ${type} at ${pattern.pattern}`);
+        }) as Record<keyof I & keyof O & keyof R & keyof T, Controller>;
     }
     return {using};
 }

@@ -23,7 +23,7 @@ type Join = InnerJoin | LeftJoin;
 
 interface Nesting<R = any, PK extends Key<R> = any, T = any> {
     resource: Resource<R, PK, any>;
-    on: { [P in PK]: FilteredKeys<T, R[PK]> };
+    on: { [P in PK]: FilteredKeys<T, R[PK]> & string };
 }
 
 type Relations<S = any, R extends {[name: string]: Resource<any, any, any>} = any> = {

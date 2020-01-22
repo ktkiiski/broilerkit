@@ -2,7 +2,7 @@ import { Client } from './client';
 import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { ValidationError } from './errors';
 import { HttpMethod } from './http';
-import { CreateOperation, DestroyOperation, Operation, UpdateOperation, UploadOperation } from './operations';
+import { CreateOperation, DestroyOperation, Operation, OperationType, UpdateOperation, UploadOperation } from './operations';
 import { OptionalInput, OptionalOutput } from './serializers';
 import { Url } from './url';
 import { Key, pick } from './utils/objects';
@@ -12,9 +12,9 @@ export interface IntermediateCollection<O> {
     items: O[];
 }
 
-abstract class BaseApi<T extends Operation<any, any, any>> {
+abstract class BaseApi<O extends Operation<any, any, any, OperationType>> {
     constructor(
-        protected operation: T,
+        protected operation: O,
         protected client: Client,
     ) { }
 
