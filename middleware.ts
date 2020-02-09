@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, normalizeHeaders } from './http';
-import { countBytes, findAllMatches } from './utils/strings';
+import { countBytes, findAllMatches } from './strings';
 
 type Response = HttpResponse | ApiResponse;
 

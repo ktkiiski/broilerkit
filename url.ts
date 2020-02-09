@@ -1,6 +1,6 @@
 // tslint:disable:no-shadowed-variable
+import { splitOnce } from './strings';
 import { keys, omit } from './utils/objects';
-import { splitOnce } from './utils/strings';
 
 const encodedSlashRegexp = /%2F/g;
 const urlPlaceholderRegexp = /^\{(.+?)(\+)?\}$/;

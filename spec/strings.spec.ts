@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import 'mocha';
-import { findAllMatches, shortenSentences } from '../utils/strings';
+import { findAllMatches, shortenSentences } from '../strings';
 
 describe('shorten()', () => {
     it('should not shorten string with smaller length', () => {

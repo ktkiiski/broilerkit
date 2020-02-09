@@ -1,7 +1,7 @@
 import { CloudWatchLogs } from 'aws-sdk';
 import { mergeAsync, toArray, wait } from '../async';
 import { cyan, dim, red } from '../palette';
-import { indent, stripPrefix } from '../utils/strings';
+import { indent, stripPrefix } from '../strings';
 import { retrievePages } from './utils';
 
 import * as YAML from 'yamljs';

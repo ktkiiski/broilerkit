@@ -6,11 +6,11 @@ import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotIm
 import { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import { Cursor } from './pagination';
 import { Resource } from './resources';
+import { stripPrefix } from './strings';
 import { parseUrl, Url } from './url';
 import { difference, getOrderedIndex } from './utils/arrays';
 import { hasProperties, isEqual } from './utils/compare';
 import { forEachKey, Key, keys, pick } from './utils/objects';
-import { stripPrefix } from './utils/strings';
 
 export interface Retrieval<S = any, U extends Key<S> = any> {
     operation: RetrieveOperation<S, U, any, any>;

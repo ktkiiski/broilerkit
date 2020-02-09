@@ -33,12 +33,12 @@ import { readAnswer } from './readline';
 import { retryWithBackoff } from './retry';
 import { ApiService } from './server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
+import { upperFirst } from './strings';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { users } from './users';
 import { sort, union } from './utils/arrays';
 import { difference, differenceBy, order } from './utils/arrays';
 import { forEachKey, toPairs } from './utils/objects';
-import { upperFirst } from './utils/strings';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';
 

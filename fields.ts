@@ -1,7 +1,7 @@
 import { decodeDataUri, DecodedDataUri, encodeDataUri } from './data-uri';
 import { KeyErrorData, ValidationError } from './errors';
 import { isApiResponse } from './http';
-import { padEnd, padStart } from './utils/strings';
+import { padEnd, padStart } from './strings';
 
 export type NonEmptyString = Exclude<string, ''>;
 

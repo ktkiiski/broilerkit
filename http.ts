@@ -1,6 +1,6 @@
 import { UserSession } from './sessions';
+import { capitalize, splitOnce } from './strings';
 import { forEachKey } from './utils/objects';
-import { capitalize, splitOnce } from './utils/strings';
 
 /**
  * All supported HTTP status codes.

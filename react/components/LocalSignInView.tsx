@@ -3,9 +3,9 @@ import * as React from 'react';
 import { useState } from 'react';
 import { RouteComponentProps, withRouter } from 'react-router';
 import * as api from '../../auth-local-api';
+import { randomize } from '../../strings';
 import { buildQuery, parseQuery } from '../../url';
 import { User } from '../../users';
-import { randomize } from '../../utils/strings';
 import { useList, useOperation } from '../api';
 
 function LocalSignInView({location}: RouteComponentProps) {
