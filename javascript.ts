@@ -1,6 +1,6 @@
 import { encodeSafeJSON } from './html';
+import { keys } from './objects';
 import { repeat } from './strings';
-import { keys } from './utils/objects';
 
 /**
  * Converts the given value to a JavaScript expression that once evaluated

@@ -1,7 +1,7 @@
+import pick from 'immuton/pick';
 import { ValidationError } from './errors';
 import { parseHeaderDirectives, parseHeaders } from './http';
 import { splitOnce } from './strings';
-import { pick } from './utils/objects';
 
 interface MultipartData {
     name?: string;

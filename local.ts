@@ -1,3 +1,4 @@
+import transform from 'immuton/transform';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { URL } from 'url';
@@ -11,7 +12,6 @@ import { authenticationMiddleware } from './oauth';
 import { cyan, dim, green, red, yellow } from './palette';
 import { Database } from './postgres';
 import { ApiService, ServerContext } from './server';
-import { transformValues } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import * as http from 'http';
@@ -253,5 +253,5 @@ function colorizeStatusCode(statusCode: HttpStatus): string {
 }
 
 function flattenParameters<K extends string>(params: {[P in K]: string | string[] | undefined}): {[P in K]: string} {
-    return transformValues(params || {}, (values) => Array.isArray(values) ? values[0] : String(values || ''));
+    return transform(params || {}, (values) => Array.isArray(values) ? values[0] : String(values || ''));
 }

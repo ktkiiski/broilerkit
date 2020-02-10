@@ -1,6 +1,6 @@
 import { S3 } from 'aws-sdk';
+import flatMap from 'immuton/flatMap';
 import { chunkify } from '../async';
-import { flatMap } from '../utils/arrays';
 import { retrievePages } from './utils';
 
 /**

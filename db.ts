@@ -1,3 +1,10 @@
+import flatMap from 'immuton/flatMap';
+import hasProperties from 'immuton/hasProperties';
+import isEqual from 'immuton/isEqual';
+import select from 'immuton/select';
+import sort from 'immuton/sort';
+import transform from 'immuton/transform';
+import { FilteredKeys, Key, Require } from 'immuton/types';
 import { addEffect } from './effects';
 import { Conflict, NotFound, PreconditionFailed } from './http';
 import { TableState } from './migration';
@@ -6,9 +13,6 @@ import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation }
 import { Resource } from './resources';
 import { nestedList } from './serializers';
 import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
-import { flatMap, sort } from './utils/arrays';
-import { hasProperties, isEqual } from './utils/compare';
-import { FilteredKeys, Key, pickBy, Require, transformValues } from './utils/objects';
 
 export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
@@ -40,8 +44,8 @@ export function retrieve<S, PK extends Key<S>, V extends Key<S>>(
         : resource.identifier;
     const filters = identitySerializer.validate(query);
     return async (connection, db) => {
-        const select = selectQuery(resource, db.defaultsByTable, filters, 1);
-        const [item] = await executeQuery(connection, select);
+        const qr = selectQuery(resource, db.defaultsByTable, filters, 1);
+        const [item] = await executeQuery(connection, qr);
         if (!item) {
             throw new NotFound(`Item was not found.`);
         }
@@ -65,9 +69,9 @@ export function list<S>(
     const { ordering, direction, since, ...filters } = query;
     const chunkSize = 100;
     return async (connection, db) => {
-        const select = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
-        for await (const chunk of connection.scan(chunkSize, select.sql, select.params)) {
-            const items = select.deserialize(chunk);
+        const qr = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
+        for await (const chunk of connection.scan(chunkSize, qr.sql, qr.params)) {
+            const items = qr.deserialize(chunk);
             results.push(...items);
             if (chunk.isComplete) {
                 return { results, next: null };
@@ -97,15 +101,15 @@ export function scan<S>(
 ): SqlScanOperation<S> {
     const chunkSize = 100;
     return async function *(connection, db) {
-        let select;
+        let qr;
         if (query) {
             const { ordering, direction, since, ...filters } = query;
-            select = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
+            qr = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
         } else {
-            select = selectQuery(resource, db.defaultsByTable, {});
+            qr = selectQuery(resource, db.defaultsByTable, {});
         }
-        for await (const chunk of connection.scan(chunkSize, select.sql, select.params)) {
-            yield select.deserialize(chunk);
+        for await (const chunk of connection.scan(chunkSize, qr.sql, qr.params)) {
+            yield qr.deserialize(chunk);
         }
     };
 }
@@ -272,8 +276,8 @@ export function update<S, PK extends Key<S>, V extends Key<S>>(
         .pick([...resource.identifyBy, ...resource.versionBy])
         .partial(resource.identifyBy);
     const filters = identitySerializer.validate(identity);
-    const dynamicChanges = pickBy(changes, (_, value) => value instanceof Increment);
-    const staticChanges = pickBy(changes, (_, value) => !(value instanceof Increment));
+    const dynamicChanges = select(changes, (value) => value instanceof Increment);
+    const staticChanges = select(changes, (value) => !(value instanceof Increment));
     const values = {
         ...dynamicChanges,
         ...updateSerializer.validate(staticChanges as PartialUpdate<S, V>),
@@ -322,8 +326,8 @@ export function upsert<S, PK extends Key<S>, V extends Key<S>>(
     const insertValues = resource.validate(creation);
     // TODO: Support version or remove versioning
     const filters = resource.identifier.validate(creation);
-    const dynamicChanges = pickBy(changes, (_, value) => value instanceof Increment);
-    const staticChanges = pickBy(changes, (_, value) => !(value instanceof Increment));
+    const dynamicChanges = select(changes, (value) => value instanceof Increment);
+    const staticChanges = select(changes, (value) => !(value instanceof Increment));
     const updateValues = {
         ...dynamicChanges,
         ...updateSerializer.validate(staticChanges as PartialUpdate<S, V>),
@@ -474,8 +478,8 @@ class DatabaseDefinition implements Database {
         const resourceAggregations = this.aggregationsBySource[resource.name] || [];
         const aggregations = sort(resourceAggregations, (agg) => agg.target.name);
         return flatMap(aggregations, ({ target, by, field, filters }) => {
-            const newIdentifier = newValues && transformValues(by, (pk) => newValues[pk as keyof S]);
-            const oldIdentifier = oldValues && transformValues(by, (pk) => oldValues[pk as keyof S]);
+            const newIdentifier = newValues && transform(by, (pk) => newValues[pk as keyof S]);
+            const oldIdentifier = oldValues && transform(by, (pk) => oldValues[pk as keyof S]);
             const isMatching = newValues != null && hasProperties(newValues, filters);
             const wasMatching = oldValues != null && hasProperties(oldValues, filters);
             const operations: Array<SqlOperation<any>> = [];

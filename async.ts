@@ -1,5 +1,5 @@
+import compare from 'immuton/compare';
 import { iterate } from './iteration';
-import { compare } from './utils/compare';
 
 export function wait(ms?: number): Promise<void> {
     return new Promise((resolve) => {

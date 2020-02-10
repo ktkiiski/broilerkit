@@ -1,13 +1,15 @@
+import build from 'immuton/build';
+import { Key } from 'immuton/types';
 import { CreateApi, DestroyApi, UpdateApi, UploadApi } from './api';
 import { Bindable, Client } from './client';
 import { DecodedDataUri } from './data-uri';
 import { Endpoint } from './endpoints';
 import { data, nullable } from './fields';
 import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, SuccesfulResponse } from './http';
+import { keys } from './objects';
 import { Cursor, CursorSerializer, Page, PageResponse } from './pagination';
 import { Route, route } from './routes';
 import { FieldSerializer, nested, nestedList, OptionalOptions, OptionalOutput, Serializer } from './serializers';
-import { buildObject, Key, keys } from './utils/objects';
 
 export type OperationType = 'retrieve' | 'update' | 'destroy' | 'list' | 'create' | 'upload';
 
@@ -194,7 +196,7 @@ implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S,
     public readonly files: F[] = this.options.files;
     public readonly requestDataSerializer = this.endpoint.resource.optional(this.options);
     private readonly payloadSerializer = this.requestDataSerializer.extend(
-        buildObject(this.files, (key) => [key, data()]),
+        build(this.files, (key) => [key, data()]),
     );
     constructor(
         readonly endpoint: Endpoint<S, any, any, U>,

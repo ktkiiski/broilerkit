@@ -1,5 +1,11 @@
 // tslint:disable:no-shadowed-variable
 import { CloudFormation, S3 } from 'aws-sdk';
+import difference from 'immuton/difference';
+import differenceBy from 'immuton/differenceBy';
+import mapObject from 'immuton/mapObject';
+import order from 'immuton/order';
+import sort from 'immuton/sort';
+import union from 'immuton/union';
 import * as mime from 'mime';
 import * as path from 'path';
 import { Client, Pool } from 'pg';
@@ -26,6 +32,7 @@ import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
 import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
 import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from './oauth';
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from './oauth';
+import { forEachKey } from './objects';
 import { bold, cyan, dim, green, red, underline, yellow } from './palette';
 import { askParameters } from './parameters';
 import { Database, DatabaseClient, PostgreSqlConnection, RemotePostgreSqlConnection, SqlConnection } from './postgres';
@@ -36,9 +43,6 @@ import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { upperFirst } from './strings';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import { users } from './users';
-import { sort, union } from './utils/arrays';
-import { difference, differenceBy, order } from './utils/arrays';
-import { forEachKey, toPairs } from './utils/objects';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';
 
@@ -302,7 +306,7 @@ export class Broiler {
             startDate.setDate(startDate.getDate() - parseInt(daysMatch[1], 10));
         }
         const output = await this.cloudFormation.getStackOutput();
-        const logGroupNames = toPairs(output)
+        const logGroupNames = mapObject(output, (value, key) => [key, value])
             .filter(([key]) => key.endsWith('LogGroupName'))
             .map(([, logGroupName]) => logGroupName)
         ;
@@ -486,7 +490,7 @@ export class Broiler {
         const assetsRootUrl = new URL(assetsRoot);
         const assetsHostedZone = getHostedZone(assetsRootUrl.hostname);
         const rawHostedZones = [siteHostedZone, assetsHostedZone];
-        const hostedZones = union(rawHostedZones.filter((hostedZone) => !!hostedZone) as string[]);
+        const hostedZones = union([rawHostedZones.filter((hostedZone) => !!hostedZone) as string[]]);
         // Wait until every hosted zone is available
         await Promise.all(hostedZones.map((hostedZone) => this.initializeHostedZone(hostedZone)));
     }

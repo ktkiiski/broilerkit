@@ -1,8 +1,8 @@
 import * as assert from 'assert';
+import isEqual from 'immuton/isEqual';
 import 'mocha';
 import { list, number, string } from '../fields';
 import { FieldSerializer, nested } from '../serializers';
-import { isEqual } from '../utils/compare';
 
 describe('serializer', () => {
     describe('gathers nested validation errors', () => {

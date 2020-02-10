@@ -1,5 +1,5 @@
 import { readFile } from './fs';
-import { forEachKey } from './utils/objects';
+import { forEachKey } from './objects';
 
 import * as path from 'path';
 import * as YAML from 'yamljs';

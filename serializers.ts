@@ -1,8 +1,11 @@
+import difference from 'immuton/difference';
+import omit from 'immuton/omit';
+import pick from 'immuton/pick';
+import { Key, Require } from 'immuton/types';
 import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
 import { isApiResponse } from './http';
-import { difference } from './utils/arrays';
-import { forEachKey, Key, keys, omit, pick, Require } from './utils/objects';
+import { forEachKey, keys } from './objects';
 
 export type Fields<T = any> = {
     [P in keyof T]: Field<T[P], any>;

@@ -1,6 +1,6 @@
+import hasOwnProperty from 'immuton/hasOwnProperty';
 import { filterAsync, mapAsync, mergeSortedAsync, toAsync } from './async';
 import { shareIterator } from './iteration';
-import { hasOwnProperty } from './utils/objects';
 
 export interface ResourceAddition<T, K extends keyof T> {
     type: 'addition';

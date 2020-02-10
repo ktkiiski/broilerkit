@@ -1,6 +1,7 @@
 // tslint:disable:no-shadowed-variable
+import omit from 'immuton/omit';
+import { keys } from './objects';
 import { splitOnce } from './strings';
-import { keys, omit } from './utils/objects';
 
 const encodedSlashRegexp = /%2F/g;
 const urlPlaceholderRegexp = /^\{(.+?)(\+)?\}$/;

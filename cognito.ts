@@ -1,10 +1,10 @@
+import isEqual from 'immuton/isEqual';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { batchRetrieve, destroy, Identity, PartialUpdate, retrieve, scan, update } from './db';
 import { HttpStatus, isResponse, NotFound } from './http';
 import { DatabaseClient } from './postgres';
 import { Serializer } from './serializers';
 import { User, users } from './users';
-import { mapCached } from './utils/arrays';
 
 interface UserIdentity { id: string; }
 type UserPartialUpdate = Partial<Omit<User, 'id' | 'email' | 'updatedAt' | 'createdAt'>>;
@@ -125,4 +125,27 @@ export class LocalUserPool implements UserPool {
             batchRetrieve(users, identities as Array<Identity<User, 'id', 'updatedAt'>>),
         );
     }
+}
+
+/**
+ * Maps each item in the given array, but does not call the
+ * iterator function for values that have already been called.
+ * The equality is compared with isEqual function.
+ * @param items Items to map
+ * @param callback Function to be called for each distinct value
+ */
+export function mapCached<T, R>(items: T[], callback: (item: T) => R): R[] {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const reuseIndex = items.slice(0, i).findIndex((x) => isEqual(x, item));
+        if (reuseIndex < 0) {
+            // Not yet cached
+            results.push(callback(item));
+        } else {
+            // Use a cached result
+            results.push(results[reuseIndex]);
+        }
+    }
+    return results;
 }

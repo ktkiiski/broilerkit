@@ -1,5 +1,5 @@
+import transform from 'immuton/transform';
 import { HttpMethod, HttpRequest, HttpRequestHeaders, HttpResponse, HttpStatus } from './http';
-import { transformValues } from './utils/objects';
 
 export interface LambdaCallback {
     (error: null | undefined, result: LambdaHttpResponse): void;
@@ -103,7 +103,7 @@ export function lambdaMiddleware(handler: (request: HttpRequest) => Promise<Http
             // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
         };
         const response = await handler(request);
-        const responseHeaders = transformValues(response.headers, (headerValue) => (
+        const responseHeaders = transform(response.headers, (headerValue) => (
             Array.isArray(headerValue) ? headerValue : [headerValue]
         ));
         return {

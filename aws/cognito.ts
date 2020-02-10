@@ -1,6 +1,6 @@
 import { CognitoIdentityServiceProvider } from 'aws-sdk';
+import mapObject from 'immuton/mapObject';
 import { NotFound } from '../http';
-import { mapObject } from '../utils/objects';
 import { retrievePages } from './utils';
 
 export interface CognitoUser {

@@ -1,4 +1,5 @@
 import { RDSDataService } from 'aws-sdk';
+import isNotNully from 'immuton/isNotNully';
 import { Client, ClientBase, PoolClient } from 'pg';
 import { Table } from './db';
 import { EffectContext, ResourceEffect } from './effects';
@@ -8,7 +9,6 @@ import { Resource } from './resources';
 import { retry } from './retry';
 import { Row, SqlQuery, SqlResult, TableDefaults } from './sql';
 import { logSql } from './sql-log';
-import { isNotNully } from './utils/compare';
 
 interface SqlScanChunk extends SqlResult {
     isComplete: boolean;

@@ -1,6 +1,9 @@
+import isDefined from 'immuton/isDefined';
+import pick from 'immuton/pick';
+import select from 'immuton/select';
+import { FilteredKeys, Key } from 'immuton/types';
 import { Field, nullable } from './fields';
 import { Fields, FieldSerializer, nested, Serializer } from './serializers';
-import { FilteredKeys, Key, omitUndefined, pick } from './utils/objects';
 
 type JoinCondition = string | { value: any };
 
@@ -111,7 +114,7 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
             type: 'inner',
             resource: other,
             fields,
-            on: omitUndefined(on),
+            on: select(on, isDefined),
         }]);
         return new FieldResource(
             this.name, this.columns, this.identifyBy, this.versionBy, this.nestings, joins,
@@ -127,7 +130,7 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
             type: 'left',
             resource: other,
             fields,
-            on: omitUndefined(on),
+            on: select(on, isDefined),
             defaults,
         }]);
         return new FieldResource(

@@ -1,10 +1,12 @@
+import hasProperties from 'immuton/hasProperties';
+import isEqual from 'immuton/isEqual';
+import isNotNully from 'immuton/isNotNully';
+import { Key } from 'immuton/types';
 import { useEffect, useState } from 'react';
 import { Bindable, Client } from '../client';
 import { HttpStatus, isResponse } from '../http';
 import { ListOperation, RetrieveOperation } from '../operations';
 import { Cursor } from '../pagination';
-import { hasProperties, isEqual, isNotNully } from '../utils/compare';
-import { Key } from '../utils/objects';
 import { useClient } from './client';
 
 // TODO: Excplicit error type!

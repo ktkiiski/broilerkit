@@ -1,11 +1,12 @@
 // tslint:disable:no-shadowed-variable
+import flatten from 'immuton/flatten';
+import order from 'immuton/order';
 import { toArray } from './async';
 import * as localApi from './auth-local-api';
 import { create } from './db';
 import { Created } from './http';
 import { implementAll } from './server';
 import { users } from './users';
-import { flatten, order } from './utils/arrays';
 import { uuid4 } from './uuid';
 
 export default implementAll(localApi).using({

@@ -1,8 +1,8 @@
+import build from 'immuton/build';
 import { encodeDataUri } from './data-uri';
 import { BadRequest, parseHeaderDirectives, UnsupportedMediaType } from './http';
 import { parseFormData } from './multipart';
 import { Serializer } from './serializers';
-import { buildObject } from './utils/objects';
 
 export function parsePayload(serializer: Serializer, body: string, contentTypeHeader: string): any {
     const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);
@@ -16,7 +16,7 @@ export function parsePayload(serializer: Serializer, body: string, contentTypeHe
         // Decode multipart/form-data
         const formData = parseFormData(body, meta.boundary);
         // tslint:disable-next-line:no-shadowed-variable
-        const encodedPayload = buildObject(formData, ({name, headers, filename, body}) => {
+        const encodedPayload = build(formData, ({name, headers, filename, body}) => {
             if (!name) {
                 return undefined;
             }

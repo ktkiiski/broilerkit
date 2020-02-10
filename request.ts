@@ -3,7 +3,7 @@ import * as https from 'https';
 import { URL } from 'url';
 import { readStream } from './fs';
 import { HttpMethod, normalizeHeaders } from './http';
-import { forEachKey } from './utils/objects';
+import { forEachKey } from './objects';
 
 interface Request extends https.RequestOptions {
     url: string;

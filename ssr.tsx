@@ -1,3 +1,6 @@
+import build from 'immuton/build';
+import mapObject from 'immuton/mapObject';
+import pick from 'immuton/pick';
 import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
@@ -12,7 +15,6 @@ import { MetaContextProvider } from './react/meta';
 import { Serializer } from './serializers';
 import { ApiService, Controller, ServerContext } from './server';
 import { buildQuery, Url, UrlPattern } from './url';
-import { buildObject, mapObject, pick } from './utils/objects';
 
 export const RENDER_WEBSITE_ENDPOINT_NAME = 'renderWebsite' as const;
 
@@ -190,7 +192,7 @@ async function executeListings(execute: RequestHandler, listings: Listing[], req
 }
 
 function getActionUrls<T extends Retrieval | Listing>(actions: T[]): Record<string, [Url, T]> {
-    return buildObject(actions, (action) => {
+    return build(actions, (action) => {
         try {
             const url = action.operation.route.compile(action.input as any);
             return [url.toString(), [url, action] as [Url, T]];

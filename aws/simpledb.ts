@@ -1,5 +1,5 @@
 import { SimpleDB } from 'aws-sdk';
-import { buildObject } from '../utils/objects';
+import build from 'immuton/build';
 
 interface ItemAttributes {
     [key: string]: string;
@@ -27,7 +27,7 @@ export class AmazonSimpleDB {
 
     public async getAttributes<T extends ItemAttributes>(params: SimpleDB.GetAttributesRequest): Promise<T> {
         const result = await this.simpleDB.getAttributes(params).promise();
-        return buildObject(result.Attributes || [], ({Name, Value}) => [Name, Value]) as T;
+        return build(result.Attributes || [], ({Name, Value}) => [Name, Value]) as T;
     }
 
     public async *select(query: string, consistent: boolean): AsyncIterableIterator<ItemChunk> {
@@ -39,7 +39,7 @@ export class AmazonSimpleDB {
             const {Items = [], NextToken} = await this.simpleDB.select(params).promise();
             const items = Items.map((item) => ({
                 name: item.Name,
-                attributes: buildObject(item.Attributes, ({Name, Value}) => [Name, Value]),
+                attributes: build(item.Attributes, ({Name, Value}) => [Name, Value]),
             }));
             yield { items, isComplete: !NextToken };
             if (!NextToken) {

@@ -1,8 +1,10 @@
+import isNotNully from 'immuton/isNotNully';
+import isNully from 'immuton/isNully';
+import { Key } from 'immuton/types';
+import { keys } from './objects';
 import { cyan, dim, magenta, red } from './palette';
 import { Resource } from './resources';
 import { Fields, Serializer } from './serializers';
-import { isNotNully, isNully } from './utils/compare';
-import { Key, keys } from './utils/objects';
 
 export interface SqlQuery<R> {
     sql: string;

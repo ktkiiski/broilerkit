@@ -1,7 +1,7 @@
+import { Key } from 'immuton/types';
 import { Resource } from './resources';
 import { Route } from './routes';
 import { UrlPattern } from './url';
-import { Key } from './utils/objects';
 
 export class Endpoint<S, PK extends Key<S>, V extends Key<S>, U extends Key<S>> {
     constructor(

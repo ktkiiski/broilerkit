@@ -1,9 +1,12 @@
+import objectDifference from 'immuton/objectDifference';
+import pick from 'immuton/pick';
+import { Key } from 'immuton/types';
+import { keys } from './objects';
 import { Operation } from './operations';
 import { authorize } from './permissions';
 import { Resource } from './resources';
 import { UserSession } from './sessions';
 import { buildQuery } from './url';
-import { getObjectChanges, Key, keys, pick } from './utils/objects';
 
 export interface ResourceEffect<T = any, PK extends Key<T> = any> {
     resource: Resource<T, PK, any>;
@@ -35,7 +38,7 @@ export function getEffectHeaders(effects: ResourceEffect[], operations: Array<Op
         if (newState && oldState) {
             // Resource is and was "visible" for the user
             // Only send the difference (and identifying keys)
-            const objectDelta = getObjectChanges(oldState, newState, 0);
+            const objectDelta = objectDifference(oldState, newState, 0);
             if (Object.keys(objectDelta).length > 0) {
                 const stateDiff = { ...objectDelta, ...pick(newState, identifyBy) };
                 headers.push(`${name}?${buildQuery(stateDiff)}`);

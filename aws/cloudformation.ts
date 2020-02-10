@@ -1,6 +1,7 @@
 import { CloudFormation } from 'aws-sdk';
+import build from 'immuton/build';
+import mapObject from 'immuton/mapObject';
 import { wait } from '../async';
-import { buildObject, mapObject } from '../utils/objects';
 import { retrievePages } from './utils';
 
 export interface IStackWithResources extends CloudFormation.Stack {
@@ -74,7 +75,7 @@ export class AmazonCloudFormation {
      */
     public async getStackOutput(): Promise<IStackOutput> {
         const stack = await this.describeStack();
-        return buildObject(stack.Outputs || [], ({OutputKey, OutputValue}) => {
+        return build(stack.Outputs || [], ({OutputKey, OutputValue}) => {
             if (OutputKey && OutputValue) {
                 return [OutputKey, OutputValue];
             }
@@ -86,7 +87,7 @@ export class AmazonCloudFormation {
      */
     public async getStackParameters(): Promise<{[key: string]: string | null}> {
         const stack = await this.describeStack();
-        return buildObject(stack.Parameters || [], ({ParameterKey, ParameterValue, UsePreviousValue}) => {
+        return build(stack.Parameters || [], ({ParameterKey, ParameterValue, UsePreviousValue}) => {
             if (ParameterKey) {
                 if (UsePreviousValue) {
                     return [ParameterKey, null];

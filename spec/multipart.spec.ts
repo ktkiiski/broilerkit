@@ -1,7 +1,7 @@
 import * as assert from 'assert';
+import hasProperties from 'immuton/hasProperties';
 import 'mocha';
 import { parseFormData } from '../multipart';
-import { hasProperties } from '../utils/compare';
 
 describe('parseFormData()', () => {
     it('parses values to their own fields', () => {

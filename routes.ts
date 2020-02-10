@@ -1,6 +1,6 @@
+import { Key } from 'immuton/types';
 import { Fields, FieldSerializer, Serializer } from './serializers';
 import { Url, UrlPattern } from './url';
-import { Key } from './utils/objects';
 
 export class Route<S, K extends Key<S> | never> {
     constructor(public readonly serializer: Serializer<S>, public readonly pattern: UrlPattern<K>) {}

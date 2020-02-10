@@ -1,16 +1,20 @@
+import difference from 'immuton/difference';
+import findOrderedIndex from 'immuton/findOrderedIndex';
+import hasProperties from 'immuton/hasProperties';
+import isEqual from 'immuton/isEqual';
+import pick from 'immuton/pick';
+import { Key } from 'immuton/types';
 import { ajax } from './ajax';
 import { wait } from './async';
 import { AuthClient, DummyAuthClient } from './auth';
 import { ResourceAddition, ResourceChange, ResourceRemoval } from './collections';
 import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
+import { forEachKey, keys } from './objects';
 import { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import { Cursor } from './pagination';
 import { Resource } from './resources';
 import { stripPrefix } from './strings';
 import { parseUrl, Url } from './url';
-import { difference, getOrderedIndex } from './utils/arrays';
-import { hasProperties, isEqual } from './utils/compare';
-import { forEachKey, Key, keys, pick } from './utils/objects';
 
 export interface Retrieval<S = any, U extends Key<S> = any> {
     operation: RetrieveOperation<S, U, any, any>;
@@ -770,7 +774,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         // Ensure that the item won't show up from the original collection
         const resources = iFilter(state.resources, isNotChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
-        const sortedIndex = getOrderedIndex(
+        const sortedIndex = findOrderedIndex(
             resources, change.resource,
             state.ordering,
             state.direction,

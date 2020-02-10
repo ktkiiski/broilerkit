@@ -1,4 +1,8 @@
 // tslint:disable:member-ordering
+import isNotNully from 'immuton/isNotNully';
+import sort from 'immuton/sort';
+import transform from 'immuton/transform';
+import { ExcludedKeys, FilteredKeys } from 'immuton/types';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
@@ -13,9 +17,6 @@ import { authorize } from './permissions';
 import { Database, DatabaseClient, PostgreSqlPoolConnection } from './postgres';
 import { UserSession } from './sessions';
 import { Url, UrlPattern } from './url';
-import { sort } from './utils/arrays';
-import { isNotNully } from './utils/compare';
-import { ExcludedKeys, FilteredKeys, transformValues } from './utils/objects';
 
 export interface HandlerContext extends EffectContext {
     db: DatabaseClient;
@@ -178,7 +179,7 @@ export function implementAll<I, O, R, T extends Record<string, OperationType>>(
     function using(
         implementors: OperationImplementors<I, O, R, T>,
     ): Record<keyof I & keyof O & keyof R & keyof T, Controller> {
-        return transformValues(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => {
+        return transform(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => {
             const implementor = (implementors as any)[key as keyof I & keyof O & keyof R & keyof T];
             if (implementor) {
                 return implement(operation, implementor);
