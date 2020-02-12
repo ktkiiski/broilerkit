@@ -171,7 +171,8 @@ export async function migrate(ev: MigrationCFRRequest) {
         port: parameters.Port,
         user: username,
         password,
-        connectionTimeoutMillis: 30 * 1000,
+        // Let there be enough time for the DB clusters to start up
+        connectionTimeoutMillis: 5 * 60 * 1000,
         statement_timeout: 5 * 60 * 1000,
     };
     const client = new Client(config);
