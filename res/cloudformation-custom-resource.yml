@@ -9,7 +9,6 @@ Resources:
       Code:
         ZipFile: |
           const AWS = require('aws-sdk'),
-            jmespath = require('jmespath'),
             crypto = require('crypto'),
             https = require('https'),
             url = require('url');
@@ -34,9 +33,9 @@ Resources:
             } else if (ev.RequestType === 'Create' || ev.RequestType === 'Update') {
               updateResource(args, ev, ctx, function (data) {
                 let props = ev[rp][ev.RequestType] || ev[rp]['Create'];
-                if (props.PhysicalResourceIdQuery) ev[pid] = jmespath.search(data, props.PhysicalResourceIdQuery);
+                if (props.PhysicalResourceIdQuery) ev[pid] = data && data[props.PhysicalResourceIdQuery];
                 if (props[pid]) ev[pid] = props[pid];
-                if (props.Attributes) data = jmespath.search(data, props.Attributes);
+                if (props.Attributes) data = data && data[props.Attributes];
                 response.send(ev, ctx, response.SUCCESS, data, ev[pid]);
               });
             }
