@@ -130,7 +130,7 @@ Resources:
           };
       FunctionName:
         Fn::Sub: "${AWS::StackName}-custom-resource"
-      Runtime: nodejs8.10
+      Runtime: nodejs12.x
       Timeout: 300  # = 5 minutes
 
   # Logging group for generic custom resource
