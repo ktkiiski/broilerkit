@@ -28,14 +28,20 @@ function LocalSignInView({location}: RouteComponentProps) {
     const query = parseQuery(location.search);
 
     async function signInAs(user: User) {
-        const idTokenPayload = {
+        const idTokenPayload: {[key: string]: any} = {
             'sub': user.id,
             'exp': Math.floor(new Date().getTime() / 1000) + 60 * 60,
-            'email': user.email,
-            'name': user.name,
-            'picture': user.picture,
             'cognito:groups': isAdmin ? ['Administrators'] : [],
         };
+        if (user.email) {
+            idTokenPayload.email = user.email;
+        }
+        if (user.name) {
+            idTokenPayload.name = user.name;
+        }
+        if (user.picture) {
+            idTokenPayload.picture = user.picture;
+        }
         // Create the JWT token
         const idToken = sign(idTokenPayload, 'LOCAL_SECRET');
         const code = buildQuery({ id_token: idToken });
@@ -95,7 +101,7 @@ function LocalSignInView({location}: RouteComponentProps) {
         {users && users.map((user) => (
             <button key={user.id} onClick={() => signInAs(user)}>
             {user.name}
-            ({user.email})
+            ({user.email || 'no email'})
             </button>
         ))}
     </>;

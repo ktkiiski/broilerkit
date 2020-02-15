@@ -366,9 +366,9 @@ function parseUserSession(tokens: TokenResponse, sessionId: string, expiresIn: n
     const userId: string = idTokenPayload.sub;
     return {
         id: userId,
-        name: idTokenPayload.name,
-        email: idTokenPayload.email,
-        picture: idTokenPayload.picture,
+        name: idTokenPayload.name || null,
+        email: idTokenPayload.email || null,
+        picture: idTokenPayload.picture || null,
         groups: idTokenPayload['cognito:groups'] || [],
         expiresAt,
         authenticatedAt: now,

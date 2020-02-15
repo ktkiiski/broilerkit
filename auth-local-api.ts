@@ -15,6 +15,8 @@ export const _createUser = creatable(usersCollection, {
     required: ['email', 'name'],
     optional: [],
     defaults: {
+        name: null,
+        email: null,
         picture: null,
     },
 });
