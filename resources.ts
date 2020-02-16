@@ -8,7 +8,7 @@ import { Fields, FieldSerializer, nested, Serializer } from './serializers';
 type JoinCondition = string | { value: any };
 
 interface BaseJoin {
-    resource: Resource<any, any, any>;
+    resource: Resource<any, any>;
     on: { [pk: string]: JoinCondition };
     fields: { [key: string]: string };
 }
@@ -25,72 +25,67 @@ interface LeftJoin extends BaseJoin {
 type Join = InnerJoin | LeftJoin;
 
 interface Nesting<R = any, PK extends Key<R> = any, T = any> {
-    resource: Resource<R, PK, any>;
+    resource: Resource<R, PK>;
     on: { [P in PK]: FilteredKeys<T, R[PK]> & string };
 }
 
-type Relations<S = any, R extends {[name: string]: Resource<any, any, any>} = any> = {
+type Relations<S = any, R extends {[name: string]: Resource<any, any>} = any> = {
     [P in keyof R]: Nesting<Deserialization<R[P]>, PrimaryKey<R[P]>, S>;
 };
 
-export interface Resource<T, PK extends Key<T>, V extends Key<T>> extends FieldSerializer<T> {
+export interface Resource<T, PK extends Key<T>> extends FieldSerializer<T> {
     readonly name: string;
     readonly identifyBy: PK[];
-    readonly versionBy: V[];
     readonly columns: {[key: string]: Field<any>};
     readonly nestings: Relations<T>;
     readonly joins: Join[];
     readonly identifier: Serializer<Pick<T, PK>>;
-    subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): Resource<Pick<T, K>, PK & K, V & K>;
+    subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): Resource<Pick<T, K>, PK & K>;
     /**
      * Join another resource with an inner join.
      */
-    join<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), V>;
+    join<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string)>;
     /**
      * Join another resource with an left outer join.
      */
-    leftJoin<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U, defaults: {[P in keyof U]: S2[U[P]]}): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), V>;
+    leftJoin<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U, defaults: {[P in keyof U]: S2[U[P]]}): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string)>;
     /**
      * Nest related resource as a property to this resource.
      * The join is a left join, meaning that the property
      * value will be null if the related resource does not exist.
      */
-    nest<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, resource: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<T, S2[P]>}): Resource<T & Record<K, S2 | null>, PK, V>;
+    nest<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, resource: Resource<S2, PK2 & Key<S2>>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<T, S2[P]>}): Resource<T & Record<K, S2 | null>, PK>;
 }
 
-type PrimaryKey<R> = R extends Resource<any, infer PK, any> ? PK : never;
+type PrimaryKey<R> = R extends Resource<any, infer PK> ? PK : never;
 
-class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSerializer<T> implements Resource<T, PK, V> {
+class FieldResource<T, PK extends Key<T>> extends FieldSerializer<T> implements Resource<T, PK> {
     public readonly identifier: Serializer<Pick<T, PK>>;
 
     /**
      * @param name The identifying name of this type of resource.
      * @param columns Attribute names with their field definitions of the resource.
      * @param identifyBy Attributes whose values together uniquely identify resources.
-     * @param versionBy Attribute whose value can be used to determine if the item's has updated.
      */
     constructor(
         public readonly name: string,
         public readonly columns: {[key: string]: Field<any>},
         public readonly identifyBy: PK[],
-        public readonly versionBy: V[],
         public readonly nestings: {[key: string]: Nesting},
         public readonly joins: Join[],
     ) {
         super(buildFields(columns, nestings, joins));
         this.identifier = this.pick(this.identifyBy);
     }
-    public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, V & K> {
+    public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K> {
         const { identifyBy } = this;
         if (!identifyBy.every((key) => (attrs as string[]).includes(key))) {
             throw new Error('Cannot omit identifying keys for a subset of a resource');
         }
-        const versionBy = this.versionBy.filter((attr) => attrs.indexOf(attr as any) >= 0);
         return new FieldResource(
             this.name,
             pick(this.columns, attrs),
             identifyBy as Array<K & PK>,
-            versionBy as Array<K & V>,
             pick(this.nestings, attrs),
             this.joins.map((join) => (
                 join.type === 'inner' ? {
@@ -106,10 +101,10 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
     }
 
     public join<S2, PK2 extends Key<S2>>(
-        other: Resource<S2, PK2 & Key<S2>, any>,
+        other: Resource<S2, PK2 & Key<S2>>,
         on: {[P in any]?: JoinCondition},
         fields: {[column: string]: string},
-    ): Resource<any, any, any> {
+    ): Resource<any, any> {
         const joins: Join[] = this.joins.concat([{
             type: 'inner',
             resource: other,
@@ -117,15 +112,15 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
             on: select(on, isDefined),
         }]);
         return new FieldResource(
-            this.name, this.columns, this.identifyBy, this.versionBy, this.nestings, joins,
+            this.name, this.columns, this.identifyBy, this.nestings, joins,
         );
     }
     public leftJoin<S2, PK2 extends Key<S2>>(
-        other: Resource<S2, PK2 & Key<S2>, any>,
+        other: Resource<S2, PK2 & Key<S2>>,
         on: {[P in any]?: JoinCondition},
         fields: {[column: string]: string},
         defaults: {[column: string]: any},
-    ): Resource<any, any, any> {
+    ): Resource<any, any> {
         const joins: Join[] = this.joins.concat([{
             type: 'left',
             resource: other,
@@ -134,20 +129,20 @@ class FieldResource<T, PK extends Key<T>, V extends Key<T>> extends FieldSeriali
             defaults,
         }]);
         return new FieldResource(
-            this.name, this.columns, this.identifyBy, this.versionBy, this.nestings, joins,
+            this.name, this.columns, this.identifyBy, this.nestings, joins,
         );
     }
     public nest<K extends string, S2>(
         propertyName: K,
-        other: Resource<S2, any, any>,
+        other: Resource<S2, any>,
         on: {[key: string]: string},
-    ): Resource<T & Record<K, S2 | null>, PK, V> {
+    ): Resource<T & Record<K, S2 | null>, PK> {
         const nestings: {[key: string]: Nesting} = {
             ...this.nestings,
             [propertyName]: { resource: other, on },
         };
-        return new FieldResource<T & Record<K, S2 | null>, PK, V>(
-            this.name, this.columns, this.identifyBy, this.versionBy, nestings, this.joins,
+        return new FieldResource<T & Record<K, S2 | null>, PK>(
+            this.name, this.columns, this.identifyBy, nestings, this.joins,
         );
     }
 }
@@ -173,8 +168,8 @@ type ResourceFields<I, O> = {[P in keyof I]: Field<I[P], any>} & {[P in keyof O]
 
 export function resource(name: string) {
     function fields<T, X>(columns: ResourceFields<T, X>) {
-        function identifyBy<PK extends Key<T>, V extends Key<T> = never>(idKeys: PK[], versionKey?: V): Resource<T, PK, V> {
-            return new FieldResource<T, PK, V>(name, columns, idKeys, versionKey != null ? [versionKey] : [], {}, []);
+        function identifyBy<PK extends Key<T>>(...idKeys: PK[]): Resource<T, PK> {
+            return new FieldResource<T, PK>(name, columns, idKeys, {}, []);
         }
         return { identifyBy };
     }

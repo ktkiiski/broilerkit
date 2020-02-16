@@ -9,7 +9,7 @@ import { UserSession } from './sessions';
 import { buildQuery } from './url';
 
 export interface ResourceEffect<T = any, PK extends Key<T> = any> {
-    resource: Resource<T, PK, any>;
+    resource: Resource<T, PK>;
     identity: Pick<T, PK>;
     newState: T | null;
     oldState: T | null;
@@ -19,7 +19,7 @@ export interface EffectContext {
     readonly effects: ResourceEffect[];
 }
 
-export function addEffect<T, PK extends Key<T>>(context: EffectContext, resource: Resource<T, PK, any>, newState: T | null, oldState: T | null): void {
+export function addEffect<T, PK extends Key<T>>(context: EffectContext, resource: Resource<T, PK>, newState: T | null, oldState: T | null): void {
     const state = newState || oldState;
     if (!state) {
         return;

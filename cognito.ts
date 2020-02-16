@@ -1,6 +1,6 @@
 import isEqual from 'immuton/isEqual';
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { batchRetrieve, destroy, Identity, PartialUpdate, retrieve, scan, update } from './db';
+import { batchRetrieve, destroy, retrieve, scan, update } from './db';
 import { HttpStatus, isResponse, NotFound } from './http';
 import { DatabaseClient } from './postgres';
 import { Serializer } from './serializers';
@@ -97,20 +97,20 @@ export class LocalUserPool implements UserPool {
 
     public retrieve(query: UserIdentity): Promise<User> {
         return this.db.run(
-            retrieve(users, query as Identity<User, 'id', 'updatedAt'>),
+            retrieve(users, query as Pick<User, 'id'>),
         );
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
         const updates = {...changes, updatedAt: new Date()};
         return this.db.run(
-            update(users, identity as Identity<User, 'id', 'updatedAt'>, updates as PartialUpdate<User, 'updatedAt'>),
+            update(users, identity as Pick<User, 'id'>, updates as Partial<User>),
         );
     }
 
     public destroy(identity: UserIdentity) {
         return this.db.run(
-            destroy(users, identity as Identity<User, 'id', 'updatedAt'>),
+            destroy(users, identity as Pick<User, 'id'>),
         );
     }
 
@@ -122,7 +122,7 @@ export class LocalUserPool implements UserPool {
 
     public batchRetrieve(identities: UserIdentity[]) {
         return this.db.run(
-            batchRetrieve(users, identities as Array<Identity<User, 'id', 'updatedAt'>>),
+            batchRetrieve(users, identities as Array<Pick<User, 'id'>>),
         );
     }
 }

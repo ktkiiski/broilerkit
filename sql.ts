@@ -35,7 +35,7 @@ export interface TableDefaults {
 }
 
 export function selectQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     defaultsByTable: TableDefaults,
     filters: Record<string, any>,
     limit?: number,
@@ -69,7 +69,7 @@ export function selectQuery<S>(
 }
 
 export function batchSelectQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     defaultsByTable: TableDefaults,
     filtersList: Array<Record<string, any>>,
 ): SqlQuery<S[]> {
@@ -87,28 +87,28 @@ export function batchSelectQuery<S>(
 }
 
 export function updateQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     filters: Record<string, any>,
     values: Record<string, any>,
     defaultsByTable: TableDefaults,
     returnPrevious: false,
 ): SqlQuery<S[]>;
 export function updateQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     filters: Record<string, any>,
     values: Record<string, any>,
     defaultsByTable: TableDefaults,
     returnPrevious: true,
 ): SqlQuery<Array<[S, S]>>;
 export function updateQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     filters: Record<string, any>,
     values: Record<string, any>,
     defaultsByTable: TableDefaults,
     returnPrevious?: boolean,
 ): SqlQuery<S[] | Array<[S, S]>>;
 export function updateQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     filters: Record<string, any>,
     values: Record<string, any>,
     defaultsByTable: TableDefaults,
@@ -161,19 +161,19 @@ export function updateQuery<S>(
 }
 
 export function insertQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     defaultsByTable: TableDefaults,
     insertValues: Record<string, any>,
     updateValues: Record<string, any>,
 ): SqlQuery<InsertResult<S>>;
 export function insertQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     defaultsByTable: TableDefaults,
     insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
 ): SqlQuery<InsertResult<S> | null>;
 export function insertQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     defaultsByTable: TableDefaults,
     insertValues: Record<string, any>,
     updateValues?: Record<string, any>,
@@ -218,7 +218,7 @@ export function insertQuery<S>(
 }
 
 export function deleteQuery<S>(
-    resource: Resource<S, any, any>,
+    resource: Resource<S, any>,
     filters: Record<string, any>,
     defaultsByTable: TableDefaults,
 ): SqlQuery<S | null> {
@@ -243,7 +243,7 @@ export function deleteQuery<S>(
 }
 
 export function countQuery(
-    resource: Resource<any, any, any>,
+    resource: Resource<any, any>,
     filters: Record<string, any>,
     defaultsByTable: TableDefaults,
 ): SqlQuery<number> {
@@ -267,7 +267,7 @@ export function increment(diff: number) {
     return new Increment(diff);
 }
 
-function getSelectColumnsSql(resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults, name = resource.name): string {
+function getSelectColumnsSql(resource: Resource<any, any>, params: any[], defaultsByTable: TableDefaults, name = resource.name): string {
     const { nestings, columns } = resource;
     const selectSqls = [
         returnColumnsSql(name, columns, params, defaultsByTable[resource.name]),
@@ -294,7 +294,7 @@ function getSelectColumnsSql(resource: Resource<any, any, any>, params: any[], d
     return selectSqls.join(', ');
 }
 
-function getJoinSql(baseName: string, resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults): string {
+function getJoinSql(baseName: string, resource: Resource<any, any>, params: any[], defaultsByTable: TableDefaults): string {
     const joinSqlCmps: string[] = [];
     const { joins } = resource;
     // Regular inner joins
@@ -399,7 +399,7 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
     return `${colRef} IN (${placeholders.join(',')})`;
 }
 
-function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): Array<[string, string]> {
+function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any>): Array<[string, string]> {
     const refs: Array<[string, string]> = [];
     resource.joins.forEach((join, index) => {
         if (join.type === 'left') {
@@ -426,7 +426,7 @@ function resolveColumnRefs(baseName: string, columnName: string, resource: Resou
     throw new Error(`Unknown column "${columnName}"`);
 }
 
-function filterConditionSql(filters: {[field: string]: any}, resource: Resource<any, any, any>, params: any[], defaults: {[key: string]: any}): string {
+function filterConditionSql(filters: {[field: string]: any}, resource: Resource<any, any>, params: any[], defaults: {[key: string]: any}): string {
     const conditions: string[] = [];
     keys(filters).map((field) => {
         const value = filters[field];

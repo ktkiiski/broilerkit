@@ -17,7 +17,7 @@ interface SqlScanChunk extends SqlResult {
 export interface Database {
     tables: Table[];
     defaultsByTable: TableDefaults;
-    getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null): Array<SqlOperation<any>>;
+    getAggregationQueries<S>(resource: Resource<S, any>, newValues: S | null, oldValues: S | null): Array<SqlOperation<any>>;
 }
 
 export interface SqlConnection extends EffectContext {
