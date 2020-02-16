@@ -25,11 +25,6 @@ export interface SqlResult {
     rowCount: number;
 }
 
-interface InsertResult<R> {
-    item: R;
-    wasCreated: boolean;
-}
-
 export interface TableDefaults {
     [name: string]: {[key: string]: any};
 }
@@ -164,53 +159,26 @@ export function insertQuery<S>(
     resource: Resource<S, any>,
     defaultsByTable: TableDefaults,
     insertValues: Record<string, any>,
-    updateValues: Record<string, any>,
-): SqlQuery<InsertResult<S>>;
-export function insertQuery<S>(
-    resource: Resource<S, any>,
-    defaultsByTable: TableDefaults,
-    insertValues: Record<string, any>,
-    updateValues?: Record<string, any>,
-): SqlQuery<InsertResult<S> | null>;
-export function insertQuery<S>(
-    resource: Resource<S, any>,
-    defaultsByTable: TableDefaults,
-    insertValues: Record<string, any>,
-    updateValues?: Record<string, any>,
-): SqlQuery<InsertResult<S> | null> {
+): SqlQuery<S | null> {
     const params: any[] = [];
     const columnNames: string[] = [];
     const placeholders: string[] = [];
-    const updates: string[] = [];
-    const { name, columns, identifyBy } = resource;
+    const { name, columns } = resource;
     const defaults = defaultsByTable[name];
     keys(columns).forEach((key) => {
         columnNames.push(ref(key));
         placeholders.push(param(params, insertValues[key]));
     });
-    if (updateValues) {
-        keys(updateValues).forEach((key) => {
-            const value = updateValues[key];
-            updates.push(assignmentSql(name, key, value, params));
-        });
-    }
     const tblSql = ref(name);
     const colSql = columnNames.join(', ');
     const valSql = placeholders.join(', ');
-    let sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql})`;
-    if (updates.length) {
-        const pkSql = identifyBy.map(ref).join(',');
-        const upSql = updates.join(', ');
-        sql += ` ON CONFLICT (${pkSql}) DO UPDATE SET ${upSql}`;
-    } else {
-        sql += ` ON CONFLICT DO NOTHING`;
-    }
-    sql += ` RETURNING ${returnColumnsSql(name, columns, params, defaults)}, xmax::text::int;`;
+    const returnSql = returnColumnsSql(name, columns, params, defaults);
+    const sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql}) ON CONFLICT DO NOTHING RETURNING ${returnSql}`;
     return makeQuery(sql, params, ({ rows }) => {
-        for (const { xmax, ...row } of rows) {
+        for (const row of rows) {
             const item = parseRow(name, resource, row);
             if (item) {
-                return { item, wasCreated: xmax === 0 };
+                return item;
             }
         }
         return null;

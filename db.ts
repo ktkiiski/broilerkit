@@ -145,20 +145,20 @@ export function create<S>(
         const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
         const result = aggregationQueries.length
             ? await connection.transaction(async () => {
-                const res = await executeQuery(connection, query);
-                if (res) {
+                const insertion = await executeQuery(connection, query);
+                if (insertion) {
                     // Register the addition
-                    addEffect(connection, resource, res.item, null);
+                    addEffect(connection, resource, insertion, null);
                     // Update aggregations
                     await executeAll(connection, db, aggregationQueries);
                 }
-                return res;
+                return insertion;
             })
             : await executeQuery(connection, query);
         if (!result) {
             throw new PreconditionFailed(`Item already exists.`);
         }
-        return result.item;
+        return result;
     };
 }
 
@@ -194,17 +194,17 @@ export function initiate<S>(
         const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
         const result = aggregationQueries.length
             ? await connection.transaction(async () => {
-                const res = await executeQuery(connection, query);
-                if (res) {
+                const insertion = await executeQuery(connection, query);
+                if (insertion) {
                     // Register the addition
-                    addEffect(connection, resource, res.item, null);
+                    addEffect(connection, resource, insertion, null);
                     // Update aggregations
                     await executeAll(connection, db, aggregationQueries);
                 }
-                return res;
+                return insertion;
             })
             : await executeQuery(connection, query);
-        return result && result.item;
+        return result;
     };
 }
 
@@ -343,13 +343,12 @@ export function upsert<S, PK extends Key<S>>(
             // Rollback and retry the transaction
             throw new Conflict(`Insert conflict on upsert`);
         }
-        const { item } = insertion;
         // Register the insertion
-        addEffect(connection, resource, item, null);
+        addEffect(connection, resource, insertion, null);
         // Update aggregations
-        const insertAggregationQueries = db.getAggregationQueries(resource, item, null);
+        const insertAggregationQueries = db.getAggregationQueries(resource, insertion, null);
         await executeAll(connection, db, insertAggregationQueries);
-        return item;
+        return insertion;
     });
 }
 
