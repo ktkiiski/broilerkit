@@ -272,7 +272,7 @@ export function update<S, PK extends Key<S>>(
     };
     return async (connection, db) => {
         const [result] = await connection.transaction(async () => {
-            const query = updateQuery(resource, filters, values, db.defaultsByTable, true);
+            const query = updateQuery(resource, filters, values, db.defaultsByTable);
             const updates = await executeQuery(connection, query);
             for (const [newItem, oldItem] of updates) {
                 // Row was actually updated
@@ -321,7 +321,7 @@ export function upsert<S, PK extends Key<S>>(
         ...updateSerializer.validate(staticChanges),
     };
     return (connection, db) => connection.transaction(async () => {
-        const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable, true);
+        const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable);
         const updates = await executeQuery(connection, query1);
         for (const [newItem, oldItem] of updates) {
             // Row exists

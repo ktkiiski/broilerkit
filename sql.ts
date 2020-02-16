@@ -86,29 +86,7 @@ export function updateQuery<S>(
     filters: Record<string, any>,
     values: Record<string, any>,
     defaultsByTable: TableDefaults,
-    returnPrevious: false,
-): SqlQuery<S[]>;
-export function updateQuery<S>(
-    resource: Resource<S, any>,
-    filters: Record<string, any>,
-    values: Record<string, any>,
-    defaultsByTable: TableDefaults,
-    returnPrevious: true,
-): SqlQuery<Array<[S, S]>>;
-export function updateQuery<S>(
-    resource: Resource<S, any>,
-    filters: Record<string, any>,
-    values: Record<string, any>,
-    defaultsByTable: TableDefaults,
-    returnPrevious?: boolean,
-): SqlQuery<S[] | Array<[S, S]>>;
-export function updateQuery<S>(
-    resource: Resource<S, any>,
-    filters: Record<string, any>,
-    values: Record<string, any>,
-    defaultsByTable: TableDefaults,
-    returnPrevious: boolean = false,
-): SqlQuery<S[] | Array<[S, S]>> {
+): SqlQuery<Array<[S, S]>> {
     const params: any[] = [];
     const assignments: string[] = [];
     const { name, columns, identifyBy } = resource;
@@ -123,36 +101,28 @@ export function updateQuery<S>(
     const valSql = assignments.join(', ');
     const condSql = filterConditionSql(filters, resource, params, defaults);
     const returnSql = returnColumnsSql(name, columns, params, defaults);
-    if (returnPrevious) {
-        // Join the current state to the query in order to return the previous state
-        const columnSql = keys(columns).map(ref).join(', ');
-        // NOTE: As we assume SERIALIZABLE transactions, we don't need `FOR UPDATE`
-        const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql}`;
-        const prevAlias = '_previous';
-        const prevRef = ref(prevAlias);
-        const joinConditions = identifyBy.map((pk) => (
-            `${prevRef}.${ref(pk)} = ${tblRef}.${ref(pk)}`
-        ));
-        const joinSql = joinConditions.join(' AND ');
-        const prevReturnSql = returnColumnsSql(prevAlias, columns, params, defaults);
-        const sql = `UPDATE ${tblRef} SET ${valSql} FROM (${prevSelect}) ${prevRef} WHERE ${joinSql} RETURNING ${prevReturnSql}, ${returnSql};`;
-        return makeQuery(sql, params, ({ rows }) => (
-            rows.map((row) => {
-                const newItem = parseRow(name, resource, row);
-                const oldItem = parseRow('_previous', resource, row);
-                if (newItem && oldItem) {
-                    return [newItem, oldItem] as [S, S];
-                }
-                return null;
-            }).filter(isNotNully)
-        ));
-    } else {
-        // Normal update, without joining the previous state
-        const sql = `UPDATE ${tblRef} SET ${valSql} WHERE ${condSql} RETURNING ${returnSql};`;
-        return makeQuery(sql, params, ({ rows }) => (
-            rows.map((row) => parseRow(name, resource, row)).filter(isNotNully)
-        ));
-    }
+    // Join the current state to the query in order to return the previous state
+    const columnSql = keys(columns).map(ref).join(', ');
+    // NOTE: As we assume SERIALIZABLE transactions, we don't need `FOR UPDATE`
+    const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql}`;
+    const prevAlias = '_previous';
+    const prevRef = ref(prevAlias);
+    const joinConditions = identifyBy.map((pk) => (
+        `${prevRef}.${ref(pk)} = ${tblRef}.${ref(pk)}`
+    ));
+    const joinSql = joinConditions.join(' AND ');
+    const prevReturnSql = returnColumnsSql(prevAlias, columns, params, defaults);
+    const sql = `UPDATE ${tblRef} SET ${valSql} FROM (${prevSelect}) ${prevRef} WHERE ${joinSql} RETURNING ${prevReturnSql}, ${returnSql};`;
+    return makeQuery(sql, params, ({ rows }) => (
+        rows.map((row) => {
+            const newItem = parseRow(name, resource, row);
+            const oldItem = parseRow('_previous', resource, row);
+            if (newItem && oldItem) {
+                return [newItem, oldItem] as [S, S];
+            }
+            return null;
+        }).filter(isNotNully)
+    ));
 }
 
 export function insertQuery<S>(
