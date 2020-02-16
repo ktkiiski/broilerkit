@@ -1,7 +1,9 @@
 import difference from 'immuton/difference';
+import filter from 'immuton/filter';
 import findOrderedIndex from 'immuton/findOrderedIndex';
 import hasProperties from 'immuton/hasProperties';
 import isEqual from 'immuton/isEqual';
+import mapFilter from 'immuton/mapFilter';
 import pick from 'immuton/pick';
 import { Key } from 'immuton/types';
 import { ajax } from './ajax';
@@ -761,7 +763,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
     const isNotChangedResource = (item: any) => !hasProperties(item, change.resourceIdentity, 0);
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
-        const resources = iFilter(state.resources, isNotChangedResource);
+        const resources = filter(state.resources, isNotChangedResource);
         if (state.resources !== resources) {
             return { ...state, resources };
         }
@@ -772,7 +774,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
             return state;
         }
         // Ensure that the item won't show up from the original collection
-        const resources = iFilter(state.resources, isNotChangedResource);
+        const resources = filter(state.resources, isNotChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
         const sortedIndex = findOrderedIndex(
             resources, change.resource,
@@ -787,7 +789,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
     } else if (change.type === 'update') {
         // Apply the update to the matching resource
         const { filters } = state;
-        const resources = iMapFilter(state.resources, (resource) => {
+        const resources = mapFilter(state.resources, (resource) => {
             if (isChangedResource(resource)) {
                 const updatedState = { ...resource, ...change.resource };
                 if (hasProperties(updatedState, filters)) {
@@ -979,35 +981,6 @@ function hasRelationReferenceChanges(attributes: any, resource: Resource<any, an
         }
     }
     return false;
-}
-
-function iFilter<T>(array: T[], cb: (value: T) => boolean): T[] {
-    let counter = 0;
-    const result = array.filter((value) => {
-        if (cb(value)) {
-            return true;
-        }
-        counter += 1;
-        return false;
-    });
-    return counter > 0 ? result : array;
-}
-
-function iMapFilter<T>(array: T[], cb: (value: T) => T | void): T[] {
-    let counter = 0;
-    const result: T[] = [];
-    for (const value of array) {
-        const newValue = cb(value);
-        if (typeof newValue === 'undefined') {
-            counter ++;
-        } else {
-            result.push(newValue);
-            if (newValue !== value) {
-                counter ++;
-            }
-        }
-    }
-    return counter > 0 ? result : array;
 }
 
 type ListMapping<T> = Record<string, T[]>;
