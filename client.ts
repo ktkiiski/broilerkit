@@ -5,6 +5,8 @@ import hasProperties from 'immuton/hasProperties';
 import isEqual from 'immuton/isEqual';
 import mapFilter from 'immuton/mapFilter';
 import pick from 'immuton/pick';
+import set from 'immuton/set';
+import splice from 'immuton/splice';
 import { Key } from 'immuton/types';
 import { ajax } from './ajax';
 import { wait } from './async';
@@ -764,9 +766,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
         const resources = filter(state.resources, isNotChangedResource);
-        if (state.resources !== resources) {
-            return { ...state, resources };
-        }
+        return set(state, 'resources', resources);
     } else if (change.type === 'addition') {
         // If the item does not match the filters, then do not alter the collection
         if (!hasProperties(change.resource, state.filters)) {
@@ -774,7 +774,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
             return state;
         }
         // Ensure that the item won't show up from the original collection
-        const resources = filter(state.resources, isNotChangedResource);
+        let resources = filter(state.resources, isNotChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
         const sortedIndex = findOrderedIndex(
             resources, change.resource,
@@ -783,8 +783,8 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         );
         // If added at the end of the collection, then add only if complete or loading
         if (sortedIndex < resources.length || state.isComplete || state.isLoading) {
-            resources.splice(sortedIndex, 0, change.resource);
-            return { ...state, resources };
+            resources = splice(resources, sortedIndex, 0, change.resource);
+            return set(state, 'resources', resources);
         }
     } else if (change.type === 'update') {
         // Apply the update to the matching resource
