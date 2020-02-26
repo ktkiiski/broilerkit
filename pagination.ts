@@ -47,7 +47,7 @@ export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends K
         })
     ;
     constructor(
-        private resource: Resource<T, any>,
+        private resource: Resource<T, any, any>,
         private urlKeywords: U[],
         private orderingKeys: O[],
         private filteringKeys: F[],

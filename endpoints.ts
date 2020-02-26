@@ -5,7 +5,7 @@ import { UrlPattern } from './url';
 
 export class Endpoint<S, PK extends Key<S>, U extends Key<S>> {
     constructor(
-        public readonly resource: Resource<S, PK>,
+        public readonly resource: Resource<S, PK, any>,
         public readonly pattern: UrlPattern<U>,
     ) {}
 
@@ -16,7 +16,7 @@ export class Endpoint<S, PK extends Key<S>, U extends Key<S>> {
 }
 
 export function endpoint<S, PK extends Key<S>, U extends Key<S>>(
-    resource: Resource<S, PK>,
+    resource: Resource<S, PK, any>,
     pattern: UrlPattern<U>,
 ) {
     return new Endpoint<S, PK, U>(resource, pattern);

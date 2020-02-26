@@ -1,3 +1,4 @@
+import { Key } from 'immuton/types';
 import { datetime, email, nullable, string, url, uuid } from './fields';
 import { resource, Resource } from './resources';
 
@@ -10,7 +11,7 @@ export interface User {
     picture: string | null;
 }
 
-export const users: Resource<User, 'id'> = resource('user')
+export const users: Resource<User, 'id', Key<User>> = resource('user')
     .fields({
         id: uuid(),
         name: nullable(string()),

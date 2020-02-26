@@ -19,7 +19,7 @@ export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, 
 export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | Array<T[P]>} & OrderedQuery<T, O> & Filters<T>;
 
 export interface Table<S = any, PK extends Key<S> = any> {
-    resource: Resource<S, PK>;
+    resource: Resource<S, PK, any>;
     getState(): TableState;
 }
 
@@ -30,7 +30,7 @@ export interface Table<S = any, PK extends Key<S> = any> {
  * It results to an error if the item was not found.
  */
 export function retrieve<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
+    resource: Resource<S, PK, any>,
     query: Pick<S, PK>,
 ): SqlOperation<S> {
     const filters = resource.identifier.validate(query);
@@ -53,7 +53,7 @@ export function retrieve<S, PK extends Key<S>>(
  * if no more items are expected to be found.
  */
 export function list<S>(
-    resource: Resource<S, any>,
+    resource: Resource<S, any, any>,
     query: Query<S>,
 ): SqlOperation<PageResponse<S>> {
     const results: S[] = [];
@@ -87,7 +87,7 @@ export function list<S>(
  * Without parameters should scan the whole table, in no particular order.
  */
 export function scan<S>(
-    resource: Resource<S, any>,
+    resource: Resource<S, any, any>,
     query?: Query<S>,
 ): SqlScanOperation<S> {
     const chunkSize = 100;
@@ -110,7 +110,7 @@ export class DatabaseTable<S, PK extends Key<S>> implements Table<S, PK> {
      * List of indexes for this database table.
      */
     constructor(
-        public readonly resource: Resource<S, PK>,
+        public readonly resource: Resource<S, PK, Key<S>>,
         public readonly indexes: string[][] = [],
     ) {}
 
@@ -135,26 +135,27 @@ export class DatabaseTable<S, PK extends Key<S>> implements Table<S, PK> {
  *
  * Results to the given item object if inserted successfully.
  */
-export function create<S>(
-    resource: Resource<S, any>,
-    item: S,
+export function create<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
+    item: Pick<S, W | PK>,
 ): SqlOperation<S> {
-    const insertedValues = resource.validate(item);
+    const insertedValues = {
+        ...resource.writer.validate(item),
+        ...resource.identifier.validate(item),
+    } as Pick<S, W | PK>;
     return async (connection, db) => {
         const query = insertQuery(resource, db.defaultsByTable, insertedValues);
-        const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
-        const result = aggregationQueries.length
-            ? await connection.transaction(async () => {
-                const insertion = await executeQuery(connection, query);
-                if (insertion) {
-                    // Register the addition
-                    addEffect(connection, resource, insertion, null);
-                    // Update aggregations
-                    await executeAll(connection, db, aggregationQueries);
-                }
-                return insertion;
-            })
-            : await executeQuery(connection, query);
+        const result = await connection.transaction(async () => {
+            const insertion = await executeQuery(connection, query);
+            if (insertion) {
+                // Register the addition
+                addEffect(connection, resource, insertion, null);
+                // Update aggregations
+                const aggregationQueries = db.getAggregationQueries(resource, insertion, null);
+                await executeAll(connection, db, aggregationQueries);
+            }
+            return insertion;
+        });
         if (!result) {
             throw new PreconditionFailed(`Item already exists.`);
         }
@@ -169,9 +170,9 @@ export function create<S>(
  *
  * Results to the given item object if written successfully.
  */
-export function write<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
-    item: S,
+export function write<S, PK extends W, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
+    item: Pick<S, W>,
 ): SqlOperation<S> {
     return upsert(resource, item, item);
 }
@@ -184,26 +185,27 @@ export function write<S, PK extends Key<S>>(
  * The given item must contain all resource attributes, including
  * the identifying attributes and the version attribute.
  */
-export function initiate<S>(
-    resource: Resource<S, any>,
-    item: S,
+export function initiate<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
+    item: Pick<S, W | PK>,
 ): SqlOperation<S | null> {
-    const insertedValues = resource.validate(item);
+    const insertedValues = {
+        ...resource.writer.validate(item),
+        ...resource.identifier.validate(item),
+    } as Pick<S, W | PK>;
     return async (connection, db) => {
         const query = insertQuery(resource, db.defaultsByTable, insertedValues);
-        const aggregationQueries = db.getAggregationQueries(resource, insertedValues, null);
-        const result = aggregationQueries.length
-            ? await connection.transaction(async () => {
-                const insertion = await executeQuery(connection, query);
-                if (insertion) {
-                    // Register the addition
-                    addEffect(connection, resource, insertion, null);
-                    // Update aggregations
-                    await executeAll(connection, db, aggregationQueries);
-                }
-                return insertion;
-            })
-            : await executeQuery(connection, query);
+        const result = await connection.transaction(async () => {
+            const insertion = await executeQuery(connection, query);
+            if (insertion) {
+                // Register the addition
+                addEffect(connection, resource, insertion, null);
+                // Update aggregations
+                const aggregationQueries = db.getAggregationQueries(resource, insertion, null);
+                await executeAll(connection, db, aggregationQueries);
+            }
+            return insertion;
+        });
         return result;
     };
 }
@@ -226,13 +228,13 @@ export function initiate<S>(
  *
  * Results to the updated item object if inserted successfully.
  */
-export function replace<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
+export function replace<S, PK extends W, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
     identity: Pick<S, PK>,
-    item: S,
+    item: Pick<S, W>,
 ): SqlOperation<S> {
     // Perform an update, but require all the resource properties
-    resource.validate(item);
+    resource.writer.validate(item);
     return update(resource, identity, item);
 }
 
@@ -255,14 +257,12 @@ export function replace<S, PK extends Key<S>>(
  * Results to the updated item object with all up-to-date attributes,
  * if updated successfully.
  */
-export function update<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
+export function update<S, PK extends W, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
     identity: Pick<S, PK>,
-    changes: Partial<S>,
+    changes: Partial<Pick<S, W>>,
 ): SqlOperation<S> {
-    // TODO: Should be resource.partial(resource.versionBy)
-    // Need to first support auto-versioning by aggregations, or remove versioning
-    const updateSerializer = resource.fullPartial();
+    const updateSerializer = resource.writer.fullPartial();
     const filters = resource.identifier.validate(identity);
     const dynamicChanges = select(changes, (value) => value instanceof Increment);
     const staticChanges = select(changes, (value) => !(value instanceof Increment));
@@ -305,15 +305,15 @@ export function update<S, PK extends Key<S>>(
  *
  * Results to the created/updated item.
  */
-export function upsert<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
-    creation: S,
-    changes: Partial<S>,
+export function upsert<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
+    creation: Pick<S, W | PK>,
+    changes: Partial<Pick<S, W>>,
 ): SqlOperation<S> {
-    const updateSerializer = resource.fullPartial();
-    const insertValues = resource.validate(creation);
-    // TODO: Support version or remove versioning
+    const updateSerializer = resource.writer.fullPartial();
+    const writeValues = resource.writer.validate(creation);
     const filters = resource.identifier.validate(creation);
+    const insertValues = { ...writeValues, ...filters } as Pick<S, W | PK>;
     const dynamicChanges = select(changes, (value) => value instanceof Increment);
     const staticChanges = select(changes, (value) => !(value instanceof Increment));
     const updateValues = {
@@ -357,15 +357,15 @@ export function upsert<S, PK extends Key<S>>(
  * identified by the given identity object. Fails if the item does not exists.
  */
 export function destroy<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
+    resource: Resource<S, PK, any>,
     identity: Pick<S, PK>,
 ): SqlOperation<void> {
     const filters = resource.identifier.validate(identity);
     return async (connection, db) => {
         const query = deleteQuery(resource, filters, db.defaultsByTable);
         const result = await connection.transaction(async () => {
-            const item = await executeQuery(connection, query);
-            if (item) {
+            const items = await executeQuery(connection, query);
+            for (const item of items) {
                 // Row was actually deleted
                 // Register the deletion
                 addEffect(connection, resource, null, item);
@@ -373,9 +373,9 @@ export function destroy<S, PK extends Key<S>>(
                 const aggregationQueries = db.getAggregationQueries(resource, null, item);
                 await executeAll(connection, db, aggregationQueries);
             }
-            return item;
+            return items;
         });
-        if (!result) {
+        if (!result.length) {
             throw new NotFound(`Item was not found.`);
         }
     };
@@ -391,7 +391,7 @@ export function destroy<S, PK extends Key<S>>(
  * @param filters Filters defining which rows to count
  */
 export function count<S>(
-    resource: Resource<S, any>,
+    resource: Resource<S, any, any>,
     filters: Filters<S>,
 ): SqlOperation<number> {
     return async (connection, db) => {
@@ -406,7 +406,7 @@ export function count<S>(
  * from the returned promise are in the same order than the identities.
  */
 export function batchRetrieve<S, PK extends Key<S>>(
-    resource: Resource<S, PK>,
+    resource: Resource<S, PK, any>,
     identities: Array<Pick<S, PK>>,
 ): SqlOperation<Array<S | null>> {
     if (!identities.length) {
@@ -436,7 +436,7 @@ interface TableOptions<S, PK extends Key<S>> {
 }
 
 interface Aggregation<S> {
-    target: Resource<any, any>;
+    target: Resource<any, any, any>;
     type: 'count' | 'sum';
     field: string;
     by: {[pk: string]: Key<S>};
@@ -448,7 +448,7 @@ class DatabaseDefinition implements Database {
     public defaultsByTable: TableDefaults = {};
     private aggregationsBySource: {[name: string]: Array<Aggregation<any>>} = {};
 
-    public getAggregationQueries<S>(resource: Resource<S, any>, newValues: S | null, oldValues: S | null) {
+    public getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null) {
         const idValues = newValues || oldValues;
         if (!idValues) {
             // Both parameters are null
@@ -485,15 +485,15 @@ class DatabaseDefinition implements Database {
         });
     }
 
-    public addTable<S, PK extends Key<S>>(resource: Resource<S, PK>, options?: TableOptions<S, PK>): this {
+    public addTable<S, PK extends Key<S>>(resource: Resource<S, PK, Key<S>>, options?: TableOptions<S, PK>): this {
         this.tables.push(new DatabaseTable(resource, options && options.indexes || []));
         this.defaultsByTable[resource.name] = options && options.migrate || {};
         return this;
     }
 
     public aggregateCount<S, T, TPK extends Key<T>>(
-        source: Resource<S, any>,
-        target: Resource<T, TPK>,
+        source: Resource<S, any, Key<S>>,
+        target: Resource<T, TPK, Key<T>>,
         field: string & FilteredKeys<T, number>,
         by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
         filters: Partial<S> = {},
@@ -509,7 +509,7 @@ export function database(): DatabaseDefinition {
     return new DatabaseDefinition();
 }
 
-export function getResourceState(name: string, resource: Resource<any, any>, indexes: string[][]): TableState {
+export function getResourceState(name: string, resource: Resource<any, any, any>, indexes: string[][]): TableState {
     const { fields, identifyBy } = resource;
     return {
         name,

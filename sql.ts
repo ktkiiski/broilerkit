@@ -29,8 +29,8 @@ export interface TableDefaults {
     [name: string]: {[key: string]: any};
 }
 
-export function selectQuery<S>(
-    resource: Resource<S, any>,
+export function selectQuery<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
     defaultsByTable: TableDefaults,
     filters: Record<string, any>,
     limit?: number,
@@ -40,58 +40,36 @@ export function selectQuery<S>(
 ): SqlQuery<S[]> {
     const params: any[] = [];
     const { name } = resource;
-    let sql = `SELECT ${getSelectColumnsSql(resource, params, defaultsByTable)} FROM ${ref(name)}`;
-    sql += getJoinSql(name, resource, params, defaultsByTable);
-    const filtersSql = filterConditionSql(filters, resource, params, defaultsByTable);
-    const conditions = filtersSql ? [filtersSql] : [];
-    if (ordering && direction && since != null) {
-        const dirOp = direction === 'asc' ? '>' : '<';
-        conditions.push(`${ref(name)}.${ref(ordering)} ${dirOp} ${param(params, since)}`);
-    }
-    if (conditions.length) {
-        sql += ` WHERE ${conditions.join(' AND ')}`;
-    }
-    if (ordering && direction) {
-        sql += ` ORDER BY ${ref(name)}.${ref(ordering)} ${direction.toUpperCase()}`;
-    }
-    if (limit != null) {
-        sql += ` LIMIT ${param(params, limit)}`;
-    }
-    sql += ';';
+    const sql = `${getSelectSql(name, '', params, resource, defaultsByTable, [filters], limit, ordering, direction, since)};`;
     return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(name, resource, row)).filter(isNotNully)
+        rows.map((row) => parseRow(resource, row)).filter(isNotNully)
     ));
 }
 
 export function batchSelectQuery<S>(
-    resource: Resource<S, any>,
+    resource: Resource<S, any, any>,
     defaultsByTable: TableDefaults,
     filtersList: Array<Record<string, any>>,
 ): SqlQuery<S[]> {
-    const { name, columns } = resource;
+    const { name } = resource;
     const params: any[] = [];
-    // TODO: Joins!
-    let sql = `SELECT ${returnColumnsSql(name, columns, params, defaultsByTable[name])} FROM ${ref(name)}`;
-    const orConditions = filtersList.map((filters) => (
-        `(${filterConditionSql(filters, resource, params, defaultsByTable)})`
-    ));
-    sql += ` WHERE ${orConditions.join(' OR ')};`;
+    const sql = getSelectSql(name, '', params, resource, defaultsByTable, filtersList);
     return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(name, resource, row)).filter(isNotNully)
+        rows.map((row) => parseRow(resource, row)).filter(isNotNully)
     ));
 }
 
-export function updateQuery<S>(
-    resource: Resource<S, any>,
+export function updateQuery<S, W extends Key<S>>(
+    resource: Resource<S, any, W>,
     filters: Record<string, any>,
-    values: Record<string, any>,
+    values: Partial<Pick<S, W>>,
     defaultsByTable: TableDefaults,
 ): SqlQuery<Array<[S, S]>> {
     const params: any[] = [];
     const assignments: string[] = [];
     const { name, columns, identifyBy } = resource;
     keys(columns).forEach((key) => {
-        const value = values[key];
+        const value = values[key as W];
         if (typeof value !== 'undefined' && !identifyBy.includes(key as Key<S>)) {
             assignments.push(assignmentSql(name, key, value, params));
         }
@@ -99,24 +77,27 @@ export function updateQuery<S>(
     const defaults = defaultsByTable[name];
     const tblRef = ref(name);
     const valSql = assignments.join(', ');
-    const condSql = filterConditionSql(filters, resource, params, defaults);
-    const returnSql = returnColumnsSql(name, columns, params, defaults);
-    // Join the current state to the query in order to return the previous state
-    const columnSql = keys(columns).map(ref).join(', ');
     // NOTE: As we assume SERIALIZABLE transactions, we don't need `FOR UPDATE`
-    const prevSelect = `SELECT ${columnSql} FROM ${tblRef} WHERE ${condSql}`;
-    const prevAlias = '_previous';
+    const prevAlias = '_prev';
+    const prevSelectSql = getSelectSql(name, prevAlias, params, resource, defaultsByTable, [filters]);
     const prevRef = ref(prevAlias);
-    const joinConditions = identifyBy.map((pk) => (
-        `${prevRef}.${ref(pk)} = ${tblRef}.${ref(pk)}`
-    ));
+    const joinConditions = identifyBy
+        .filter((col) => columns[col] != null)
+        .map((pk) => `${prevRef}.${ref(dot(prevAlias, pk))} = ${tblRef}.${ref(pk)}`);
     const joinSql = joinConditions.join(' AND ');
-    const prevReturnSql = returnColumnsSql(prevAlias, columns, params, defaults);
-    const sql = `UPDATE ${tblRef} SET ${valSql} FROM (${prevSelect}) ${prevRef} WHERE ${joinSql} RETURNING ${prevReturnSql}, ${returnSql};`;
+    const updateReturnSql = returnColumnsSql(name, '', columns, params, defaults);
+    const updateSql = `UPDATE ${tblRef} SET ${valSql} FROM ${prevRef} WHERE ${joinSql} RETURNING ${updateReturnSql}`;
+    const updateAlias = '_update';
+    const updateRef = ref(updateAlias);
+    // TODO: Simplify query when nothing to join!
+    const selectJoinSql = getJoinSql(updateAlias, resource, params, defaultsByTable);
+    const selectColSql = getSelectColumnsSql(updateAlias, name, resource, params, defaultsByTable);
+    const selectSql = `SELECT ${selectColSql}, ${prevAlias}.* FROM ${prevRef}, ${updateRef}${selectJoinSql}`;
+    const sql = `WITH ${prevRef} AS (${prevSelectSql}), ${updateRef} AS (${updateSql}) ${selectSql};`;
     return makeQuery(sql, params, ({ rows }) => (
         rows.map((row) => {
-            const newItem = parseRow(name, resource, row);
-            const oldItem = parseRow('_previous', resource, row);
+            const newItem = parseRow(resource, row, name);
+            const oldItem = parseRow(resource, row, prevAlias);
             if (newItem && oldItem) {
                 return [newItem, oldItem] as [S, S];
             }
@@ -125,28 +106,53 @@ export function updateQuery<S>(
     ));
 }
 
-export function insertQuery<S>(
-    resource: Resource<S, any>,
+export function insertQuery<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
     defaultsByTable: TableDefaults,
-    insertValues: Record<string, any>,
+    insertValues: Pick<S, W | PK>,
 ): SqlQuery<S | null> {
     const params: any[] = [];
-    const columnNames: string[] = [];
-    const placeholders: string[] = [];
-    const { name, columns } = resource;
+    const { name, columns, joins, nestings } = resource;
+    const innerJoins = joins.filter(({ type }) => type === 'inner');
     const defaults = defaultsByTable[name];
-    keys(columns).forEach((key) => {
-        columnNames.push(ref(key));
-        placeholders.push(param(params, insertValues[key]));
+    const columnNames = keys(columns);
+    const placeholders: string[] = [];
+    const columnRefs = columnNames.map((key) => {
+        const field = columns[key];
+        placeholders.push(cast(param(params, insertValues[key as W]), field.type));
+        return ref(key);
     });
     const tblSql = ref(name);
-    const colSql = columnNames.join(', ');
+    const colSql = columnRefs.join(', ');
     const valSql = placeholders.join(', ');
-    const returnSql = returnColumnsSql(name, columns, params, defaults);
-    const sql = `INSERT INTO ${tblSql} (${colSql}) VALUES (${valSql}) ON CONFLICT DO NOTHING RETURNING ${returnSql}`;
+    let insQuerySql;
+    if (innerJoins.length) {
+        // Insert values only if related resources exist
+        const filters: {[key: string]: any} = { ...insertValues };
+        columnNames.forEach((colName) => { delete filters[colName]; });
+        const insSelectSql = columnRefs.map((colRef) => dot(tblSql, colRef)).join(', ');
+        insQuerySql = `SELECT ${insSelectSql} FROM (VALUES (${valSql})) AS ${tblSql} (${colSql})`;
+        insQuerySql += getJoinSql(name, resource, params, defaultsByTable);
+        const conditionSql = filterConditionSql(name, filters, resource, params, defaultsByTable);
+        if (conditionSql) {
+            insQuerySql += ` WHERE ${conditionSql}`;
+        }
+    } else {
+        // No inner joins. Just simple insertion.
+        insQuerySql = `VALUES (${valSql})`;
+    }
+    const returnSql = returnColumnsSql(name, '', columns, params, defaults);
+    const insertionSql = `INSERT INTO ${tblSql} (${colSql}) ${insQuerySql} ON CONFLICT DO NOTHING RETURNING ${returnSql}`;
+    let sql;
+    if (joins.length || Object.keys(nestings).length) {
+        const selectSql = getSelectSql('_new', '', params, resource, defaultsByTable);
+        sql = `WITH ${ref('_new')} AS (${insertionSql}) ${selectSql};`;
+    } else {
+        sql = `${insertionSql};`;
+    }
     return makeQuery(sql, params, ({ rows }) => {
         for (const row of rows) {
-            const item = parseRow(name, resource, row);
+            const item = parseRow(resource, row);
             if (item) {
                 return item;
             }
@@ -155,41 +161,55 @@ export function insertQuery<S>(
     });
 }
 
-export function deleteQuery<S>(
-    resource: Resource<S, any>,
+export function deleteQuery<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
     filters: Record<string, any>,
     defaultsByTable: TableDefaults,
-): SqlQuery<S | null> {
+): SqlQuery<S[]> {
     const params: any[] = [];
-    const { name, columns } = resource;
+    const { name, columns, identifyBy } = resource;
     const defaults = defaultsByTable[name];
-    let sql = `DELETE FROM ${ref(name)}`;
-    const conditionSql = filterConditionSql(filters, resource, params, defaults);
-    if (conditionSql) {
-        sql += ` WHERE ${conditionSql}`;
+    const tblRef = ref(name);
+    const deleteAlias = '_del';
+    const deleteRef = ref(deleteAlias);
+    const selectSql = getSelectSql(deleteAlias, '', params, resource, defaultsByTable);
+    let sql;
+    if (resource.joins.length || resource.nestings.length) {
+        const prevAlias = '_prev';
+        const prevSelectSql = getSelectSql(name, '', params, resource, defaultsByTable, [filters]);
+        const prevRef = ref(prevAlias);
+        const joinConditions = identifyBy
+            .filter((col) => columns[col] != null)
+            .map((pk) => `${prevRef}.${ref(pk)} = ${tblRef}.${ref(pk)}`);
+        const joinSql = joinConditions.join(' AND ');
+        const deleteSql = `DELETE FROM ${tblRef} USING ${prevRef} WHERE ${joinSql}`;
+        sql = `WITH ${prevRef} AS (${prevSelectSql}), ${deleteRef} AS (${deleteSql}) SELECT * FROM ${prevRef};`;
+    } else {
+        let deleteSql = `DELETE FROM ${tblRef}`;
+        const conditionSql = filterConditionSql(name, filters, resource, params, defaults);
+        if (conditionSql) {
+            deleteSql += ` WHERE ${conditionSql}`;
+        }
+        deleteSql += ` RETURNING ${returnColumnsSql(name, '', columns, params, defaults)}`;
+        sql = `WITH ${deleteRef} AS (${deleteSql}) ${selectSql};`;
     }
-    sql += ` RETURNING ${returnColumnsSql(name, columns, params, defaults)};`;
-    return {
-        sql, params,
-        deserialize({ rows }) {
-            if (!rows.length) {
-                return null;
-            }
-            return parseRow(name, resource, rows[0]);
-        },
-    };
+    // TODO: Prevent deletion if inner-joined records do not exist!
+    return makeQuery(sql, params, ({ rows }) => (
+        rows.map((row) => parseRow(resource, row)).filter(isNotNully)
+    ));
 }
 
 export function countQuery(
-    resource: Resource<any, any>,
+    resource: Resource<any, any, any>,
     filters: Record<string, any>,
     defaultsByTable: TableDefaults,
 ): SqlQuery<number> {
     const params: any[] = [];
     const { name } = resource;
     const defaults = defaultsByTable[name];
-    let sql = `SELECT COUNT(*)::int AS count FROM ${ref(name)}`;
-    const filtersSql = filterConditionSql(filters, resource, params, defaults);
+    const joinSql = getJoinSql(name, resource, params, defaultsByTable);
+    let sql = `SELECT COUNT(*)::int AS count FROM ${ref(name)}${joinSql}`;
+    const filtersSql = filterConditionSql(name, filters, resource, params, defaults);
     if (filtersSql) {
         sql += ` WHERE ${filtersSql}`;
     }
@@ -205,21 +225,63 @@ export function increment(diff: number) {
     return new Increment(diff);
 }
 
-function getSelectColumnsSql(resource: Resource<any, any>, params: any[], defaultsByTable: TableDefaults, name = resource.name): string {
+function getSelectSql(
+    sourceName: string,
+    exposeName: string,
+    params: any[],
+    resource: Resource<any, any, any>,
+    defaultsByTable: TableDefaults,
+    filterList?: Array<Record<string, any>>,
+    limit?: number,
+    ordering?: string,
+    direction?: 'asc' | 'desc',
+    since?: any,
+): string {
+    let sql = `SELECT ${getSelectColumnsSql(sourceName, exposeName, resource, params, defaultsByTable)} FROM ${ref(sourceName)}`;
+    sql += getJoinSql(sourceName, resource, params, defaultsByTable);
+    const conditions = [];
+    if (filterList && filterList.length) {
+        const filterConditions = filterList.map((filters) => (
+            filterConditionSql(sourceName, filters, resource, params, defaultsByTable)
+        ));
+        if (!filterConditions.some((cond) => !cond)) {
+            const filtersSql = filterConditions.length > 1
+                ? filterConditions.map((cond) => `(${cond})`).join(' OR ')
+                : filterConditions[0];
+            conditions.push(filtersSql);
+        }
+    }
+    if (ordering && direction && since != null) {
+        const dirOp = direction === 'asc' ? '>' : '<';
+        conditions.push(`${ref(sourceName)}.${ref(ordering)} ${dirOp} ${param(params, since)}`);
+    }
+    if (conditions.length) {
+        sql += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    if (ordering && direction) {
+        sql += ` ORDER BY ${ref(sourceName)}.${ref(ordering)} ${direction.toUpperCase()}`;
+    }
+    if (limit != null) {
+        sql += ` LIMIT ${param(params, limit)}`;
+    }
+    return sql;
+}
+
+function getSelectColumnsSql(srcTableName: string, exposeName: string, resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults): string {
     const { nestings, columns } = resource;
     const selectSqls = [
-        returnColumnsSql(name, columns, params, defaultsByTable[resource.name]),
+        returnColumnsSql(srcTableName, exposeName, columns, params, defaultsByTable[resource.name]),
     ];
     // Regular joins
     resource.joins.forEach((join, index) => {
         const defaults = defaultsByTable[join.resource.name] || {};
-        const joinName = `${name}._join${index}`;
+        const joinName = `${srcTableName}._join${index}`;
         for (const columnName of Object.keys(join.fields)) {
-            const sourceName = join.fields[columnName];
+            const srcColName = join.fields[columnName];
             const defaultValue = join.type === 'left' ? join.defaults[columnName] : undefined;
             selectSqls.push(selectColumn(
-                joinName, sourceName, `${name}.${columnName}`,
-                typeof defaultValue === 'undefined' ? defaults[sourceName] : defaultValue,
+                joinName, srcColName, dot(exposeName, columnName),
+                typeof defaultValue === 'undefined' ? defaults[srcColName] : defaultValue,
                 params,
             ));
         }
@@ -227,12 +289,12 @@ function getSelectColumnsSql(resource: Resource<any, any>, params: any[], defaul
     // Nesting joins
     Object.keys(nestings).forEach((key) => {
         const nesting = nestings[key];
-        selectSqls.push(getSelectColumnsSql(nesting.resource, params, defaultsByTable, `${name}.${key}`));
+        selectSqls.push(getSelectColumnsSql(dot(srcTableName, key), dot(exposeName, key), nesting.resource, params, defaultsByTable));
     });
     return selectSqls.join(', ');
 }
 
-function getJoinSql(baseName: string, resource: Resource<any, any>, params: any[], defaultsByTable: TableDefaults): string {
+function getJoinSql(exposeName: string, resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults): string {
     const joinSqlCmps: string[] = [];
     const { joins } = resource;
     // Regular inner joins
@@ -240,18 +302,18 @@ function getJoinSql(baseName: string, resource: Resource<any, any>, params: any[
         const { on, type } = join;
         const joinResourceName = join.resource.name;
         const defaults = defaultsByTable[joinResourceName];
-        const joinName = `${baseName}._join${index}`;
+        const joinName = `${exposeName}._join${index}`;
         const joinConditions: string[] = [];
         Object.keys(on).forEach((targetKey) => {
             const onCond = on[targetKey];
             if (typeof onCond === 'string') {
                 if (resource.columns[onCond]) {
                     joinConditions.push(
-                        `${ref(joinName)}.${ref(targetKey)} = ${ref(baseName)}.${ref(onCond)}`,
+                        `${ref(joinName)}.${ref(targetKey)} = ${ref(exposeName)}.${ref(onCond)}`,
                     );
                 } else {
                     joins.slice(0, index).forEach((prevJoin, prevIndex) => {
-                        const prevJoinName = `${baseName}._join${prevIndex}`;
+                        const prevJoinName = `${exposeName}._join${prevIndex}`;
                         const source = prevJoin.fields[onCond];
                         if (source != null) {
                             joinConditions.push(
@@ -275,10 +337,10 @@ function getJoinSql(baseName: string, resource: Resource<any, any>, params: any[
     // Nesting joins
     Object.keys(resource.nestings).forEach((key) => {
         const nesting = resource.nestings[key];
-        const joinName = `${baseName}.${key}`;
+        const joinName = `${exposeName}.${key}`;
         const joinConditions: string[] = [];
         Object.keys(nesting.on).forEach((targetKey) => {
-            for (const [sourceTable, sourceKey] of resolveColumnRefs(baseName, nesting.on[targetKey], resource)) {
+            for (const [sourceTable, sourceKey] of resolveColumnRefs(exposeName, nesting.on[targetKey], resource)) {
                 joinConditions.push(
                     `${ref(joinName)}.${ref(targetKey)} = ${ref(sourceTable)}.${ref(sourceKey)}`,
                 );
@@ -337,7 +399,7 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
     return `${colRef} IN (${placeholders.join(',')})`;
 }
 
-function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any>): Array<[string, string]> {
+function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): Array<[string, string]> {
     const refs: Array<[string, string]> = [];
     resource.joins.forEach((join, index) => {
         if (join.type === 'left') {
@@ -364,12 +426,12 @@ function resolveColumnRefs(baseName: string, columnName: string, resource: Resou
     throw new Error(`Unknown column "${columnName}"`);
 }
 
-function filterConditionSql(filters: {[field: string]: any}, resource: Resource<any, any>, params: any[], defaults: {[key: string]: any}): string {
+function filterConditionSql(name: string, filters: {[field: string]: any}, resource: Resource<any, any, any>, params: any[], defaults: {[key: string]: any}): string {
     const conditions: string[] = [];
     keys(filters).map((field) => {
         const value = filters[field];
         if (typeof value !== 'undefined') {
-            for (const [tableName, column] of resolveColumnRefs(resource.name, field, resource)) {
+            for (const [tableName, column] of resolveColumnRefs(name, field, resource)) {
                 const defaultValue = defaults && defaults[column];
                 conditions.push(filterSql(tableName, column, filters[field], params, defaultValue));
             }
@@ -385,10 +447,10 @@ function selectColumn(tableName: string, columnName: string, alias: string, defa
     return `COALESCE(${ref(tableName)}.${ref(columnName)}, ${param(params, defaultValue)}) AS ${ref(alias)}`;
 }
 
-function returnColumnsSql(tableName: string, columns: Fields<any>, params: any[], defaults: {[key: string]: any}): string {
+function returnColumnsSql(sourceName: string, exposeName: string, columns: Fields<any>, params: any[], defaults: {[key: string]: any}): string {
     const columnSqls = keys(columns).map((column) => {
         const defaultValue = defaults && defaults[column];
-        return selectColumn(tableName, column, `${tableName}.${column}`, defaultValue, params);
+        return selectColumn(sourceName, column, dot(exposeName, column), defaultValue, params);
     });
     return columnSqls.join(', ');
 }
@@ -401,6 +463,20 @@ function param(params: any[], value: any): string {
 function ref(identifier: string) {
     return !keywords.includes(identifier.toUpperCase()) && /^[a-z][a-z0-9]*$/.test(identifier)
         ? identifier : `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function cast(sql: string, type: string) {
+    if (/^\w+/.test(type)) {
+        return `${sql}::${type}`;
+    }
+    return `CAST (${sql} AS ${type})`;
+}
+
+function dot(a: string, b: string) {
+    if (!a || !b) {
+        return a || b;
+    }
+    return `${a}.${b}`;
 }
 
 function escapeValue(value: unknown): string {
@@ -453,18 +529,20 @@ function cleanupNullNestings(item: Row): Row | null {
 }
 
 function parseRow<S>(
-    tableAlias: string,
     resource: Serializer<S>,
     row: Row,
+    namespace?: string,
 ): S | null {
     const item: Row = {};
     Object.keys(row).forEach((key) => {
         let obj = item;
         const value = row[key];
         const propertyPath = key.split('.');
-        const rootProperty = propertyPath.shift() as string;
-        if (rootProperty !== tableAlias) {
-            return;
+        if (namespace != null) {
+            const rootProperty = propertyPath.shift() as string;
+            if (rootProperty !== namespace) {
+                return;
+            }
         }
         while (propertyPath.length > 1) {
             const property = propertyPath.shift() as string;
@@ -481,7 +559,7 @@ function parseRow<S>(
     } catch (error) {
         // The database entry is not valid!
         // tslint:disable-next-line:no-console
-        console.error(`Failed to load invalid ${tableAlias} item from the database:`, error);
+        console.error(`Failed to load invalid ${namespace || ''} item from the database:`, error);
         return null;
     }
 }

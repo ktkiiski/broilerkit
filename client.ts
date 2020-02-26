@@ -66,7 +66,7 @@ export interface CollectionState<S = any> {
 }
 
 interface CollectionListener {
-    resource: Resource<any, any>;
+    resource: Resource<any, any, any>;
     url: Url;
     op: ListOperation<any, any, any, any, any, any>;
     input: Cursor<any, any, any, any>;
@@ -77,7 +77,7 @@ interface CollectionListener {
 interface ResourceListener {
     url: Url;
     op: RetrieveOperation<any, any, any, any>;
-    resource: Resource<any, any>;
+    resource: Resource<any, any, any>;
     callback: (resource: ResourceState) => void;
 }
 
@@ -731,7 +731,7 @@ export interface Bindable<T> {
     bind(client: Client): T;
 }
 
-function addResourcesToCollection<T>(collection: T[], items: T[], resource: Resource<T, any>): T[] {
+function addResourcesToCollection<T>(collection: T[], items: T[], resource: Resource<T, any, any>): T[] {
     if (!items.length) {
         return collection;
     }
@@ -826,7 +826,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
 }
 
 function applyStateEffectToResource(
-    effect: StateEffect, oldState: ResourceState, resource: Resource<any, any>,
+    effect: StateEffect, oldState: ResourceState, resource: Resource<any, any, any>,
 ): ResourceState | null {
     if (!oldState.resource) {
         // Resource not available yet, so nothing to apply
@@ -843,7 +843,7 @@ function applyStateEffectToResource(
 }
 
 function applyStateEffectToCollection(
-    effect: StateEffect, oldState: CollectionState, resource: Resource<any, any>,
+    effect: StateEffect, oldState: CollectionState, resource: Resource<any, any, any>,
 ) {
     const results = convertEffectToResourceChanges(effect, resource);
     if (!results) {
@@ -861,7 +861,7 @@ function applyStateEffectToCollection(
 }
 
 function convertEffectToResourceChanges(
-    effect: StateEffect, resource: Resource<any, any>,
+    effect: StateEffect, resource: Resource<any, any, any>,
 ): Array<ResourceChange<any, any>> | null {
     const resourceName = resource.name;
     const { encodedResource, available } = effect;
@@ -969,7 +969,7 @@ function convertEffectToResourceChanges(
     return results;
 }
 
-function hasRelationReferenceChanges(attributes: any, resource: Resource<any, any>): boolean {
+function hasRelationReferenceChanges(attributes: any, resource: Resource<any, any, any>): boolean {
     for (const nestingKey of Object.keys(resource.nestings)) {
         if (typeof attributes[nestingKey] === 'undefined') {
             const nesting = resource.nestings[nestingKey];
