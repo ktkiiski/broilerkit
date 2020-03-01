@@ -2,11 +2,12 @@ import build from 'immuton/build';
 import difference from 'immuton/difference';
 import omit from 'immuton/omit';
 import pick from 'immuton/pick';
+import transform from 'immuton/transform';
 import { Key, Require } from 'immuton/types';
 import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
 import { isApiResponse } from './http';
-import { forEachKey, keys } from './objects';
+import { keys } from './objects';
 
 export type Fields<T = any> = {
     [P in keyof T]: Field<T[P], any>;
@@ -28,7 +29,7 @@ export interface Serializer<I = any, O = I> {
     decode(input: Encoding): O;
     encodeSortable(input: I): Encoding;
     decodeSortable(input: Encoding): O;
-    pack(input: I): unknown[];
+    pack(input: I): unknown;
     unpack(input: unknown): O;
 }
 
@@ -63,18 +64,34 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     public decodeSortable(input: Encoding): S {
         return this.transformWith(input, (field, value) => field.decodeSortable(value));
     }
-    public pack(input: T): unknown[] {
+    public pack(input: T): unknown {
+        const obj: {[key: string]: any} = this.validate(input);
         const fields: {[key: string]: Field<any>} = this.fields;
-        return this.fieldNames.map((fieldName) => fields[fieldName].pack(input[fieldName as Key<T>]));
+        const { fieldNames } = this;
+        if (fieldNames.every((fieldName) => typeof obj[fieldName] !== 'undefined')) {
+            // Pack as an array
+            return fieldNames.map((fieldName) => fields[fieldName].pack(obj[fieldName]));
+        }
+        // Pack as an object
+        return transform(obj, (value, key) => fields[key].pack(value));
     }
     public unpack(input: unknown): S {
-        if (!Array.isArray(input)) {
-            throw new ValidationError(`Expected a packed value with array type instead of ${typeof input}`);
-        }
         const fields: {[key: string]: Field<any>} = this.fields;
-        return this.validate(build(this.fieldNames, (fieldName, index) => {
-            return [fieldName, fields[fieldName].unpack(input[index])];
-        }) as T);
+        if (Array.isArray(input)) {
+            // Unpack an array
+            return this.validate(build(this.fieldNames, (fieldName, index) => {
+                return [fieldName, fields[fieldName].unpack(input[index])];
+            }) as T);
+        }
+        if (typeof input === 'object' && input != null) {
+            // Unpack an object
+            const obj: {[key: string]: any} = input;
+            return this.validate(transform(obj, (value, key) => {
+                const field = fields[key];
+                return field ? field.unpack(value) : value;
+            }) as T);
+        }
+        throw new ValidationError(`Invalid packed value type ${typeof input}`);
     }
     protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
         if (typeof value === 'undefined') {
@@ -90,7 +107,8 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
         const output: {[key: string]: any} = {};
         const errors: Array<KeyErrorData<string>> = [];
         // Deserialize each field
-        forEachKey(fields, (key, field) => {
+        this.fieldNames.forEach((key) => {
+            const field = fields[key];
             const rawValue = input[key];
             try {
                 const value = this.transformFieldWith(field, rawValue, key, callback);
@@ -251,7 +269,7 @@ class NestedSerializerField<I> implements Field<I, Serialization> {
     public decodeSortable(_: any): never {
         throw new Error('Nested resource field does not support sortable decoding.');
     }
-    public pack(value: I): unknown[] {
+    public pack(value: I): unknown {
         return this.serializer.pack(value);
     }
     public unpack(value: unknown): I {
