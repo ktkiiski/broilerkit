@@ -1,3 +1,4 @@
+import build from 'immuton/build';
 import difference from 'immuton/difference';
 import omit from 'immuton/omit';
 import pick from 'immuton/pick';
@@ -27,6 +28,8 @@ export interface Serializer<I = any, O = I> {
     decode(input: Encoding): O;
     encodeSortable(input: I): Encoding;
     decodeSortable(input: Encoding): O;
+    pack(input: I): unknown[];
+    unpack(input: unknown): O;
 }
 
 interface ExtendableSerializer<I, O = I> extends Serializer<I, O> {
@@ -36,7 +39,8 @@ interface ExtendableSerializer<I, O = I> extends Serializer<I, O> {
 type FieldConverter<T = any> = (field: Field<any>, value: any, key: any) => T;
 
 abstract class BaseSerializer<T, S> implements Serializer<T, S> {
-    protected abstract readonly fields: Fields<T>;
+    protected readonly fieldNames: string[] = Object.keys(this.fields);
+    constructor(public readonly fields: Fields<T>) {}
 
     public serialize(input: T): Serialization {
         return this.transformWith(input, (field, value) => field.serialize(value));
@@ -58,6 +62,19 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     }
     public decodeSortable(input: Encoding): S {
         return this.transformWith(input, (field, value) => field.decodeSortable(value));
+    }
+    public pack(input: T): unknown[] {
+        const fields: {[key: string]: Field<any>} = this.fields;
+        return this.fieldNames.map((fieldName) => fields[fieldName].pack(input[fieldName as Key<T>]));
+    }
+    public unpack(input: unknown): S {
+        if (!Array.isArray(input)) {
+            throw new ValidationError(`Expected a packed value with array type instead of ${typeof input}`);
+        }
+        const fields: {[key: string]: Field<any>} = this.fields;
+        return this.validate(build(this.fieldNames, (fieldName, index) => {
+            return [fieldName, fields[fieldName].unpack(input[index])];
+        }) as T);
     }
     protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
         if (typeof value === 'undefined') {
@@ -99,8 +116,8 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
 }
 
 export class FieldSerializer<T> extends BaseSerializer<T, T> implements ExtendableSerializer<T> {
-    constructor(public readonly fields: Fields<T>) {
-        super();
+    constructor(fields: Fields<T>) {
+        super(fields);
     }
     public pick<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldSerializer<Pick<T, K>> {
         return new FieldSerializer(pick(this.fields, attrs) as Fields<Pick<T, K>>);
@@ -150,8 +167,8 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     private readonly optionalFields: Array<O | D>;
     private readonly defaults: {[P in D]: S[P]};
 
-    constructor(private readonly options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
-        super();
+    constructor(private readonly options: OptionalOptions<S, R, O, D>, fields: Fields<S>) {
+        super(fields);
         const {required, optional, defaults} = options;
         this.requiredFields = required;
         this.optionalFields = [...optional, ...keys(defaults)];
@@ -191,8 +208,8 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
 }
 
 export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pick<S, Exclude<keyof S, D> & Partial<Pick<S, D>>>, S> {
-    constructor(private readonly defaults: {[P in D]: S[P]}, protected fields: Fields<S>) {
-        super();
+    constructor(private readonly defaults: {[P in D]: S[P]}, fields: Fields<S>) {
+        super(fields);
     }
 
     protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
@@ -233,6 +250,12 @@ class NestedSerializerField<I> implements Field<I, Serialization> {
     }
     public decodeSortable(_: any): never {
         throw new Error('Nested resource field does not support sortable decoding.');
+    }
+    public pack(value: I): unknown[] {
+        return this.serializer.pack(value);
+    }
+    public unpack(value: unknown): I {
+        return this.serializer.unpack(value);
     }
 }
 
