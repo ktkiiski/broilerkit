@@ -81,6 +81,12 @@ export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends K
         const decoded = this.serializer.decodeSortable(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
     }
+    public pack(_: Cursor<T, U, O, F>): unknown {
+        throw new Error('Method not implemented.');
+    }
+    public unpack(_: unknown): Cursor<T, U, O, F> {
+        throw new Error('Method not implemented.');
+    }
     private extendSince(data: any, since: any, serialize: (field: Field<T[O], any>, since: any) => any) {
         const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[O], any>;
         if (since !== undefined) {
