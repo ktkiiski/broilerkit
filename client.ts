@@ -999,7 +999,7 @@ function removeFromMapping<T>(mapping: ListMapping<T>, key: string, value: T): b
     if (list) {
         const index = list.indexOf(value);
         if (index >= 0) {
-            list.slice(index, 1);
+            list.splice(index, 1);
             if (!list.length) {
                 delete mapping[key];
             }
