@@ -31,7 +31,7 @@ export class SsrController implements Controller {
     public async execute(request: HttpRequest, context: ServerContext) {
         // TODO: Could be awaited inside renderView for a tiny performance boost?
         const templateHtml = await this.templateHtml$;
-        return renderView(request, templateHtml, this.view, (apiRequest) => (
+        return renderView(request, context, templateHtml, this.view, (apiRequest) => (
             this.apiService.execute(apiRequest, context)
         ));
     }
@@ -39,10 +39,12 @@ export class SsrController implements Controller {
 
 async function renderView(
     request: HttpRequest,
+    context: ServerContext,
     templateHtml: string,
     view: React.ComponentType<{}>,
     executeApiRequest: RequestHandler,
 ): Promise<HttpResponse> {
+    const { stackName } = context;
     const { serverOrigin, auth } = request;
     const clientAuth: Auth | null = auth && authSerializer.validate(auth);
     const requestQuery = buildQuery(request.queryParameters);
@@ -83,6 +85,7 @@ async function renderView(
     const launchParams = [
         'document.getElementById("app")',
         encodePrettySafeJSON(serverOrigin),
+        encodePrettySafeJSON(stackName),
         // Parameters for the AuthClient
         encodePrettyJavaScript(clientAuth),
         // Populate the state cache for the client

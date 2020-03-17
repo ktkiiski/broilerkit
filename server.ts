@@ -44,6 +44,14 @@ type OperationImplementors<I, O, R, T> = {
  */
 export interface ServerContext {
     /**
+     * Name of the app deployment stack
+     */
+    stackName: string;
+    /**
+     * ID of the AWS account (or null if running locally)
+     */
+    accountId: string | null;
+    /**
      * Information about the database.
      */
     db: Database | null;

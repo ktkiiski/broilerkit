@@ -32,7 +32,9 @@ const service = apiService.extend({
     [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
 });
 
-const region = process.env.AWS_REGION;
+const region = process.env.AWS_REGION as string;
+const stackName = process.env.STACK_NAME as string;
+const accountId = process.env.AWS_ACCOUNT_ID as string;
 const databaseBaseConfig = {
     host: process.env.DATABASE_HOST as string,
     port: parseInt(process.env.DATABASE_PORT as string, 10),
@@ -71,7 +73,7 @@ const sessionEncryptionKey$ = retrieveSecret(encryptionSecretArn).then(async (se
 const serverContext$ = Promise
     .all([dbConnectionPool$, sessionEncryptionKey$])
     .then(([dbConnectionPool, sessionEncryptionKey]): ServerContext => {
-        return { dbConnectionPool, sessionEncryptionKey, db };
+        return { stackName, accountId, dbConnectionPool, sessionEncryptionKey, db };
     });
 
 const executeService = middleware(authenticationMiddleware(service.execute));

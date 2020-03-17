@@ -84,7 +84,7 @@ export async function serveBackEnd(
     params: {[param: string]: string},
     dbConnectionPool: Pool | null,
 ) {
-    const { auth, serverRoot, buildDir, projectRootPath } = options;
+    const { auth, serverRoot, buildDir, projectRootPath, stackName } = options;
     const serverRootUrl = new URL(serverRoot);
     const serverOrigin = serverRootUrl.origin;
     const serverProtocol = serverRootUrl && serverRootUrl.protocol;
@@ -149,6 +149,8 @@ export async function serveBackEnd(
                 authenticationMiddleware(service.execute),
             );
             const serverContext: ServerContext = {
+                accountId: null,
+                stackName,
                 db,
                 dbConnectionPool,
                 sessionEncryptionKey,

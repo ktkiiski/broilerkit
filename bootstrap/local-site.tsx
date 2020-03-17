@@ -14,11 +14,11 @@ import LocalAuthRouter from '../react/components/LocalAuthRouter';
  * Launches the application with the given configuration, to the given element.
  * It assumes that the view has been server-side rendered to the element.
  */
-export function start(element: Element, apiRoot: string, auth: Auth | null, resourceCache?: ResourceCache, collectionCache?: CollectionCache) {
+export function start(element: Element, apiRoot: string, stackName: string, auth: Auth | null, resourceCache?: ResourceCache, collectionCache?: CollectionCache) {
     // Webpack bundler loads the configured app site module aliased as '_site'
     const siteModule = require('_site');
     const View: React.ComponentType<{}> = siteModule.default;
-    const client = new BrowserClient(apiRoot, new BrowserAuthClient(auth), resourceCache, collectionCache);
+    const client = new BrowserClient(apiRoot, new BrowserAuthClient(auth), stackName, resourceCache, collectionCache);
     hydrate(
         <ClientProvider client={client}>
             <BrowserRouter>

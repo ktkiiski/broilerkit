@@ -91,6 +91,10 @@ Resources:
     Properties:
       Environment:
         Variables:
+          ACCOUNT_ID:
+            Ref: AWS::AccountId
+          STACK_NAME:
+            Ref: AWS::StackName
           DATABASE_HOST:
             Fn::GetAtt: DatabaseDBCluster.Endpoint.Address
           DATABASE_PORT:

@@ -650,6 +650,7 @@ export class BrowserClient extends BaseClient implements Client {
     constructor(
         public readonly apiRoot: string,
         public readonly authClient: AuthClient,
+        protected readonly stackName: string,
         resourceCache: ResourceCache = {},
         collectionCache: CollectionCache = {},
     ) {
