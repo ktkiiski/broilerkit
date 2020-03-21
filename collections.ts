@@ -1,4 +1,4 @@
-import hasOwnProperty from 'immuton/hasOwnProperty';
+import hasProperties from 'immuton/hasProperties';
 import { filterAsync, mapAsync, mergeSortedAsync, toAsync } from './async';
 import { shareIterator } from './iteration';
 
@@ -28,7 +28,7 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
     const resourceIdentity = change.resourceIdentity;
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
-        return shareIterator(filterAsync(collection, (item) => !matchesIdentity(resourceIdentity, item)));
+        return shareIterator(filterAsync(collection, (item) => !hasProperties(item, resourceIdentity)));
     } else if (change.type === 'addition') {
         // Add a new resource to the corresponding position, according to the ordering
         return shareIterator(
@@ -36,7 +36,7 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
                 [
                     toAsync([change.resource]),
                     // Ensure that the item won't show up from the original collection
-                    filterAsync(collection, (item) => !matchesIdentity(resourceIdentity, item)),
+                    filterAsync(collection, (item) => !hasProperties(item, resourceIdentity)),
                 ],
                 ordering, direction,
             ),
@@ -44,22 +44,10 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
     } else {
         // Apply the changes to an item whose ID matches
         return shareIterator(mapAsync(collection, (item): T => {
-            if (matchesIdentity(resourceIdentity, item)) {
+            if (hasProperties(item, resourceIdentity)) {
                 return {...item, ...change.resource};
             }
             return item;
         }));
     }
-}
-
-function matchesIdentity<T>(identity: T, item: T) {
-    for (const key in identity) {
-        if (hasOwnProperty(identity, key)) {
-            const value = identity[key];
-            if (value !== item[key]) {
-                return false;
-            }
-        }
-    }
-    return true;
 }
