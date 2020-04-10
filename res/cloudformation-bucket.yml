@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Storage<bucketLogicalName>S3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName:
+        Fn::Sub: "${AWS::StackName}-storage-<bucketName>"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+            - Ref: ServerOrigin
+            AllowedMethods:
+            - HEAD
+            - GET
+            - POST
+            AllowedHeaders:
+            - '*'
+  # Allow Lambda server function to access this S3 bucket
+  LambdaExecutionIamRolePolicy:
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+            Resource:
+              - Fn::Sub: "arn:aws:s3:::${AWS::StackName}-storage-<bucketName>"
+              - Fn::Sub: "arn:aws:s3:::${AWS::StackName}-storage-<bucketName>/*"

@@ -1,4 +1,4 @@
-import { ApiResponse, HttpMethod, HttpRequestHeaders, HttpResponse, HttpStatus, parseHeaders } from './http';
+import { ApiResponse, HttpMethod, HttpRequestHeaders, HttpResponse, HttpResponseHeaders, HttpStatus, parseHeaders } from './http';
 
 const enum AjaxState {
     UNSENT = 0,
@@ -15,8 +15,8 @@ export interface AjaxRequest {
     headers?: HttpRequestHeaders;
 }
 
-export async function ajax(request: AjaxRequest): Promise<ApiResponse> {
-    const textResponse = await requestText(request);
+export async function ajaxJson(request: AjaxRequest): Promise<ApiResponse> {
+    const textResponse = await requestRaw(request);
     const {statusCode, body, headers} = textResponse;
     let response;
     if (body) {
@@ -24,7 +24,7 @@ export async function ajax(request: AjaxRequest): Promise<ApiResponse> {
         try {
             response = {statusCode, headers, data: JSON.parse(body)};
         } catch (error) {
-            throw new AjaxError(request, statusCode, {}, undefined, error);
+            throw new AjaxError(request, statusCode, {}, body, undefined, error);
         }
     } else {
         response = {statusCode, headers};
@@ -32,10 +32,19 @@ export async function ajax(request: AjaxRequest): Promise<ApiResponse> {
     if (200 <= statusCode && statusCode < 300) {
         return response;
     }
-    throw new AjaxError(request, statusCode, response.data);
+    throw new AjaxError(request, statusCode, headers, response.data, body);
 }
 
-function requestText(request: AjaxRequest): Promise<HttpResponse> {
+export async function ajax(request: AjaxRequest): Promise<HttpResponse> {
+    const response = await requestRaw(request);
+    const { statusCode } = response;
+    if (200 <= statusCode && statusCode < 300) {
+        return response;
+    }
+    throw new AjaxError(request, statusCode, response.headers, response.body);
+}
+
+function requestRaw(request: AjaxRequest): Promise<HttpResponse> {
     return new Promise<HttpResponse>((resolve, reject) => {
         const {headers, payload, url, method} = request;
         const xhr = new XMLHttpRequest();
@@ -50,13 +59,13 @@ function requestText(request: AjaxRequest): Promise<HttpResponse> {
                 }
                 resolve({
                     statusCode,
-                    body: xhr.responseText,
+                    body: getBody(xhr),
                     headers: parseHeaders(xhr.getAllResponseHeaders()),
                 });
             }
         }
         function onError(this: XMLHttpRequestEventTarget, error: ProgressEvent) {
-            reject(new AjaxError(request, 0, {}, undefined, error));
+            reject(new AjaxError(request, 0, {}, getBody(xhr), undefined, error));
         }
         xhr.open(method, url, true);
         // Set the request headers
@@ -83,11 +92,20 @@ function requestText(request: AjaxRequest): Promise<HttpResponse> {
     });
 }
 
-export class AjaxError extends Error implements ApiResponse {
+function getBody(xhr: XMLHttpRequest): string {
+    try {
+        return xhr.responseText;
+    } catch {
+        return '';
+    }
+}
+
+export class AjaxError extends Error implements ApiResponse, HttpResponse {
     constructor(
         public readonly request: AjaxRequest,
         public readonly statusCode: HttpStatus | 0,
-        public readonly headers: HttpRequestHeaders,
+        public readonly headers: HttpResponseHeaders,
+        public readonly body: string,
         public readonly data: any = null,
         public readonly error?: Error | Event,
     ) {

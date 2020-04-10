@@ -12,6 +12,7 @@ import { authenticationMiddleware } from './oauth';
 import { cyan, dim, green, red, yellow } from './palette';
 import { Database } from './postgres';
 import { ApiService, ServerContext } from './server';
+import { LocalFileStorage } from './storage';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 import * as http from 'http';
@@ -84,12 +85,13 @@ export async function serveBackEnd(
     params: {[param: string]: string},
     dbConnectionPool: Pool | null,
 ) {
-    const { auth, serverRoot, buildDir, projectRootPath } = options;
+    const { stackName, auth, serverRoot, stageDir, buildDir, projectRootPath } = options;
     const serverRootUrl = new URL(serverRoot);
     const serverOrigin = serverRootUrl.origin;
     const serverProtocol = serverRootUrl && serverRootUrl.protocol;
     const serverPort = serverRootUrl && parseInt(serverRootUrl.port, 10);
     const serverEnableHttps = serverProtocol === 'https:';
+    const storageDir = path.join(stageDir, 'storage');
     if (serverRoot && serverEnableHttps) {
         throw new Error(`HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(/^https/, 'http')} instead!`);
     }
@@ -129,29 +131,32 @@ export async function serveBackEnd(
             delete require.cache[serverRequestHandlerFilePath];
             // Load the module exporting the service getter
             const serverModule = require(serverRequestHandlerFilePath);
-            const service: ApiService = serverModule.getApiService(readFile(htmlPagePath));
+            const htmlPagePath$ = readFile(htmlPagePath);
+            const service: ApiService = serverModule.getApiService(htmlPagePath$, storageDir);
             const db: Database | null = serverModule.getDatabase();
             // Get handler for the API requests (if defined)
-            const context = {
-                serverOrigin, serverRoot,
-                environment: {
-                    ...params,
-                    AuthClientId: 'LOCAL_AUTH_CLIENT_ID',
-                    AuthSignInUri: `${serverRoot}/_oauth2_signin`,
-                    AuthSignOutUri: `${serverRoot}/_oauth2_signout`,
-                },
-            };
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
-                await convertNodeRequest(httpRequest, context)
+                await convertNodeRequest(httpRequest, serverOrigin, serverRoot)
             ));
             // Set up the server
             const executeServerRequest = middleware(
                 authenticationMiddleware(service.execute),
             );
+            const storage = new LocalFileStorage(serverOrigin, storageDir);
             const serverContext: ServerContext = {
+                stackName,
                 db,
                 dbConnectionPool,
                 sessionEncryptionKey,
+                storage,
+                userPoolId: null,
+                region: 'local',
+                authClientId: auth ? 'LOCAL_AUTH_CLIENT_ID' : null,
+                authClientSecret: auth ? 'LOCAL_AUTH_CLIENT_SECRET' : null,
+                authSignInUri: auth ? `${serverRoot}/_oauth2_signin` : null,
+                authSignOutUri: auth ? `${serverRoot}/_oauth2_signout` : null,
+                authTokenUri: null,
+                environment: params,
             };
             server = createServer(nodeMiddleware((req) => (
                 executeServerRequest(req, serverContext)
@@ -217,7 +222,7 @@ function createServer<P extends any[]>(handler: (request: http.IncomingMessage, 
     });
 }
 
-async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {serverOrigin: string, serverRoot: string, environment: {[key: string]: string}}): Promise<HttpRequest> {
+async function convertNodeRequest(nodeRequest: http.IncomingMessage, serverOrigin: string, serverRoot: string): Promise<HttpRequest> {
     const {method} = nodeRequest;
     const headers = flattenParameters(nodeRequest.headers);
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
@@ -228,11 +233,12 @@ async function convertNodeRequest(nodeRequest: http.IncomingMessage, context: {s
         headers,
         region: 'local',
         auth: null, // NOTE: This will be set by another middleware!
-        ...context,
+        serverOrigin,
+        serverRoot,
     };
     if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
         const chunks = await readStream(nodeRequest);
-        const body = chunks.map((chunk) => chunk.toString()).join('');
+        const body = Buffer.concat(chunks);
         req.body = body;
     }
     return req;

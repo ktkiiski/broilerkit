@@ -51,7 +51,7 @@ export function readFileBuffer(filename: string): Promise<Buffer> {
     });
 }
 
-export function writeFile(filename: string, data: string): Promise<string> {
+export function writeFile(filename: string | Buffer, data: string): Promise<string> {
     return new Promise((resolve, reject) => {
         fs.writeFile(filename, data, (error) => {
             if (error) {

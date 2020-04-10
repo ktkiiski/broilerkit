@@ -326,7 +326,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {serverFile, databaseFile, siteFile, sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
+    const {serverFile, databaseFile, siteFile, triggersFile} = config;
+    const {sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
     const {analyze, stageDir} = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
@@ -401,6 +402,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         // Database not available. Let the bundle to compile without it, but
         // raise error if attempting to `require`
         externals.push('_db');
+    }
+    // If a triggers file is defined, compile it as well
+    if (triggersFile) {
+        aliases._triggers = path.resolve(projectRootPath, sourceDir, triggersFile);
+    } else {
+        // Triggers not available. Let the bundle to compile without it, but
+        // raise error if attempting to `require`
+        externals.push('_triggers');
     }
 
     return {

@@ -5,25 +5,20 @@ import transform from 'immuton/transform';
 import { ExcludedKeys, FilteredKeys } from 'immuton/types';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
-import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
 import { list, retrieve } from './db';
-import { EffectContext, getEffectHeaders, ResourceEffect } from './effects';
+import { getEffectHeaders, ResourceEffect } from './effects';
+import { executeHandler, Handler, HandlerContext, HandlerServerContext } from './handlers';
 import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation, OperationType } from './operations';
 import { Page } from './pagination';
 import { parsePayload } from './parser';
 import { authorize } from './permissions';
-import { Database, DatabaseClient, PostgreSqlPoolConnection } from './postgres';
+import { Database } from './postgres';
 import { UserSession } from './sessions';
+import { FileStorage } from './storage';
 import { Url, UrlPattern } from './url';
 
-export interface HandlerContext extends EffectContext {
-    db: DatabaseClient;
-    users: UserPool;
-}
-
-export type Handler<I, O, R> = (input: I, request: R & HandlerContext) => Promise<O>;
 export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;
 
 type Implementables<I, O, R, T extends Record<string, OperationType>> = (
@@ -44,9 +39,45 @@ type OperationImplementors<I, O, R, T> = {
  */
 export interface ServerContext {
     /**
+     * Name of the app deployment stack.
+     */
+    stackName: string;
+    /**
      * Information about the database.
      */
     db: Database | null;
+    /**
+     * Client for accessing and managing file storage.
+     */
+    storage: FileStorage;
+    /**
+     * ID of the authentication client, if enabled.
+     */
+    authClientId: string | null;
+    /**
+     * Authentication client secret, if enabled.
+     */
+    authClientSecret: string | null;
+    /**
+     * OAuth2 sign in URI, if enabled.
+     */
+    authSignInUri: string | null;
+    /**
+     * OAuth2 sign out URI, if enabled.
+     */
+    authSignOutUri: string | null;
+    /**
+     * OAuth2 token endpoint URI, if enabled.
+     */
+    authTokenUri: string | null;
+    /**
+     * ID of the user pool, if enabled.
+     */
+    userPoolId: string | null;
+    /**
+     * Region of the server, or "local" if running locally.
+     */
+    region: string;
     /**
      * A pool for PostgreSQL database connections
      * available for the requests.
@@ -56,9 +87,11 @@ export interface ServerContext {
      * Encryption key for user sessions.
      */
     sessionEncryptionKey: JWK.Key | null;
+    /**
+     * Stage-specific environment configuration
+     */
+    environment: { [variable: string]: string };
 }
-
-export interface RequestContext extends ServerContext, EffectContext {}
 
 export interface Controller {
     /**
@@ -75,7 +108,7 @@ export interface Controller {
      * - 501 HTTP error to indicate that the URL is not for this controller
      * - 405 HTTP error if the request method was one of the `methods`
      */
-    execute(request: HttpRequest, context: RequestContext): Promise<ApiResponse | HttpResponse>;
+    execute(request: HttpRequest, context: HandlerServerContext): Promise<ApiResponse | HttpResponse>;
     /**
      * Related API operation, if any.
      */
@@ -96,30 +129,15 @@ class ImplementedOperation implements Controller {
         this.pattern = route.pattern;
     }
 
-    public async execute(request: HttpRequest, context: RequestContext): Promise<ApiResponse> {
+    public async execute(request: HttpRequest, context: HandlerServerContext): Promise<ApiResponse> {
         const { operation } = this;
         const { responseSerializer } = operation;
         const input = parseRequest(operation, request);
         // Authorize the access
-        const {auth, region, environment} = request;
+        const { auth } = request;
         authorize(operation, auth, input);
         // Handle the request
-        const { db, dbConnectionPool, effects } = context;
-        const dbClient = new DatabaseClient(db, async () => {
-            if (!dbConnectionPool) {
-                throw new Error(`Database is not configured`);
-            }
-            const client = await dbConnectionPool.connect();
-            return new PostgreSqlPoolConnection(client, context.effects);
-        });
-        const userPoolId = environment.UserPoolId;
-        const users: UserPool = region === 'local' ? new LocalUserPool(dbClient)
-            : userPoolId ? new CognitoUserPool(userPoolId, region)
-            : new DummyUserPool();
-        // TODO: Even though the client should always close the connection,
-        // we should here ensure that all connections are released.
-        const handlerRequest = { ...request, db: dbClient, users, effects };
-        const { data, ...response } = await this.handler(input, handlerRequest);
+        const { data, ...response } = await executeHandler(this.handler, input, context, request);
         if (!responseSerializer) {
             // No response data should be available
             return response;
@@ -292,7 +310,7 @@ export class ApiService {
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {
-    const {path, queryParameters, method, body = '', headers} = request;
+    const {path, queryParameters, method, body, headers} = request;
     const url = new Url(path, queryParameters);
     if (!operation.route.pattern.match(url)) {
         // The pattern doesn't match this URL path
@@ -313,7 +331,7 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
     }
     // Deserialize/decode the payload, raising validation error if invalid
     const { 'Content-Type': contentTypeHeader = 'application/json'} = headers;
-    const payload = parsePayload(payloadSerializer, body, contentTypeHeader);
+    const payload = parsePayload(payloadSerializer, body ? body.toString() : '', contentTypeHeader);
     // TODO: Gather validation errors togeter?
     return {...urlParameters, ...payload};
 }

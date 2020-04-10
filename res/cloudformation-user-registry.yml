@@ -218,26 +218,20 @@ Resources:
     Properties:
       Environment:
         Variables:
+          USER_POOL_ID:
+            Ref: UserPool
           USER_SESSION_ENCRYPTION_KEY_SECRET_ARN:
             Ref: UserSessionEncryptionKeySecret
-
-  # Make the user pool client information available for server-side rendering Lambda function
-  # as API Gateway stage variables
-  ServerApiGatewayStage:
-    Properties:
-      Variables:
-        UserPoolId:
-          Ref: UserPool
-        AuthSignInUri:
-          Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
-        AuthSignOutUri:
-          Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/logout"
-        AuthTokenUri:
-          Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
-        AuthClientId:
-          Ref: UserPoolClient
-        AuthClientSecret:
-          Fn::GetAtt: UserPoolClientSecret.ClientSecret
+          AUTH_CLIENT_ID:
+            Ref: UserPoolClient
+          AUTH_CLIENT_SECRET:
+            Fn::GetAtt: UserPoolClientSecret.ClientSecret
+          AUTH_SIGN_IN_URI:
+            Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize"
+          AUTH_SIGN_OUT_URI:
+            Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/logout"
+          AUTH_TOKEN_URI:
+            Fn::Sub: "https://${AWS::StackName}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
 
   # A lambda function that adds the 'picture' claim to the ID tokens on authentication
   UserPoolPreTokenGenerationLambdaFunction:

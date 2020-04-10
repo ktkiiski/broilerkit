@@ -3,6 +3,17 @@ import flatMap from 'immuton/flatMap';
 import { chunkify } from '../async';
 import { retrievePages } from './utils';
 
+interface PresignPostOptions {
+    bucketName: string;
+    key: string;
+    access: 'private' | 'public-read';
+    maxSize: number;
+    expiresIn: number;
+    successActionStatus: 200 | 201 | 204;
+    meta: {[key: string]: string};
+    contentType?: string;
+}
+
 /**
  * Wrapper class for Amazon S3 operations with a reactive interface.
  */
@@ -15,6 +26,22 @@ export class AmazonS3 {
     });
 
     constructor(private region: string) { }
+
+    /**
+     * Retrieves a single object with its data from an S3 bucket.
+     * @param bucketName name of the bucket
+     * @param key object key
+     */
+    public async getObject(bucketName: string, key: string) {
+        const object = await this.s3.getObject({ Bucket: bucketName, Key: key }).promise();
+        const { Body, Metadata = {} } = object;
+        return {
+            bucketName,
+            key,
+            body: typeof Body === 'string' ? Buffer.from(Body) : Body as Buffer,
+            meta: Metadata,
+        };
+    }
 
     /**
      * Removes all the items from an Amazon S3 bucket so that it can be deleted.
@@ -56,6 +83,44 @@ export class AmazonS3 {
             }
             throw error;
         }
+    }
+
+    public async createPresignedPost(options: PresignPostOptions) {
+        const Conditions = [
+            ['content-length-range', 0, options.maxSize],
+        ];
+        const Fields: {[key: string]: string} = {
+            acl: options.access,
+            key: options.key,
+            success_action_status: String(options.successActionStatus),
+        };
+        const { contentType } = options;
+        if (contentType) {
+            const prefixMatch = /^(.+)\/\*$/.exec(contentType);
+            if (prefixMatch) {
+                Conditions.push(['starts-with', '$Content-Type', prefixMatch[1]]);
+            } else {
+                Fields['Content-Type'] = contentType;
+            }
+        }
+        Object.keys(options.meta).forEach((key) => {
+            Fields[`X-Amz-Meta-${key}`] = options.meta[key];
+        });
+        const policy = {
+            Bucket: options.bucketName,
+            Expires: options.expiresIn,
+            Conditions,
+            Fields,
+        };
+        return new Promise<S3.PresignedPost>((resolve, reject) => {
+            this.s3.createPresignedPost(policy, (error, data) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(data);
+                }
+            });
+        });
     }
 
     /**

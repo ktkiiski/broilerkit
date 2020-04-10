@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  Storage<bucketLogicalName>S3Bucket:
+    Properties:
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Function:
+            Fn::GetAtt: ServerLambdaFunction.Arn
+          Event: "<bucketEvent>"
+    DependsOn:
+    - Storage<bucketLogicalName>S3BucketEventPermission
+
+  # Grant the bucket a permission to execute the server Lambda function
+  Storage<bucketLogicalName>S3BucketEventPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::GetAtt: ServerLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount:
+        Ref: AWS::AccountId
+      SourceArn:
+        Fn::Sub: "arn:aws:s3:::${AWS::StackName}-storage-<bucketName>"

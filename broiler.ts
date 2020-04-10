@@ -19,6 +19,7 @@ import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
+import { Bucket } from './buckets';
 import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
@@ -42,6 +43,7 @@ import { ApiService } from './server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { upperFirst } from './strings';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
+import { Trigger } from './triggers';
 import { users } from './users';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';
@@ -619,7 +621,7 @@ export class Broiler {
             }
         }
         // Ask all the custom parameters
-        const customParameters = await askParameters(parameters, prevParams, 'X');
+        const customParameters = await askParameters(parameters, prevParams, 'Param');
         return {
             ServerRoot: serverRoot,
             ServerOrigin: serverRootUrl.origin,
@@ -638,7 +640,7 @@ export class Broiler {
             FacebookClientSecret: facebookClientSecret,
             GoogleClientId: googleClientId,
             GoogleClientSecret: googleClientSecret,
-            // Additional custom parameters (start with 'X')
+            // Additional custom parameters (start with 'Param')
             ...customParameters,
         };
     }
@@ -799,22 +801,26 @@ export class Broiler {
         const templates = await Promise.all([
             template$,
             this.generateDbTemplates(),
+            ...this.generateBucketTemplates(),
+            ...this.generateTriggerTemplates(),
         ]);
         if (parameters) {
             forEachKey(parameters, (paramName, paramConfig) => {
                 templates.unshift({
                     Parameters: {
-                        [`X${paramName}`]: {
+                        [`Param${paramName}`]: {
                             Type: 'String',
                             Description: paramConfig.description,
                         },
                     },
                     Resources: {
-                        ServerApiGatewayStage: {
+                        ServerLambdaFunction: {
                             Properties: {
-                                Variables: {
-                                    [paramName]: {
-                                        Ref: `X${paramName}`,
+                                Environment: {
+                                    Variables: {
+                                        [`PARAM_${paramName}`]: {
+                                            Ref: `Param${paramName}`,
+                                        },
                                     },
                                 },
                             },
@@ -838,7 +844,7 @@ export class Broiler {
     }
 
     private generateDbTableTemplate(table: Table) {
-        const logicalId = `DatabaseTable${upperFirst(table.resource.name)}`;
+        const logicalId = `DatabaseTable${formatLogicalId(table.resource.name)}`;
         const tableProperties = {
             ServiceToken: { 'Fn::GetAtt': 'DatabaseMigrationLambdaFunction.Arn' },
             Host: { 'Fn::GetAtt': 'DatabaseDBCluster.Endpoint.Address' },
@@ -858,6 +864,64 @@ export class Broiler {
                 },
             },
         };
+    }
+
+    private getBuckets(): Bucket[] {
+        const { bucketsFile } = this.config;
+        if (!bucketsFile) {
+            // No buckets defined
+            return [];
+        }
+        const bucketsModule = this.importModule(bucketsFile);
+        return Object.values(bucketsModule);
+    }
+
+    private generateBucketTemplates(): Array<Promise<any>> {
+        const buckets = this.getBuckets();
+        return buckets.map((bucket) => this.generateBucketTemplate(bucket));
+    }
+
+    private async generateBucketTemplate(bucket: Bucket) {
+        const bucketLogicalName = formatLogicalId(bucket.name);
+        return readTemplates(['cloudformation-bucket.yml'], {
+            bucketName: bucket.name,
+            bucketLogicalName,
+        });
+    }
+
+    private getTriggers(): Trigger[] {
+        const { triggersFile } = this.config;
+        if (!triggersFile) {
+            // No triggers defined
+            return [];
+        }
+        const triggersModule = this.importModule(triggersFile);
+        return Object.values(triggersModule);
+    }
+
+    private generateTriggerTemplates(): Array<Promise<any>> {
+        const triggers = this.getTriggers();
+        return triggers.map((trigger) => this.generateTriggerTemplate(trigger));
+    }
+
+    private generateTriggerTemplate(trigger: Trigger): any {
+        const { sourceType } = trigger;
+        if (sourceType !== 'storage') {
+            throw new Error(`Unsupported trigger type ${sourceType}`);
+        }
+        const { bucket, eventName } = trigger;
+        const bucketLogicalName = formatLogicalId(bucket.name);
+        let bucketEvent;
+        if (eventName === 'create') {
+            bucketEvent = 's3:ObjectCreated:*';
+        } else {
+            throw new Error(`Unsupported event type ${eventName} for source type ${sourceType}`);
+        }
+        return readTemplates(['cloudformation-trigger.yml'], {
+            bucketName: bucket.name,
+            bucketLogicalName,
+            bucketEvent,
+        });
     }
 
     private async createS3File$(params: S3.PutObjectRequest, overwrite: true): Promise<S3.PutObjectOutput>;
@@ -1021,11 +1085,17 @@ export class Broiler {
         return newStack;
     }
 
+    private importModule(dir: string): any {
+        const { projectRootPath, sourceDir } = this.config;
+        const modulePath = path.resolve(projectRootPath, sourceDir, dir);
+        return require(modulePath);
+    }
+
     private importServer(): ApiService | null {
-        const { serverFile, projectRootPath, sourceDir, siteFile } = this.config;
+        const { serverFile, siteFile } = this.config;
         if (serverFile) {
-            const serverModule = require(path.resolve(projectRootPath, sourceDir, serverFile));
-            const siteModule = require(path.resolve(projectRootPath, sourceDir, siteFile));
+            const serverModule = this.importModule(serverFile);
+            const siteModule = this.importModule(siteFile);
             const apiService = new ApiService(serverModule.default);
             const view = siteModule.default;
             return apiService.extend({
@@ -1045,13 +1115,11 @@ export class Broiler {
     }
 
     private getDatabase(): Database {
-        const { databaseFile, projectRootPath, sourceDir } = this.config;
+        const { databaseFile } = this.config;
         if (!databaseFile) {
             throw new Error(`Database not defined for the app`);
         }
-        const dbModulePath = path.resolve(projectRootPath, sourceDir, databaseFile);
-        const dbModule = require(dbModulePath);
-        const db = dbModule.default;
+        const { default: db } = this.importModule(databaseFile);
         if (db == null || typeof db !== 'object') {
             throw new Error(`The database file ${databaseFile} needs to export database instance as a default export`);
         }
@@ -1104,6 +1172,10 @@ export class Broiler {
         const connect = await this.getDatabaseConnector();
         return new DatabaseClient(db, connect);
     }
+}
+
+function formatLogicalId(str: string): string {
+    return str.split(/[^A-Za-z0-9]+/g).map(upperFirst).join('');
 }
 
 function getHostedZone(domain: string) {

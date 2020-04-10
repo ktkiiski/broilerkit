@@ -67,16 +67,14 @@ export interface LambdaHttpResponse {
 
 export type LambdaHttpHandler = (request: LambdaHttpRequest, context: LambdaHttpRequestContext) => Promise<LambdaHttpResponse>;
 
-export function lambdaMiddleware(handler: (request: HttpRequest) => Promise<HttpResponse>): LambdaHttpHandler {
-    async function handleLambdaRequest(lambdaRequest: LambdaHttpRequest): Promise<LambdaHttpResponse> {
-        const { httpMethod, isBase64Encoded } = lambdaRequest;
+export function lambdaMiddleware<P extends any[]>(handler: (request: HttpRequest, ...params: P) => Promise<HttpResponse>): (request: LambdaHttpRequest, ...params: P) => Promise<LambdaHttpResponse> {
+    async function handleLambdaRequest(lambdaRequest: LambdaHttpRequest, ...params: P): Promise<LambdaHttpResponse> {
+        const { httpMethod, isBase64Encoded, body } = lambdaRequest;
         const queryParameters = lambdaRequest.queryStringParameters || {};
         const headers = lambdaRequest.headers || {};
-        const body = isBase64Encoded && lambdaRequest.body
-            // Decode base64 encoded body
-            ? Buffer.from(lambdaRequest.body, 'base64').toString()
-            : lambdaRequest.body
-        ;
+        const bodyBuffer = body == null ? body : Buffer.from(
+            body, isBase64Encoded ? 'base64' : 'utf8',
+        );
         const environment = lambdaRequest.stageVariables || {};
         const region = environment.Region;
         if (!region) {
@@ -93,7 +91,8 @@ export function lambdaMiddleware(handler: (request: HttpRequest) => Promise<Http
         const request = {
             method: httpMethod,
             path: lambdaRequest.path,
-            queryParameters, headers, body,
+            queryParameters, headers,
+            body: bodyBuffer,
             environment, region,
             serverRoot,
             serverOrigin,
@@ -102,7 +101,7 @@ export function lambdaMiddleware(handler: (request: HttpRequest) => Promise<Http
             // Read the directory path from environment variables
             // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
         };
-        const response = await handler(request);
+        const response = await handler(request, ...params);
         const responseHeaders = transform(response.headers, (headerValue) => (
             Array.isArray(headerValue) ? headerValue : [headerValue]
         ));
@@ -115,3 +114,25 @@ export function lambdaMiddleware(handler: (request: HttpRequest) => Promise<Http
     }
     return handleLambdaRequest;
 }
+
+export interface LambdaS3Event {
+    Records: Array<{
+        eventName: string;
+        eventTime: string;
+        s3: {
+            bucket: {
+                name: string;
+                // arn: string;
+            };
+            object: {
+                key: string;
+                size: number;
+                // eTag: string;
+                // versionId: string | null;
+                // sequencer?: string | null;
+            };
+        };
+    }>;
+}
+export type LambdaEvent = LambdaS3Event;
+export type LambdaEventHandler = (event: LambdaEvent) => Promise<void>;

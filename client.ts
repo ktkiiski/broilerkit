@@ -8,7 +8,7 @@ import pick from 'immuton/pick';
 import set from 'immuton/set';
 import splice from 'immuton/splice';
 import { Key } from 'immuton/types';
-import { ajax } from './ajax';
+import { ajax, ajaxJson } from './ajax';
 import { wait } from './async';
 import { AuthClient, DummyAuthClient } from './auth';
 import { ResourceAddition, ResourceChange, ResourceRemoval } from './collections';
@@ -18,6 +18,7 @@ import { AuthenticationType, ListOperation, RetrieveOperation } from './operatio
 import { Cursor } from './pagination';
 import { Resource } from './resources';
 import { stripPrefix } from './strings';
+import { UploadForm, uploadSerializer } from './uploads';
 import { parseUrl, Url } from './url';
 
 export interface Retrieval<S = any, U extends Key<S> = any> {
@@ -38,6 +39,7 @@ export interface Client {
     collectionCache: CollectionCache;
     readonly authClient?: AuthClient | null;
     request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
+    upload(file: File, upload: UploadForm): Promise<void>;
     inquiryResource<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): ResourceState<S>;
     subscribeResourceChanges<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>, callback: (state: ResourceState<S>) => void): () => void;
     inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S>;
@@ -246,6 +248,7 @@ abstract class BaseClient implements Client {
     }
 
     public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
+    public abstract upload(file: File, upload: UploadForm): Promise<void>;
 
     protected applyStateEffects(effects: StateEffect[]) {
         if (!effects.length) {
@@ -660,7 +663,7 @@ export class BrowserClient extends BaseClient implements Client {
         const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
         let response;
         try {
-            response = await ajax({
+            response = await ajaxJson({
                 url: `${this.apiRoot}${url}`,
                 method, payload, headers,
             });
@@ -689,6 +692,26 @@ export class BrowserClient extends BaseClient implements Client {
         return response;
     }
 
+    public upload = async (file: File, upload: UploadForm): Promise<void> => {
+        const { action: url, method, ...input } = upload;
+        // Decode the normal payload for the request
+        const payload = uploadSerializer.omit(['file']).encode(input);
+        const formData = new FormData();
+        Object.keys(payload).forEach((key) => {
+            const value = payload[key];
+            if (value != null) {
+                formData.set(key, payload[key]);
+            }
+        });
+        if (file.type) {
+            // TODO: Validate Content-Type on the client side
+            formData.set('Content-Type', file.type);
+        }
+        // Add each file
+        formData.set('file', file);
+        await ajax({ url, method, payload: formData });
+    }
+
     /**
      * Clears those resources and collections from the cache that
      * no longer have subscribers.
@@ -709,6 +732,10 @@ export class DummyClient extends BaseClient implements Client {
         super(resourceCache, collectionCache);
     }
     public request(): never {
+        throw new NotImplemented(`No client defined`);
+    }
+
+    public upload(): never {
         throw new NotImplemented(`No client defined`);
     }
 

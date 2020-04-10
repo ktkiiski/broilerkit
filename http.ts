@@ -70,7 +70,7 @@ export interface HttpRequest {
      * Raw, unparsed body of the request, or undefined if the HTTP method was either
      * HEAD, GET, OPTIONS or DELETE.
      */
-    body?: string;
+    body?: Buffer;
     /**
      * HTTP headers as an object.
      */
@@ -98,13 +98,6 @@ export interface HttpRequest {
      * Region in which the request is being executed.
      */
     region: string; // TODO: Literal typing for the region
-    /**
-     * Environment or staging variables about the server on which
-     * the request is being executed.
-     */
-    environment: {
-        [variable: string]: string;
-    };
     /**
      * User that has been authenticated for the request, containing basic the
      * information stored to the access or identity token.

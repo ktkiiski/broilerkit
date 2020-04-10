@@ -1,6 +1,5 @@
 import build from 'immuton/build';
 import mapObject from 'immuton/mapObject';
-import pick from 'immuton/pick';
 import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
@@ -204,11 +203,8 @@ function getActionUrls<T extends Retrieval | Listing>(actions: T[]): Record<stri
 
 async function executeRenderRequest<T>(execute: (request: HttpRequest) => Promise<HttpResponse | ApiResponse>, url: Url, origRequest: HttpRequest, serializer: Serializer<T>): Promise<[T | null, ApiResponse | null]> {
     const response = await execute({
-        // Copy most of the properties from the original request
-        ...pick(origRequest, [
-            'environment', 'auth',
-            'region', 'serverOrigin', 'serverRoot',
-        ]),
+        // Copy the properties from the original request
+        ...origRequest,
         // Set up properties for the render request
         method: 'GET',
         path: url.path,

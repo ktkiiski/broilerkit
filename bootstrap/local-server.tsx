@@ -12,8 +12,9 @@ import { Database } from '../postgres';
 import LocalAuthRouter from '../react/components/LocalAuthRouter';
 import { ApiService } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
+import { LOCAL_UPLOAD_ENDPOINT_NAME, LocalUploadController } from '../storage';
 
-export const getApiService = (pageHtml$: Promise<string>) => {
+export const getApiService = (pageHtml$: Promise<string>, uploadDirPath: string) => {
     let module;
     try {
         module = require('_service');
@@ -35,6 +36,7 @@ export const getApiService = (pageHtml$: Promise<string>) => {
         [OAUTH2_SIGNOUT_ENDPOINT_NAME]: new OAuth2SignOutController(),
         [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedInController(),
         [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
+        [LOCAL_UPLOAD_ENDPOINT_NAME]: new LocalUploadController(uploadDirPath),
     });
 };
 

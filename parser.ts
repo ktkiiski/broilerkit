@@ -4,7 +4,7 @@ import { BadRequest, parseHeaderDirectives, UnsupportedMediaType } from './http'
 import { parseFormData } from './multipart';
 import { Serializer } from './serializers';
 
-export function parsePayload(serializer: Serializer, body: string, contentTypeHeader: string): any {
+export function parsePayload<I>(serializer: Serializer<I, any>, body: string, contentTypeHeader: string): I {
     const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);
     if (contentType === 'application/json') {
         // Deserialize JSON

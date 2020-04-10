@@ -106,6 +106,18 @@ export interface AppConfig {
      */
     databaseFile?: string;
     /**
+     * Relative path to the module that exports all the storage buckets.
+     * The path must be relative to the source directory.
+     * Should be defined if your app is using file storage buckets,
+     * for example for allowing users to upload files.
+     */
+    bucketsFile?: string;
+    /**
+     * Relative path to the module that exports all the backend event trigger handlers.
+     * The path must be relative to the source directory.
+     */
+    triggersFile?: string;
+    /**
      * Additional parameters the backend requires to work.
      * These will be asked when deploying each environment.
      */

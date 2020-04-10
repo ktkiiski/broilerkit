@@ -6,7 +6,7 @@ import { SecretsManager } from 'aws-sdk';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { readFile } from '../fs';
-import { LambdaHttpHandler, lambdaMiddleware } from '../lambda';
+import { LambdaEvent, LambdaHttpRequest, lambdaMiddleware } from '../lambda';
 import { middleware } from '../middleware';
 import { authenticationMiddleware } from '../oauth';
 import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
@@ -15,6 +15,8 @@ import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from '
 import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from '../oauth';
 import { ApiService, ServerContext } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
+import { AWSFileStorage } from '../storage';
+import { Trigger, triggerEvent } from '../triggers';
 
 // When deployed, load the HTML base file immediately, which is expected to be located as a sibling index.html file
 const pageHtml$ = readFile('./index.html');
@@ -32,7 +34,14 @@ const service = apiService.extend({
     [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
 });
 
-const region = process.env.AWS_REGION;
+const stackName = process.env.STACK_NAME as string;
+const region = process.env.AWS_REGION as string;
+const userPoolId = process.env.USER_POOL_ID || null;
+const authClientId = process.env.AUTH_CLIENT_ID || null;
+const authClientSecret = process.env.AUTH_CLIENT_SECRET || null;
+const authSignInUri = process.env.AUTH_SIGN_IN_URI || null;
+const authSignOutUri = process.env.AUTH_SIGN_OUT_URI || null;
+const authTokenUri = process.env.AUTH_TOKEN_URI || null;
 const databaseBaseConfig = {
     host: process.env.DATABASE_HOST as string,
     port: parseInt(process.env.DATABASE_PORT as string, 10),
@@ -45,6 +54,7 @@ const secretsManagerService = new SecretsManager({
     httpOptions: { timeout: 5 * 1000 },
     maxRetries: 3,
 });
+const environment = readParameters();
 const dbCredentialsSecretArn = process.env.DATABASE_CREDENTIALS_ARN;
 const dbConnectionPool$ = retrieveSecret(dbCredentialsSecretArn).then((secret) => {
     if (secret == null) {
@@ -71,10 +81,29 @@ const sessionEncryptionKey$ = retrieveSecret(encryptionSecretArn).then(async (se
 const serverContext$ = Promise
     .all([dbConnectionPool$, sessionEncryptionKey$])
     .then(([dbConnectionPool, sessionEncryptionKey]): ServerContext => {
-        return { dbConnectionPool, sessionEncryptionKey, db };
+        const storage = new AWSFileStorage(stackName, region);
+        return {
+            stackName,
+            dbConnectionPool,
+            sessionEncryptionKey,
+            db,
+            storage,
+            userPoolId,
+            region,
+            environment,
+            authClientId,
+            authClientSecret,
+            authSignInUri,
+            authSignOutUri,
+            authTokenUri,
+        };
     });
 
-const executeService = middleware(authenticationMiddleware(service.execute));
+const handleRequest = lambdaMiddleware(middleware(authenticationMiddleware(service.execute)));
+const handleEvent = async (event: LambdaEvent, context: ServerContext) => {
+    const triggers = getTriggers();
+    return triggerEvent(Object.values(triggers), event, context);
+};
 
 /**
  * AWS Lambda compatible handler function that processes the given
@@ -85,10 +114,14 @@ const executeService = middleware(authenticationMiddleware(service.execute));
  * with the bundler. Therefore, this function can only be called from
  * the actual bundled script.
  */
-export const request: LambdaHttpHandler = lambdaMiddleware(async (req) => {
+export const request = async (event: LambdaHttpRequest | LambdaEvent) => {
     const context = await serverContext$;
-    return executeService(req, context);
-});
+    if ('path' in event && 'headers' in event) {
+        return handleRequest(event, context);
+    } else {
+        return handleEvent(event, context);
+    }
+};
 
 function getApiService() {
     let apiModule;
@@ -99,6 +132,15 @@ function getApiService() {
         return new ApiService({});
     }
     return new ApiService(apiModule.default);
+}
+
+function getTriggers(): {[name: string]: Trigger} {
+    try {
+        return require('_triggers');
+    } catch {
+        // No triggers
+        return {};
+    }
 }
 
 function getDatabase() {
@@ -119,4 +161,18 @@ async function retrieveSecret(secretArn: string | undefined) {
     const secretRequest = secretsManagerService.getSecretValue({ SecretId: secretArn });
     const secretResponse = await secretRequest.promise();
     return secretResponse.SecretString;
+}
+
+function readParameters() {
+    const prefix = 'PARAM_';
+    const params: { [variable: string]: string } = {};
+    Object.keys(process.env)
+        .filter((param) => param.startsWith(prefix))
+        .forEach((param) => {
+            const value = process.env[param];
+            if (value != null) {
+                params[param.slice(prefix.length)] = value;
+            }
+        });
+    return params;
 }

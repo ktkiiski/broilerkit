@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useContext, useMemo } from 'react';
 import { DummyAuthClient } from '../auth';
 import { Client, DummyClient } from '../client';
+import { UploadForm } from '../uploads';
 
 /**
  * Context for a API client that is used when binding to
@@ -18,6 +19,11 @@ export function useClient(): Client {
 export function useUniqueId(): number {
     const client = useClient();
     return useMemo(() => client.generateUniqueId(), []);
+}
+
+export function useUpload(): (file: File, upload: UploadForm) => Promise<void> {
+    const client = useClient();
+    return client.upload;
 }
 
 interface ClientProviderProps {

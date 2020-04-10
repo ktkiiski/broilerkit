@@ -35,11 +35,11 @@ export class OAuth2SignInController implements Controller {
         if (!sessionEncryptionKey) {
             throw new NotImplemented(`Authentication is not enabled`);
         }
-        const { region, serverOrigin, queryParameters, environment } = req;
+        const { region, serverOrigin, queryParameters } = req;
         const identityProvider = queryParameters.identity_provider;
         const finalRedirectUri = queryParameters.redirect_uri || '/';
-        const clientId = environment.AuthClientId;
-        const signInUri = environment.AuthSignInUri;
+        const clientId = context.authClientId as string;
+        const signInUri = context.authSignInUri as string;
         const callbackUri = `${serverOrigin}/oauth2/signed_in`;
         if (!signInUri) {
             throw new NotImplemented(`Authentication sign in URI not configured`);
@@ -82,7 +82,7 @@ export class OAuth2SignedInController implements Controller {
         if (!sessionEncryptionKey) {
             throw new NotImplemented(`Authentication is not enabled`);
         }
-        const { region, queryParameters, environment, headers } = req;
+        const { region, queryParameters, headers } = req;
         const { code, state, error, error_description } = queryParameters;
         const callbackUri = `${req.serverOrigin}/oauth2/signed_in`;
         const cookies = parseCookies(headers.Cookie || '');
@@ -150,9 +150,9 @@ export class OAuth2SignedInController implements Controller {
                 expires_in: 60 * 10,
             };
         } else {
-            const clientId = environment.AuthClientId;
-            const clientSecret = environment.AuthClientSecret;
-            const tokenUrl = environment.AuthTokenUri;
+            const clientId = context.authClientId as string;
+            const clientSecret = context.authClientSecret as string;
+            const tokenUrl = context.authTokenUri as string;
             // Request tokens using the code
             try {
                 tokens = await requestTokens(tokenUrl, clientId, clientSecret, {
@@ -193,10 +193,10 @@ export class OAuth2SignOutController implements Controller {
         if (!sessionEncryptionKey) {
             throw new NotImplemented(`Authentication is not enabled`);
         }
-        const { region, queryParameters, environment } = req;
-        const clientId = environment.AuthClientId;
+        const { region, queryParameters } = req;
+        const clientId = context.authClientId as string;
         const finalRedirectUri = queryParameters.redirect_uri || '/';
-        const signOutUri = environment.AuthSignOutUri;
+        const signOutUri = context.authSignOutUri as string;
         const callbackUri = `${req.serverOrigin}/oauth2/signed_out`;
         if (!signOutUri) {
             throw new NotImplemented(`Authentication sign out URI not configured`);
@@ -252,8 +252,8 @@ export class OAuth2SignedOutController implements Controller {
 
 export function authenticationMiddleware<P extends any[], R extends HttpResponse | ApiResponse>(handler: (request: HttpRequest, context: ServerContext, ...params: P) => Promise<R>) {
     async function handleAuthentication(req: HttpRequest, context: ServerContext, ...params: P): Promise<R> {
-        const { region, headers, environment } = req;
         const { sessionEncryptionKey } = context;
+        const { region, headers } = req;
         if (!sessionEncryptionKey) {
             throw new NotImplemented(`Authentication is not enabled`);
         }
@@ -288,10 +288,10 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
                     refreshAfter: new Date(+now + 1000 * 60 * 10),
                 };
             } else {
-                const clientId = environment.AuthClientId;
-                const clientSecret = environment.AuthClientSecret;
-                const tokenUrl = environment.AuthTokenUri;
                 // Request tokens using the code
+                const clientId = context.authClientId as string;
+                const clientSecret = context.authClientSecret as string;
+                const tokenUrl = context.authTokenUri as string;
                 try {
                     const tokens = await requestTokens(tokenUrl, clientId, clientSecret, {
                         grant_type: 'refresh_token',
