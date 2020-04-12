@@ -71,7 +71,7 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
         }
         const fields: {[key: string]: Field<any>} = this.fields;
         const output: {[key: string]: any} = {};
-        const errors: Array<KeyErrorData<string>> = [];
+        const errors: KeyErrorData<string>[] = [];
         // Deserialize each field
         forEachKey(fields, (key, field) => {
             const rawValue = input[key];
@@ -147,7 +147,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     implements ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
 
     private readonly requiredFields: R[];
-    private readonly optionalFields: Array<O | D>;
+    private readonly optionalFields: (O | D)[];
     private readonly defaults: {[P in D]: S[P]};
 
     constructor(private readonly options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
@@ -159,10 +159,10 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     }
 
     public extend<E>(fields: Fields<E>): OptionalSerializer<S & E, R | keyof E, O, D> {
-        const additionalKeys = keys(fields) as Array<keyof E>;
+        const additionalKeys = keys(fields) as (keyof E)[];
         const options = this.options;
         return new OptionalSerializer<S & E, R | keyof E, O, D>({
-            required: [...options.required, ...additionalKeys] as Array<R | keyof E>,
+            required: [...options.required, ...additionalKeys] as (R | keyof E)[],
             optional: options.optional,
             defaults: options.defaults as {[P in D]: (S & E)[P]},
         }, {...this.fields, ...fields} as Fields<S & E>);

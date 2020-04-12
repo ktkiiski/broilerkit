@@ -17,12 +17,12 @@ interface SqlScanChunk extends SqlResult {
 export interface Database {
     tables: Table[];
     defaultsByTable: TableDefaults;
-    getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null): Array<SqlOperation<any>>;
+    getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null): SqlOperation<any>[];
 }
 
 export interface SqlConnection extends EffectContext {
     query(sql: string, params?: any[]): Promise<SqlResult>;
-    queryAll(queries: Array<{sql: string, params?: any[]}>): Promise<SqlResult[]>;
+    queryAll(queries: {sql: string, params?: any[]}[]): Promise<SqlResult[]>;
     scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk>;
     disconnect(error?: any): Promise<void>;
     transaction<R>(callback: () => Promise<R>): Promise<R>;
@@ -45,7 +45,7 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
         const { client } = this;
         return await logSql(sql, params, () => client.query(sql, params));
     }
-    public async queryAll(queries: Array<{ sql: string; params?: any[]; }>): Promise<SqlResult[]> {
+    public async queryAll(queries: { sql: string; params?: any[]; }[]): Promise<SqlResult[]> {
         // TODO: Could probably be optimized as a single ';' separated query string in some cases
         const results: SqlResult[] = [];
         for (const { sql, params } of queries) {
@@ -173,7 +173,7 @@ export class RemotePostgreSqlConnection implements SqlConnection {
         });
         return { rowCount, rows };
     }
-    public async queryAll(queries: Array<{ sql: string; params?: any[]; }>): Promise<SqlResult[]> {
+    public async queryAll(queries: { sql: string; params?: any[]; }[]): Promise<SqlResult[]> {
         const results: SqlResult[] = [];
         for (const { sql, params } of queries) {
             results.push(await this.query(sql, params));
@@ -230,8 +230,8 @@ export class DatabaseClient {
     public async runAll<T1, T2, T3>(queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>]): Promise<[T1, T2, T3]>;
     public async runAll<T1, T2>(queries: [SqlQuery<T1>, SqlQuery<T2>]): Promise<[T1, T2]>;
     public async runAll<T1>(queries: [SqlQuery<T1>]): Promise<[T1]>;
-    public async runAll<T>(queries: Array<SqlQuery<T>>): Promise<T[]>;
-    public async runAll<T>(queries: Array<SqlQuery<T>>): Promise<T[]> {
+    public async runAll<T>(queries: SqlQuery<T>[]): Promise<T[]>;
+    public async runAll<T>(queries: SqlQuery<T>[]): Promise<T[]> {
         return this.withConnection(async (connection) => {
             const results = await connection.queryAll(queries);
             return queries.map((query, index) => query.deserialize(results[index]));
@@ -249,8 +249,8 @@ export class DatabaseClient {
     public async batch<T1, T2, T3>(queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>]): Promise<[T1, T2, T3]>;
     public async batch<T1, T2>(queries: [SqlOperation<T1>, SqlOperation<T2>]): Promise<[T1, T2]>;
     public async batch<T1>(queries: [SqlOperation<T1>]): Promise<[T1]>;
-    public async batch<T>(queries: Array<SqlOperation<T>>): Promise<T[]>;
-    public async batch<T>(operations: Array<SqlOperation<T>>): Promise<T[]> {
+    public async batch<T>(queries: SqlOperation<T>[]): Promise<T[]>;
+    public async batch<T>(operations: SqlOperation<T>[]): Promise<T[]> {
         const db = this.getDatabase();
         return this.withTransaction(async (connection) => {
             const results: T[] = [];
@@ -299,7 +299,7 @@ export async function executeQuery<R>(connection: SqlConnection, query: SqlQuery
     return query.deserialize(result);
 }
 
-export async function executeQueries<R>(connection: SqlConnection, queries: Array<SqlQuery<R>>): Promise<R[]> {
+export async function executeQueries<R>(connection: SqlConnection, queries: SqlQuery<R>[]): Promise<R[]> {
     const results: R[] = [];
     for (const query of queries) {
         const result = await connection.query(query.sql, query.params);

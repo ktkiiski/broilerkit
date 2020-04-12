@@ -126,7 +126,7 @@ extends BaseApi<UpdateOperation<S, U, R, O, D, any, B>> {
         ;
         const url = operation.route.compile(input);
         const payload = payloadSerializer.serialize(input);
-        const idAttributes = resource.identifyBy as Array<keyof any>;
+        const idAttributes = resource.identifyBy as (keyof any)[];
         const resourceIdentity = pick(input, idAttributes);
         const resourceName = resource.name;
         const update: ResourceUpdate<S, U> = {

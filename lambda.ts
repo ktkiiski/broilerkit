@@ -116,7 +116,7 @@ export function lambdaMiddleware<P extends any[]>(handler: (request: HttpRequest
 }
 
 export interface LambdaS3Event {
-    Records: Array<{
+    Records: {
         eventName: string;
         eventTime: string;
         s3: {
@@ -132,7 +132,7 @@ export interface LambdaS3Event {
                 // sequencer?: string | null;
             };
         };
-    }>;
+    }[];
 }
 export type LambdaEvent = LambdaS3Event;
 export type LambdaEventHandler = (event: LambdaEvent) => Promise<void>;

@@ -29,7 +29,7 @@ export function addEffect<T, PK extends Key<T>>(context: EffectContext, resource
     context.effects.push({ resource, identity, newState, oldState });
 }
 
-export function getEffectHeaders(effects: ResourceEffect[], operations: Array<Operation<any, any, any>>, auth: UserSession | null): string[] {
+export function getEffectHeaders(effects: ResourceEffect[], operations: Operation<any, any, any>[], auth: UserSession | null): string[] {
     const headers: string[] = [];
     for (const effect of effects) {
         const { name, identifyBy } = effect.resource;
@@ -54,7 +54,7 @@ export function getEffectHeaders(effects: ResourceEffect[], operations: Array<Op
     return headers;
 }
 
-function encodeResourceState<T>(resourceName: string, item: T | null, operations: Array<Operation<any, any, any>>, auth: UserSession | null) {
+function encodeResourceState<T>(resourceName: string, item: T | null, operations: Operation<any, any, any>[], auth: UserSession | null) {
     if (!item) {
         return null;
     }

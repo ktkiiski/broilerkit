@@ -98,7 +98,7 @@ abstract class BaseClient implements Client {
     protected collectionListeners: ListMapping<CollectionListener> = {};
     private pendingLoads = new Set<string>();
     private runningLoads = new Map<string, Promise<any>>();
-    private optimisticChanges: Array<ResourceChange<any, any>> = [];
+    private optimisticChanges: ResourceChange<any, any>[] = [];
     private uniqueIdCounter = 0;
 
     constructor(
@@ -233,7 +233,7 @@ abstract class BaseClient implements Client {
 
     public async refreshAll(): Promise<void> {
         const { resourceListeners, collectionListeners } = this;
-        const promises: Array<Promise<void>> = [];
+        const promises: Promise<void>[] = [];
         Object.keys(resourceListeners).forEach((resourceUrl) => {
             for (const { url, op } of resourceListeners[resourceUrl]) {
                 promises.push(this.loadResource(url, op));
@@ -889,10 +889,10 @@ function applyStateEffectToCollection(
 
 function convertEffectToResourceChanges(
     effect: StateEffect, resource: Resource<any, any, any>,
-): Array<ResourceChange<any, any>> | null {
+): ResourceChange<any, any>[] | null {
     const resourceName = resource.name;
     const { encodedResource, available } = effect;
-    const results: Array<ResourceChange<any, any>> = [];
+    const results: ResourceChange<any, any>[] = [];
     // Try to apply the effect to the non-joined resource
     if (effect.resourceName === resourceName) {
         try {

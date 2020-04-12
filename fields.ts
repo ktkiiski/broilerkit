@@ -535,7 +535,7 @@ class ListField<I, O> implements Field<I[], O[]> {
         return this.mapWith(items, (item) => this.field.decodeSortable(decodeURIComponent(item)));
     }
     private mapWith<X, Y>(items: X[], iteratee: (item: X, index: number) => Y): Y[] {
-        const errors: Array<KeyErrorData<number>> = [];
+        const errors: KeyErrorData<number>[] = [];
         const results = items.map((item, key) => {
             try {
                 return iteratee(item, key);

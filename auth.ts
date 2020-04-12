@@ -60,7 +60,7 @@ export class BrowserAuthClient implements AuthClient {
     private auth!: Auth | null;
     private authExpirationTimeout?: any;
 
-    private authListeners: Array<(auth: Auth | null) => void> = [];
+    private authListeners: ((auth: Auth | null) => void)[] = [];
 
     constructor(initialAuth: Auth | null) {
         this.setAuthentication(initialAuth);

@@ -90,7 +90,7 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
         return new FieldResource(
             this.name,
             pick(this.columns, attrs),
-            identifyBy as Array<K & PK>,
+            identifyBy as (K & PK)[],
             pick(this.nestings, attrs),
             this.joins.map((join) => (
                 join.type === 'inner' ? {

@@ -68,13 +68,13 @@ export async function *filterAsync<T>(iterable: AsyncIterable<T>, iteratee: (ite
     }
 }
 
-export async function *concatAsync<T>(...iterables: Array<AsyncIterable<T>>) {
+export async function *concatAsync<T>(...iterables: AsyncIterable<T>[]) {
     for (const iterator of iterables) {
         yield *iterator;
     }
 }
 
-export function mergeAsync<T>(...iterables: Array<AsyncIterable<T>>): AsyncIterableIterator<T> {
+export function mergeAsync<T>(...iterables: AsyncIterable<T>[]): AsyncIterableIterator<T> {
     return generate(({next, error, complete}) => {
         const promises = iterables.map(async (iterable) => {
             for await (const item of iterable) {
@@ -85,9 +85,9 @@ export function mergeAsync<T>(...iterables: Array<AsyncIterable<T>>): AsyncItera
     });
 }
 
-export async function *mergeSortedAsync<T, K extends keyof T>(iterables: Array<AsyncIterable<T>>, ordering: K, direction: 'asc' | 'desc'): AsyncIterableIterator<T> {
+export async function *mergeSortedAsync<T, K extends keyof T>(iterables: AsyncIterable<T>[], ordering: K, direction: 'asc' | 'desc'): AsyncIterableIterator<T> {
     const iterators = iterables.map((iterable) => iterable[Symbol.asyncIterator]());
-    const nextPromises: Array<Promise<IteratorResult<T>>> = iterators.map((iterator) => iterator.next());
+    const nextPromises: Promise<IteratorResult<T>>[] = iterators.map((iterator) => iterator.next());
     const len = iterables.length;
     while (true) {
         const nextResults = await Promise.all(nextPromises);
@@ -214,7 +214,7 @@ export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterab
     const iterator = iterate(iterable);
     let startedCount = 0;
     let runningCount = 0;
-    const pendingTasks: Array<Promise<WorkerResult<R[]>>> = [];
+    const pendingTasks: Promise<WorkerResult<R[]>>[] = [];
 
     async function process(next: IteratorResult<T> | Promise<IteratorResult<T>>): Promise<WorkerResult<R[]>> {
         let runNext = false;
@@ -264,7 +264,9 @@ export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterab
             return;
         }
         // Yield the results
-        yield *nextResult.value;
+        for (const value of nextResult.value) {
+            yield value;
+        }
         // Remove from the pending tasks
         pendingTasks.shift();
     }

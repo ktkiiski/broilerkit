@@ -19,7 +19,7 @@ export function zip(data: any, filename: string): Promise<Buffer> {
  * @param files to compress
  * @returns a promise for the ZIP archive as a Buffer
  */
-export function zipAll(files: Array<{data: any, filename: string}>): Promise<Buffer> {
+export function zipAll(files: {data: any, filename: string}[]): Promise<Buffer> {
     const jszip = new JSZip();
     for (const {data, filename} of files) {
         jszip.file(filename, data);

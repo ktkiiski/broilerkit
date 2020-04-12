@@ -56,7 +56,7 @@ export class AmazonCognitoIdentity<S = {}> {
         await request.promise();
     }
 
-    public async *listUsers(options?: {limit?: number, filterKey?: string, filterValue?: string}): AsyncIterableIterator<Array<CognitoUser & S>> {
+    public async *listUsers(options?: {limit?: number, filterKey?: string, filterValue?: string}): AsyncIterableIterator<(CognitoUser & S)[]> {
         const limit = options && options.limit;
         const filterKey = options && options.filterKey;
         const filterValue = options && options.filterValue;
@@ -69,7 +69,7 @@ export class AmazonCognitoIdentity<S = {}> {
         for await (const users of retrievePages(request, 'Users')) {
             if (users) {
                 for (const user of users) {
-                    const results: Array<CognitoUser & S> = [];
+                    const results: (CognitoUser & S)[] = [];
                     const {Attributes, Username} = user;
                     if (Attributes && Username) {
                         const result: any = {

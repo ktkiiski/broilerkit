@@ -14,9 +14,9 @@ import { Resource } from './resources';
 import { nestedList } from './serializers';
 import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
 
-export type Filters<T> = {[P in keyof T]?: T[P] | Array<T[P]>};
+export type Filters<T> = {[P in keyof T]?: T[P] | T[P][]};
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
-export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | Array<T[P]>} & OrderedQuery<T, O> & Filters<T>;
+export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | T[P][]} & OrderedQuery<T, O> & Filters<T>;
 
 export interface Table<S = any, PK extends Key<S> = any> {
     resource: Resource<S, PK, any>;
@@ -407,8 +407,8 @@ export function count<S>(
  */
 export function batchRetrieve<S, PK extends Key<S>>(
     resource: Resource<S, PK, any>,
-    identities: Array<Pick<S, PK>>,
-): SqlOperation<Array<S | null>> {
+    identities: Pick<S, PK>[],
+): SqlOperation<(S | null)[]> {
     if (!identities.length) {
         return async () => [];
     }
@@ -432,7 +432,7 @@ interface TableOptions<S, PK extends Key<S>> {
      * from the database that lack required attributes.
      */
     migrate?: { [P in Exclude<keyof S, PK>]?: S[P] };
-    indexes?: Array<Array<Key<S>>>;
+    indexes?: Key<S>[][];
 }
 
 interface Aggregation<S> {
@@ -444,9 +444,9 @@ interface Aggregation<S> {
 }
 
 class DatabaseDefinition implements Database {
-    public readonly tables: Array<DatabaseTable<any, any>> = [];
+    public readonly tables: DatabaseTable<any, any>[] = [];
     public defaultsByTable: TableDefaults = {};
-    private aggregationsBySource: {[name: string]: Array<Aggregation<any>>} = {};
+    private aggregationsBySource: {[name: string]: Aggregation<any>[]} = {};
 
     public getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null) {
         const idValues = newValues || oldValues;
@@ -463,7 +463,7 @@ class DatabaseDefinition implements Database {
             const oldIdentifier = oldValues && transform(by, (pk) => oldValues[pk as keyof S]);
             const isMatching = newValues != null && hasProperties(newValues, filters);
             const wasMatching = oldValues != null && hasProperties(oldValues, filters);
-            const operations: Array<SqlOperation<any>> = [];
+            const operations: SqlOperation<any>[] = [];
             if (newIdentifier && oldIdentifier && isEqual(newIdentifier, oldIdentifier)) {
                 // Only max one upsert is required
                 const diff = (isMatching ? 1 : 0) - (wasMatching ? 1 : 0);
@@ -528,7 +528,7 @@ export function getResourceState(name: string, resource: Resource<any, any, any>
     };
 }
 
-async function executeAll(connection: SqlConnection, db: Database, operations: Array<SqlOperation<any>>) {
+async function executeAll(connection: SqlConnection, db: Database, operations: SqlOperation<any>[]) {
     for (const operation of operations) {
         await operation(connection, db);
     }

@@ -49,7 +49,7 @@ export function selectQuery<S, PK extends Key<S>, W extends Key<S>>(
 export function batchSelectQuery<S>(
     resource: Resource<S, any, any>,
     defaultsByTable: TableDefaults,
-    filtersList: Array<Record<string, any>>,
+    filtersList: Record<string, any>[],
 ): SqlQuery<S[]> {
     const { name } = resource;
     const params: any[] = [];
@@ -64,7 +64,7 @@ export function updateQuery<S, W extends Key<S>>(
     filters: Record<string, any>,
     values: Partial<Pick<S, W>>,
     defaultsByTable: TableDefaults,
-): SqlQuery<Array<[S, S]>> {
+): SqlQuery<[S, S][]> {
     const params: any[] = [];
     const assignments: string[] = [];
     const { name, columns, identifyBy } = resource;
@@ -231,7 +231,7 @@ function getSelectSql(
     params: any[],
     resource: Resource<any, any, any>,
     defaultsByTable: TableDefaults,
-    filterList?: Array<Record<string, any>>,
+    filterList?: Record<string, any>[],
     limit?: number,
     ordering?: string,
     direction?: 'asc' | 'desc',
@@ -399,8 +399,8 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
     return `${colRef} IN (${placeholders.join(',')})`;
 }
 
-function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): Array<[string, string]> {
-    const refs: Array<[string, string]> = [];
+function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): [string, string][] {
+    const refs: [string, string][] = [];
     resource.joins.forEach((join, index) => {
         if (join.type === 'left') {
             return;

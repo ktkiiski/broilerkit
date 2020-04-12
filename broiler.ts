@@ -653,7 +653,7 @@ export class Broiler {
      */
     public async *uploadFilesToS3Bucket(bucketName: string, file$: Promise<File[]>, cacheDuration: number, overwrite: boolean) {
         const files = [...await file$];
-        const uploads$: Array<Promise<IFileUpload>> = [];
+        const uploads$: Promise<IFileUpload>[] = [];
         const startNext = () => {
             const file = files.shift();
             if (!file) { return; }
@@ -872,7 +872,7 @@ export class Broiler {
         return Object.values(bucketsModule);
     }
 
-    private generateBucketTemplates(): Array<Promise<any>> {
+    private generateBucketTemplates(): Promise<any>[] {
         const buckets = this.getBuckets();
         return buckets.map((bucket) => this.generateBucketTemplate(bucket));
     }
@@ -895,7 +895,7 @@ export class Broiler {
         return Object.values(triggersModule);
     }
 
-    private generateTriggerTemplates(): Array<Promise<any>> {
+    private generateTriggerTemplates(): Promise<any>[] {
         const triggers = this.getTriggers();
         return triggers.map((trigger) => this.generateTriggerTemplate(trigger));
     }

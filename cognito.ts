@@ -14,7 +14,7 @@ export interface UserPool {
     update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User>;
     destroy(identity: UserIdentity): Promise<void>;
     scan(): AsyncIterableIterator<User[]>;
-    batchRetrieve(identities: UserIdentity[]): Promise<Array<User | null>>;
+    batchRetrieve(identities: UserIdentity[]): Promise<(User | null)[]>;
 }
 
 export class DummyUserPool implements UserPool {
@@ -122,7 +122,7 @@ export class LocalUserPool implements UserPool {
 
     public batchRetrieve(identities: UserIdentity[]) {
         return this.db.run(
-            batchRetrieve(users, identities as Array<Pick<User, 'id'>>),
+            batchRetrieve(users, identities as Pick<User, 'id'>[]),
         );
     }
 }

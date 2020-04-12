@@ -226,7 +226,7 @@ export function implementAll<I, O, R, T extends Record<string, OperationType>>(
 export class ApiService {
 
     public readonly controllers: Controller[];
-    public readonly operations: Array<Operation<any, any, any>>;
+    public readonly operations: Operation<any, any, any>[];
 
     constructor(
         private readonly controllersByName: Record<string, Controller>,
@@ -336,7 +336,7 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
     return {...urlParameters, ...payload};
 }
 
-function applyEffectHeaders<R extends HttpResponse | ApiResponse>(response: R, auth: UserSession | null, effects: ResourceEffect[], operations: Array<Operation<any, any, any>>): R {
+function applyEffectHeaders<R extends HttpResponse | ApiResponse>(response: R, auth: UserSession | null, effects: ResourceEffect[], operations: Operation<any, any, any>[]): R {
     return {
         ...response,
         headers: {

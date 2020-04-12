@@ -129,7 +129,7 @@ function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
     return [resources, error, isLoading];
 }
 
-export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, I extends Array<Cursor<S, U, O, F>> = Array<Cursor<S, U, O, F>>>(
+export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, I extends Cursor<S, U, O, F>[] = Cursor<S, U, O, F>[]>(
     op: ListOperation<S, U, O, F, any, any>,
     inputs: I,
     filters?: Partial<S> | null,
@@ -139,7 +139,7 @@ export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends 
         inputs.map((input) => inquiryCollection(client, op, input, filters)),
     );
     useEffect(() => {
-        const resultStates: Array<Collection<S> | null> = inputs.map(() => null);
+        const resultStates: (Collection<S> | null)[] = inputs.map(() => null);
         if (!inputs.length) {
             setState([]);
         }
@@ -149,7 +149,7 @@ export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends 
                 if (!isEqual(resultStates[i], filteredCollection, 2)) {
                     resultStates[i] = filteredCollection;
                     if (resultStates.every(isNotNully)) {
-                        setState((resultStates as Array<Collection<S>>).slice());
+                        setState((resultStates as Collection<S>[]).slice());
                     }
                 }
             },

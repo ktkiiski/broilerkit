@@ -1,5 +1,5 @@
 class SharedAsyncIterable<T> implements AsyncIterable<T> {
-    private buffer: Array<Promise<IteratorResult<T>>> = [];
+    private buffer: Promise<IteratorResult<T>>[] = [];
     constructor(private iterator: AsyncIterator<T>) {}
 
     public [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -9,7 +9,7 @@ class SharedAsyncIterable<T> implements AsyncIterable<T> {
 
 class SharedIterator<T> implements AsyncIterator<T> {
     private index = 0;
-    constructor(private buffer: Array<Promise<IteratorResult<T>>>, private iterator: AsyncIterator<T>) {}
+    constructor(private buffer: Promise<IteratorResult<T>>[], private iterator: AsyncIterator<T>) {}
 
     public next(value?: any): Promise<IteratorResult<T>> {
         // TODO: Do not cache anything called after completion

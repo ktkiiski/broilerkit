@@ -5,7 +5,7 @@ export interface ErrorData {
     errors?: ErrorList;
 }
 
-type ErrorList = Array<KeyErrorData<string>> | Array<KeyErrorData<number>>;
+type ErrorList = KeyErrorData<string>[] | KeyErrorData<number>[];
 
 export interface KeyErrorData<T> extends ErrorData {
     key: T;
