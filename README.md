@@ -151,10 +151,7 @@ To deploy the production version to the `prod` stage:
 npx broilerkit deploy prod
 ```
 
-**IMPORTANT:** When deploying for the first time, you will receive email for confirming the certificate for the domain names!
-The deployment continues only after you approve the certificate!
-
-The deployment will build your app files, and then upload them to Amazon S3 buckets. It will also use [CloudFormation](https://aws.amazon.com/cloudformation/) to set up all the required backend, Lambda functions, and SimpleDB database tables.
+The deployment will build your app files, and then upload them to Amazon S3 buckets. It will also use [CloudFormation](https://aws.amazon.com/cloudformation/) to set up all the required backend, Lambda functions, databases, SSL certificates, etc.
 
 The assets (JavaScript, CSS, images) are uploaded with their names containing hashes, so they won't conflict with existing files.
 They will be cached infinitely with HTTP headers for maximum performance.
