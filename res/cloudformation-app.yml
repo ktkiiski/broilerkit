@@ -177,7 +177,7 @@ Resources:
           ViewerProtocolPolicy: "redirect-to-https"
         ViewerCertificate:
           AcmCertificateArn:
-            Ref: DomainCertificate
+            Ref: IssuedSiteDomainCertificate
           SslSupportMethod: "sni-only"
   # DNS domain name for the host of the static asset files
   AssetsDNS:
@@ -220,23 +220,131 @@ Resources:
           - S3WebsiteEndpoint
 
   # Certificate for the domains
-  DomainCertificate:
-    Type: "AWS::CertificateManager::Certificate"
+  SiteDomainCertificate:
+    Type: Custom::Certificate
+    DependsOn:
+    - CustomResourcePolicy
+    - CustomResourceLogGroup
     Properties:
-      DomainName:
-        Ref: ServerDomainName
-      DomainValidationOptions:
-        # Send validation emails using the top-level domains
-        - DomainName:
+      ServiceToken:
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
+      Service: ACM
+      Create:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/ACM.html#requestCertificate-property
+        Action: requestCertificate
+        PhysicalResourceIdQuery: CertificateArn
+        Parameters:
+          DomainName:
             Ref: ServerDomainName
-          ValidationDomain:
-            Ref: ServerHostedZoneName
-        - DomainName:
+          ValidationMethod: DNS
+          SubjectAlternativeNames:
+            - Ref: AssetsDomainName
+      Delete:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/ACM.html#deleteCertificate-property
+        Action: deleteCertificate
+        Parameters:
+          CertificateArn: ${PhysicalResourceId}
+
+  # Information about the server domain DNS validation record that must be added as a CNAME record
+  ServerDomainDNSValidationRecordInfo:
+    Type: Custom::CertificateDNSValidationRecordInfo
+    DependsOn:
+    - SiteDomainCertificate
+    - CustomResourcePolicy
+    - CustomResourceLogGroup
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
+      Service: ACM
+      PhysicalResourceId:
+        Fn::Sub: "${SiteDomainCertificate}/${ServerDomainName}"
+      Create:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/ACM.html#describeCertificate-property
+        Action: describeCertificate
+        Attributes: Certificate.DomainValidationOptions.0.ResourceRecord
+        Parameters:
+          CertificateArn:
+            Ref: SiteDomainCertificate
+
+  # Information about the asset domain DNS validation record that must be added as a CNAME record
+  AssetsDomainDNSValidationRecordInfo:
+    Type: Custom::CertificateDNSValidationRecordInfo
+    DependsOn:
+    - SiteDomainCertificate
+    - CustomResourcePolicy
+    - CustomResourceLogGroup
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
+      Service: ACM
+      PhysicalResourceId:
+        Fn::Sub: "${SiteDomainCertificate}/${AssetsDomainName}"
+      Create:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/ACM.html#describeCertificate-property
+        Action: describeCertificate
+        Attributes: Certificate.DomainValidationOptions.1.ResourceRecord
+        Parameters:
+          CertificateArn:
+            Ref: SiteDomainCertificate
+
+  # DNS validation record for the server domain
+  ServerDomainDNSValidationRecordSetGroup:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName:
+        Fn::Sub: "${ServerHostedZoneName}."
+      RecordSets:
+        - Name:
+            Fn::Sub: "${ServerDomainDNSValidationRecordInfo.Name}"
+          Type:
+            Fn::Sub: "${ServerDomainDNSValidationRecordInfo.Type}"
+          TTL: '60'
+          Weight: 1
+          SetIdentifier:
+            Ref: ServerDomainName
+          ResourceRecords:
+            - Fn::Sub: "${ServerDomainDNSValidationRecordInfo.Value}"
+
+  # DNS validation record for the assets domain
+  AssetsDomainDNSValidationRecordSetGroup:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName:
+        Fn::Sub: "${AssetsHostedZoneName}."
+      RecordSets:
+        - Name:
+            Fn::Sub: "${AssetsDomainDNSValidationRecordInfo.Name}"
+          Type:
+            Fn::Sub: "${AssetsDomainDNSValidationRecordInfo.Type}"
+          TTL: '60'
+          Weight: 1
+          SetIdentifier:
             Ref: AssetsDomainName
-          ValidationDomain:
-            Ref: AssetsHostedZoneName
-      SubjectAlternativeNames:
-        - Ref: AssetsDomainName
+          ResourceRecords:
+            - Fn::Sub: "${AssetsDomainDNSValidationRecordInfo.Value}"
+
+  # Wait until the certificate has been issued
+  IssuedSiteDomainCertificate:
+    Type: Custom::IssuedCertificate
+    DependsOn:
+    - ServerDomainDNSValidationRecordSetGroup
+    - AssetsDomainDNSValidationRecordSetGroup
+    - SiteDomainCertificate
+    - CustomResourcePolicy
+    - CustomResourceLogGroup
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: CustomResourceLambdaFunction.Arn
+      Service: ACM
+      PhysicalResourceId:
+        Ref: SiteDomainCertificate
+      Create:
+        # https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/ACM.html#waitFor-property
+        Action: waitFor
+        WaitState: certificateValidated
+        Parameters:
+          CertificateArn:
+            Ref: SiteDomainCertificate
 
   # Lambda function for handling HTTP requests
   ServerLambdaFunction:
@@ -470,7 +578,7 @@ Resources:
     Type: AWS::ApiGateway::DomainName
     Properties:
       CertificateArn:
-        Ref: DomainCertificate
+        Ref: IssuedSiteDomainCertificate
       DomainName:
         Ref: ServerDomainName
 

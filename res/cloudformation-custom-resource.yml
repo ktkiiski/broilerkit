@@ -8,22 +8,14 @@ Resources:
         Fn::GetAtt: CustomResourceRole.Arn
       Code:
         ZipFile: |
-          const AWS = require('aws-sdk'),
-            crypto = require('crypto'),
-            https = require('https'),
-            url = require('url');
-
-          const pid = 'PhysicalResourceId', rp = 'ResourceProperties';
+          const AWS = require('aws-sdk'), crypto = require('crypto'), https = require('https'), url = require('url');
+          const pid = 'PhysicalResourceId', rp = 'ResourceProperties', pidq = 'PhysicalResourceIdQuery';
           exports.handler = (ev, ctx) => {
-            console.log(JSON.stringify(Object.assign({}, ev, {
-              ResourceProperties: null,
-              OldResourceProperties: null,
-            })));
             let rand = random();
             ev[rp] = fixBooleans(ev[rp], ev.RequestType === 'Delete' ? ev[pid] : fixBooleans(ev[rp][pid], null, rand), rand);
             let args = ev[rp][ev.RequestType];
             if (!args) args = ev.RequestType === 'Delete' ? {} : ev[rp]['Create'];
-            ['Attributes', pid, 'PhysicalResourceIdQuery', 'Parameters'].forEach(attr =>
+            ['Attributes', pid, pidq, 'Parameters'].forEach(attr =>
               args[attr] = args[attr] || ev[rp][attr]
             );
             if (ev.RequestType === 'Delete') {
@@ -33,13 +25,21 @@ Resources:
             } else if (ev.RequestType === 'Create' || ev.RequestType === 'Update') {
               updateResource(args, ev, ctx, function (data) {
                 let props = ev[rp][ev.RequestType] || ev[rp]['Create'];
-                if (props.PhysicalResourceIdQuery) ev[pid] = data && data[props.PhysicalResourceIdQuery];
+                if (props[pidq]) ev[pid] = data && data[props[pidq]];
                 if (props[pid]) ev[pid] = props[pid];
-                if (props.Attributes) data = data && data[props.Attributes];
+                data = query(data, props.Attributes);
                 response.send(ev, ctx, response.SUCCESS, data, ev[pid]);
               });
             }
           };
+
+          function query(val, qr) {
+            const path = qr ? qr.split('.') : [];
+            while (val != null && path.length) {
+              val = val[path.shift()];
+            }
+            return val;
+          }
 
           function random() {
             return crypto.randomBytes(6).toString('base64').replace(/[+=/]/g, '').toUpperCase();
@@ -77,15 +77,17 @@ Resources:
           function updateResource(args, ev, ctx, cb) {
             request(args, ev, function (err, data) {
               if (err && args.IgnoreErrors !== true) {
-                response.send(ev, ctx, response.FAILED, err, ev.PhysicalResourceId);
+                response.send(ev, ctx, response.FAILED, err, ev[pid]);
               } else cb(data);
             });
           }
 
           function request(args, ev, cb) {
-            if (ev.RequestType === 'Delete' && !args.Action) return cb();
+            const ac = args.Action;
+            if (ev.RequestType === 'Delete' && !ac) return cb();
             let client = new AWS[ev[rp].Service]();
-            client[args.Action](args.Parameters, cb);
+            if (ac === 'waitFor') client[ac](args.WaitState, args.Parameters, cb);
+            else client[ac](args.Parameters, cb);
           }
 
           let response = {
@@ -95,7 +97,7 @@ Resources:
               let body = {
                 Status: responseStatus,
                 Reason: responseData instanceof Error ? responseData.toString() : '',
-                PhysicalResourceId: pId || ev.RequestId,
+                [pid]: pId || ev.RequestId,
                 StackId: ev.StackId,
                 RequestId: ev.RequestId,
                 LogicalResourceId: ev.LogicalResourceId,
@@ -164,4 +166,12 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         # NOTE: The statement will be extended in other templates!
-        Statement: []
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              # Allow managing domain certificates
+              - acm:DeleteCertificate
+              - acm:DescribeCertificate
+              - acm:GetCertificate
+              - acm:RequestCertificate

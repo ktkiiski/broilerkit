@@ -772,6 +772,7 @@ export class Broiler {
         const templateFiles = [
             'cloudformation-init.yml',
             'cloudformation-app.yml',
+            'cloudformation-custom-resource.yml',
         ];
         const {auth, parameters} = this.config;
         if (auth) {
@@ -785,11 +786,6 @@ export class Broiler {
                 // Enable Google login
                 templateFiles.push('cloudformation-google-login.yml');
             }
-        }
-        const tables = this.getTables();
-        if (auth || tables.length) {
-            // Generic custom resource is used in user or database related items
-            templateFiles.push('cloudformation-custom-resource.yml');
         }
         const siteHash = await this.getSiteHash();
         const template$ = readTemplates(templateFiles, {
@@ -1191,9 +1187,6 @@ function formatResourceChange(resource: CloudFormation.StackResource): string {
     let msg = `Resource ${bold(id)} => ${colorizedStatus}`;
     if (status.endsWith('_FAILED') && statusReason) {
         msg += ` (${statusReason})`;
-    }
-    if (id === 'DomainCertificate' && status === 'CREATE_IN_PROGRESS') {
-        msg += `\n${yellow('ACTION REQUIRED!')} You have received the confirmation email(s) from AWS Certificate Manager! ${bold('Please go to your inbox and confirm the certificates using the provided links!')}`;
     }
     if (/CloudFrontDistribution$/.test(id) && /^(CREATE|UPDATE|DELETE)_IN_PROGRESS$/.test(status)) {
         msg += ` (This will take a while)`;
