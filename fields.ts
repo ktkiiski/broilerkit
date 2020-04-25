@@ -2,6 +2,7 @@ import { decodeDataUri, DecodedDataUri, encodeDataUri } from './data-uri';
 import { KeyErrorData, ValidationError } from './errors';
 import { isApiResponse } from './http';
 import { padEnd, padStart } from './strings';
+import { serializeDateTime, deserializeDateTime, serializeDate, deserializeDate } from './datetime';
 
 export type NonEmptyString = Exclude<string, ''>;
 
@@ -275,21 +276,10 @@ class DateTimeField implements Field<Date, string> {
         return value;
     }
     public serialize(value: Date): string {
-        return value.toISOString();
+        return serializeDateTime(value);
     }
     public deserialize(value: unknown): Date {
-        if (typeof value === 'string') {
-            // Try to parse the date from the string
-            value = Date.parse(value);
-        }
-        if (typeof value !== 'number') {
-            throw new ValidationError(`Invalid string or integer type`);
-        }
-        if (isFinite(value)) {
-            // Accept the number of milliseconds from epoch
-            return this.validate(new Date(value));
-        }
-        throw new ValidationError(`Invalid date/time format`);
+        return deserializeDateTime(value);
     }
     public encode(value: Date): string {
         return this.serialize(value);
@@ -315,23 +305,10 @@ class DateField implements Field<Date, string> {
         );
     }
     public serialize(value: Date): string {
-        return value.toISOString().slice(0, 'YYYY-MM-DD'.length);
+        return serializeDate(value);
     }
     public deserialize(value: unknown): Date {
-        if (typeof value !== 'string') {
-            throw new ValidationError(`Date must be a string`);
-        }
-        // Try to parse the date from the string
-        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-        if (!match) {
-            throw new ValidationError(`Invalid date format`);
-        }
-        const [, yearStr, monthStr, dateStr] = match;
-        return new Date(
-            parseInt(yearStr, 10),
-            parseInt(monthStr, 10) - 1,
-            parseInt(dateStr, 10),
-        );
+        return deserializeDate(value);
     }
     public encode(value: Date): string {
         return this.serialize(value);
