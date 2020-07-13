@@ -28,7 +28,7 @@ export interface SqlResult {
 }
 
 export interface TableDefaults {
-    [name: string]: {[key: string]: any};
+    [name: string]: { [key: string]: any };
 }
 
 export function selectQuery<S, PK extends Key<S>, W extends Key<S>>(
@@ -42,10 +42,19 @@ export function selectQuery<S, PK extends Key<S>, W extends Key<S>>(
 ): SqlQuery<S[]> {
     const params: any[] = [];
     const { name } = resource;
-    const sql = `${getSelectSql(name, '', params, resource, defaultsByTable, [filters], limit, ordering, direction, since)};`;
-    return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(resource, row)).filter(isNotNully)
-    ));
+    const sql = `${getSelectSql(
+        name,
+        '',
+        params,
+        resource,
+        defaultsByTable,
+        [filters],
+        limit,
+        ordering,
+        direction,
+        since,
+    )};`;
+    return makeQuery(sql, params, ({ rows }) => rows.map((row) => parseRow(resource, row)).filter(isNotNully));
 }
 
 export function batchSelectQuery<S>(
@@ -56,9 +65,7 @@ export function batchSelectQuery<S>(
     const { name } = resource;
     const params: any[] = [];
     const sql = getSelectSql(name, '', params, resource, defaultsByTable, filtersList);
-    return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(resource, row)).filter(isNotNully)
-    ));
+    return makeQuery(sql, params, ({ rows }) => rows.map((row) => parseRow(resource, row)).filter(isNotNully));
 }
 
 export function updateQuery<S, W extends Key<S>>(
@@ -96,16 +103,18 @@ export function updateQuery<S, W extends Key<S>>(
     const selectColSql = getSelectColumnsSql(updateAlias, name, resource, params, defaultsByTable);
     const selectSql = `SELECT ${selectColSql}, ${prevAlias}.* FROM ${prevRef}, ${updateRef}${selectJoinSql}`;
     const sql = `WITH ${prevRef} AS (${prevSelectSql}), ${updateRef} AS (${updateSql}) ${selectSql};`;
-    return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => {
-            const newItem = parseRow(resource, row, name);
-            const oldItem = parseRow(resource, row, prevAlias);
-            if (newItem && oldItem) {
-                return [newItem, oldItem] as [S, S];
-            }
-            return null;
-        }).filter(isNotNully)
-    ));
+    return makeQuery(sql, params, ({ rows }) =>
+        rows
+            .map((row) => {
+                const newItem = parseRow(resource, row, name);
+                const oldItem = parseRow(resource, row, prevAlias);
+                if (newItem && oldItem) {
+                    return [newItem, oldItem] as [S, S];
+                }
+                return null;
+            })
+            .filter(isNotNully),
+    );
 }
 
 export function insertQuery<S, PK extends Key<S>, W extends Key<S>>(
@@ -130,8 +139,10 @@ export function insertQuery<S, PK extends Key<S>, W extends Key<S>>(
     let insQuerySql;
     if (innerJoins.length) {
         // Insert values only if related resources exist
-        const filters: {[key: string]: any} = { ...insertValues };
-        columnNames.forEach((colName) => { delete filters[colName]; });
+        const filters: { [key: string]: any } = { ...insertValues };
+        columnNames.forEach((colName) => {
+            delete filters[colName];
+        });
         const insSelectSql = columnRefs.map((colRef) => dot(tblSql, colRef)).join(', ');
         insQuerySql = `SELECT ${insSelectSql} FROM (VALUES (${valSql})) AS ${tblSql} (${colSql})`;
         insQuerySql += getJoinSql(name, resource, params, defaultsByTable);
@@ -196,9 +207,7 @@ export function deleteQuery<S, PK extends Key<S>, W extends Key<S>>(
         sql = `WITH ${deleteRef} AS (${deleteSql}) ${selectSql};`;
     }
     // TODO: Prevent deletion if inner-joined records do not exist!
-    return makeQuery(sql, params, ({ rows }) => (
-        rows.map((row) => parseRow(resource, row)).filter(isNotNully)
-    ));
+    return makeQuery(sql, params, ({ rows }) => rows.map((row) => parseRow(resource, row)).filter(isNotNully));
 }
 
 export function countQuery(
@@ -239,17 +248,20 @@ function getSelectSql(
     direction?: 'asc' | 'desc',
     since?: any,
 ): string {
-    let sql = `SELECT ${getSelectColumnsSql(sourceName, exposeName, resource, params, defaultsByTable)} FROM ${ref(sourceName)}`;
+    let sql = `SELECT ${getSelectColumnsSql(sourceName, exposeName, resource, params, defaultsByTable)} FROM ${ref(
+        sourceName,
+    )}`;
     sql += getJoinSql(sourceName, resource, params, defaultsByTable);
     const conditions = [];
     if (filterList && filterList.length) {
-        const filterConditions = filterList.map((filters) => (
-            filterConditionSql(sourceName, filters, resource, params, defaultsByTable)
-        ));
+        const filterConditions = filterList.map((filters) =>
+            filterConditionSql(sourceName, filters, resource, params, defaultsByTable),
+        );
         if (!filterConditions.some((cond) => !cond)) {
-            const filtersSql = filterConditions.length > 1
-                ? filterConditions.map((cond) => `(${cond})`).join(' OR ')
-                : filterConditions[0];
+            const filtersSql =
+                filterConditions.length > 1
+                    ? filterConditions.map((cond) => `(${cond})`).join(' OR ')
+                    : filterConditions[0];
             conditions.push(filtersSql);
         }
     }
@@ -269,11 +281,15 @@ function getSelectSql(
     return sql;
 }
 
-function getSelectColumnsSql(srcTableName: string, exposeName: string, resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults): string {
+function getSelectColumnsSql(
+    srcTableName: string,
+    exposeName: string,
+    resource: Resource<any, any, any>,
+    params: any[],
+    defaultsByTable: TableDefaults,
+): string {
     const { nestings, columns } = resource;
-    const selectSqls = [
-        returnColumnsSql(srcTableName, exposeName, columns, params, defaultsByTable[resource.name]),
-    ];
+    const selectSqls = [returnColumnsSql(srcTableName, exposeName, columns, params, defaultsByTable[resource.name])];
     // Regular joins
     resource.joins.forEach((join, index) => {
         const defaults = defaultsByTable[join.resource.name] || {};
@@ -281,22 +297,39 @@ function getSelectColumnsSql(srcTableName: string, exposeName: string, resource:
         for (const columnName of Object.keys(join.fields)) {
             const srcColName = join.fields[columnName];
             const defaultValue = join.type === 'left' ? join.defaults[columnName] : undefined;
-            selectSqls.push(selectColumn(
-                joinName, srcColName, dot(exposeName, columnName),
-                typeof defaultValue === 'undefined' ? defaults[srcColName] : defaultValue,
-                params,
-            ));
+            selectSqls.push(
+                selectColumn(
+                    joinName,
+                    srcColName,
+                    dot(exposeName, columnName),
+                    typeof defaultValue === 'undefined' ? defaults[srcColName] : defaultValue,
+                    params,
+                ),
+            );
         }
     });
     // Nesting joins
     Object.keys(nestings).forEach((key) => {
         const nesting = nestings[key];
-        selectSqls.push(getSelectColumnsSql(dot(srcTableName, key), dot(exposeName, key), nesting.resource, params, defaultsByTable));
+        selectSqls.push(
+            getSelectColumnsSql(
+                dot(srcTableName, key),
+                dot(exposeName, key),
+                nesting.resource,
+                params,
+                defaultsByTable,
+            ),
+        );
     });
     return selectSqls.join(', ');
 }
 
-function getJoinSql(exposeName: string, resource: Resource<any, any, any>, params: any[], defaultsByTable: TableDefaults): string {
+function getJoinSql(
+    exposeName: string,
+    resource: Resource<any, any, any>,
+    params: any[],
+    defaultsByTable: TableDefaults,
+): string {
     const joinSqlCmps: string[] = [];
     const { joins } = resource;
     // Regular inner joins
@@ -310,9 +343,7 @@ function getJoinSql(exposeName: string, resource: Resource<any, any, any>, param
             const onCond = on[targetKey];
             if (typeof onCond === 'string') {
                 if (resource.columns[onCond]) {
-                    joinConditions.push(
-                        `${ref(joinName)}.${ref(targetKey)} = ${ref(exposeName)}.${ref(onCond)}`,
-                    );
+                    joinConditions.push(`${ref(joinName)}.${ref(targetKey)} = ${ref(exposeName)}.${ref(onCond)}`);
                 } else {
                     joins.slice(0, index).forEach((prevJoin, prevIndex) => {
                         const prevJoinName = `${exposeName}._join${prevIndex}`;
@@ -326,9 +357,7 @@ function getJoinSql(exposeName: string, resource: Resource<any, any, any>, param
                 }
             } else {
                 const defaultValue = defaults && defaults[targetKey];
-                joinConditions.push(
-                    filterSql(joinName, targetKey, onCond.value, params, defaultValue),
-                );
+                joinConditions.push(filterSql(joinName, targetKey, onCond.value, params, defaultValue));
             }
         });
         const onSql = joinConditions.join(' AND ');
@@ -343,9 +372,7 @@ function getJoinSql(exposeName: string, resource: Resource<any, any, any>, param
         const joinConditions: string[] = [];
         Object.keys(nesting.on).forEach((targetKey) => {
             for (const [sourceTable, sourceKey] of resolveColumnRefs(exposeName, nesting.on[targetKey], resource)) {
-                joinConditions.push(
-                    `${ref(joinName)}.${ref(targetKey)} = ${ref(sourceTable)}.${ref(sourceKey)}`,
-                );
+                joinConditions.push(`${ref(joinName)}.${ref(targetKey)} = ${ref(sourceTable)}.${ref(sourceKey)}`);
             }
         });
         const onSql = joinConditions.join(' AND ');
@@ -401,7 +428,11 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
     return `${colRef} IN (${placeholders.join(',')})`;
 }
 
-function resolveColumnRefs(baseName: string, columnName: string, resource: Resource<any, any, any>): [string, string][] {
+function resolveColumnRefs(
+    baseName: string,
+    columnName: string,
+    resource: Resource<any, any, any>,
+): [string, string][] {
     const refs: [string, string][] = [];
     resource.joins.forEach((join, index) => {
         if (join.type === 'left') {
@@ -428,7 +459,13 @@ function resolveColumnRefs(baseName: string, columnName: string, resource: Resou
     throw new Error(`Unknown column "${columnName}"`);
 }
 
-function filterConditionSql(name: string, filters: {[field: string]: any}, resource: Resource<any, any, any>, params: any[], defaults: {[key: string]: any}): string {
+function filterConditionSql(
+    name: string,
+    filters: { [field: string]: any },
+    resource: Resource<any, any, any>,
+    params: any[],
+    defaults: { [key: string]: any },
+): string {
     const conditions: string[] = [];
     keys(filters).map((field) => {
         const value = filters[field];
@@ -449,7 +486,13 @@ function selectColumn(tableName: string, columnName: string, alias: string, defa
     return `COALESCE(${ref(tableName)}.${ref(columnName)}, ${param(params, defaultValue)}) AS ${ref(alias)}`;
 }
 
-function returnColumnsSql(sourceName: string, exposeName: string, columns: Fields<any>, params: any[], defaults: {[key: string]: any}): string {
+function returnColumnsSql(
+    sourceName: string,
+    exposeName: string,
+    columns: Fields<any>,
+    params: any[],
+    defaults: { [key: string]: any },
+): string {
     const columnSqls = keys(columns).map((column) => {
         const defaultValue = defaults && defaults[column];
         return selectColumn(sourceName, column, dot(exposeName, column), defaultValue, params);
@@ -464,7 +507,8 @@ function param(params: any[], value: any): string {
 
 function ref(identifier: string) {
     return !keywords.includes(identifier.toUpperCase()) && /^[a-z][a-z0-9]*$/.test(identifier)
-        ? identifier : `"${identifier.replace(/"/g, '""')}"`;
+        ? identifier
+        : `"${identifier.replace(/"/g, '""')}"`;
 }
 
 function cast(sql: string, type: string) {
@@ -501,7 +545,7 @@ function escapeValue(value: unknown): string {
     if (typeof value === 'number') {
         return value < 0 ? `(${str})` : str;
     }
-    return `'${str.replace(/'/g, '\'\'')}'`;
+    return `'${str.replace(/'/g, "''")}'`;
 }
 
 function makeQuery<R>(sql: string, params: any[], deserialize: (result: SqlResult) => R): SqlQuery<R> {
@@ -513,28 +557,21 @@ function cleanupNullNestings(item: Row): Row | null {
         return item;
     }
     let allNull = true;
-    const result = Object.keys(item).reduce(
-        (obj, key) => {
-            const currentValue = obj[key];
-            if (currentValue != null) {
-                allNull = false;
-                const cleanValue = cleanupNullNestings(currentValue);
-                if (cleanValue !== currentValue) {
-                    return { ...obj, [key]: cleanValue };
-                }
+    const result = Object.keys(item).reduce((obj, key) => {
+        const currentValue = obj[key];
+        if (currentValue != null) {
+            allNull = false;
+            const cleanValue = cleanupNullNestings(currentValue);
+            if (cleanValue !== currentValue) {
+                return { ...obj, [key]: cleanValue };
             }
-            return obj;
-        },
-        item,
-    );
+        }
+        return obj;
+    }, item);
     return allNull ? null : result;
 }
 
-function parseRow<S>(
-    resource: Serializer<S>,
-    row: Row,
-    namespace?: string,
-): S | null {
+function parseRow<S>(resource: Serializer<S>, row: Row, namespace?: string): S | null {
     const item: Row = {};
     Object.keys(row).forEach((key) => {
         let obj = item;
@@ -548,7 +585,7 @@ function parseRow<S>(
         }
         while (propertyPath.length > 1) {
             const property = propertyPath.shift() as string;
-            obj = (obj[property] = (obj[property] ?? {}));
+            obj = obj[property] = obj[property] ?? {};
         }
         obj[propertyPath[0]] = value;
     });
@@ -1230,9 +1267,7 @@ const keywords = [
     'ZONE',
 ];
 
-const dangerKeywords = [
-    'ROLLBACK',
-];
+const dangerKeywords = ['ROLLBACK'];
 
 const minorKeywords = [
     'AS',

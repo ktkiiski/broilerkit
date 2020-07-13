@@ -20,10 +20,7 @@ export interface BucketFileCreateTrigger {
 }
 
 export class Bucket {
-    constructor(
-        public readonly name: string,
-        public readonly access: ACL,
-    ) {}
+    constructor(public readonly name: string, public readonly access: ACL) {}
 
     public on(eventName: 'create', handler: StorageEventHandler): BucketFileCreateTrigger {
         return {

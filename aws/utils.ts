@@ -1,6 +1,9 @@
 import * as path from 'path';
 
-export async function* retrievePages<D, E, T extends keyof D>(request: AWS.Request<D, E>, key: T): AsyncGenerator<D[T], void> {
+export async function* retrievePages<D, E, T extends keyof D>(
+    request: AWS.Request<D, E>,
+    key: T,
+): AsyncGenerator<D[T], void> {
     while (true) {
         const response = await request.promise();
         const { $response } = response;

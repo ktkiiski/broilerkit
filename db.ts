@@ -13,11 +13,23 @@ import { OrderedQuery, PageResponse, prepareForCursor } from './pagination';
 import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation } from './postgres';
 import { Resource } from './resources';
 import { nestedList } from './serializers';
-import { batchSelectQuery, countQuery, deleteQuery, increment, Increment, insertQuery, selectQuery, TableDefaults, updateQuery } from './sql';
+import {
+    batchSelectQuery,
+    countQuery,
+    deleteQuery,
+    increment,
+    Increment,
+    insertQuery,
+    selectQuery,
+    TableDefaults,
+    updateQuery,
+} from './sql';
 
-export type Filters<T> = {[P in keyof T]?: T[P] | T[P][]};
+export type Filters<T> = { [P in keyof T]?: T[P] | T[P][] };
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
-export type IndexQuery<T, Q extends keyof T, O extends keyof T> = {[P in Q]: T[P] | T[P][]} & OrderedQuery<T, O> & Filters<T>;
+export type IndexQuery<T, Q extends keyof T, O extends keyof T> = { [P in Q]: T[P] | T[P][] } &
+    OrderedQuery<T, O> &
+    Filters<T>;
 
 export interface Table<S = any, PK extends Key<S> = any> {
     resource: Resource<S, PK, any>;
@@ -30,10 +42,7 @@ export interface Table<S = any, PK extends Key<S> = any> {
  * all the identifying attributes.
  * It results to an error if the item was not found.
  */
-export function retrieve<S, PK extends Key<S>>(
-    resource: Resource<S, PK, any>,
-    query: Pick<S, PK>,
-): SqlOperation<S> {
+export function retrieve<S, PK extends Key<S>>(resource: Resource<S, PK, any>, query: Pick<S, PK>): SqlOperation<S> {
     const filters = resource.identifier.validate(query);
     return async (connection, db) => {
         const qr = selectQuery(resource, db.defaultsByTable, filters, 1);
@@ -53,10 +62,7 @@ export function retrieve<S, PK extends Key<S>>(
  * and the `query` parameter for retrieving the next batch, or null
  * if no more items are expected to be found.
  */
-export function list<S>(
-    resource: Resource<S, any, any>,
-    query: Query<S>,
-): SqlOperation<PageResponse<S>> {
+export function list<S>(resource: Resource<S, any, any>, query: Query<S>): SqlOperation<PageResponse<S>> {
     const results: S[] = [];
     const { ordering, direction, since, ...filters } = query;
     const chunkSize = 100;
@@ -87,12 +93,9 @@ export function list<S>(
  *
  * Without parameters should scan the whole table, in no particular order.
  */
-export function scan<S>(
-    resource: Resource<S, any, any>,
-    query?: Query<S>,
-): SqlScanOperation<S> {
+export function scan<S>(resource: Resource<S, any, any>, query?: Query<S>): SqlScanOperation<S> {
     const chunkSize = 100;
-    return async function *(connection, db) {
+    return async function* (connection, db) {
         let qr;
         if (query) {
             const { ordering, direction, since, ...filters } = query;
@@ -110,10 +113,7 @@ export class DatabaseTable<S, PK extends Key<S>> implements Table<S, PK> {
     /**
      * List of indexes for this database table.
      */
-    constructor(
-        public readonly resource: Resource<S, PK, Key<S>>,
-        public readonly indexes: string[][] = [],
-    ) {}
+    constructor(public readonly resource: Resource<S, PK, Key<S>>, public readonly indexes: string[][] = []) {}
 
     /**
      * Returns a state representation of the table for migration.
@@ -321,36 +321,37 @@ export function upsert<S, PK extends Key<S>, W extends Key<S>>(
         ...dynamicChanges,
         ...updateSerializer.validate(staticChanges),
     };
-    return (connection, db) => connection.transaction(async () => {
-        const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable);
-        const updates = await executeQuery(connection, query1);
-        for (const [newItem, oldItem] of updates) {
-            // Row exists
-            if (!isEqual(newItem, oldItem, 1)) {
-                // Row was actually updated
-                // Register the update
-                addEffect(connection, resource, newItem, oldItem);
-                // Update aggregations
-                const updateAggregationQueries = db.getAggregationQueries(resource, newItem, oldItem);
-                await executeAll(connection, db, updateAggregationQueries);
+    return (connection, db) =>
+        connection.transaction(async () => {
+            const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable);
+            const updates = await executeQuery(connection, query1);
+            for (const [newItem, oldItem] of updates) {
+                // Row exists
+                if (!isEqual(newItem, oldItem, 1)) {
+                    // Row was actually updated
+                    // Register the update
+                    addEffect(connection, resource, newItem, oldItem);
+                    // Update aggregations
+                    const updateAggregationQueries = db.getAggregationQueries(resource, newItem, oldItem);
+                    await executeAll(connection, db, updateAggregationQueries);
+                }
+                return newItem;
             }
-            return newItem;
-        }
-        // Row does not exist. Create a new one
-        const query2 = insertQuery(resource, db.defaultsByTable, insertValues);
-        const insertion = await executeQuery(connection, query2);
-        if (!insertion) {
-            // Row already exists after all? This means a conflict.
-            // Rollback and retry the transaction
-            throw new Conflict(`Insert conflict on upsert`);
-        }
-        // Register the insertion
-        addEffect(connection, resource, insertion, null);
-        // Update aggregations
-        const insertAggregationQueries = db.getAggregationQueries(resource, insertion, null);
-        await executeAll(connection, db, insertAggregationQueries);
-        return insertion;
-    });
+            // Row does not exist. Create a new one
+            const query2 = insertQuery(resource, db.defaultsByTable, insertValues);
+            const insertion = await executeQuery(connection, query2);
+            if (!insertion) {
+                // Row already exists after all? This means a conflict.
+                // Rollback and retry the transaction
+                throw new Conflict(`Insert conflict on upsert`);
+            }
+            // Register the insertion
+            addEffect(connection, resource, insertion, null);
+            // Update aggregations
+            const insertAggregationQueries = db.getAggregationQueries(resource, insertion, null);
+            await executeAll(connection, db, insertAggregationQueries);
+            return insertion;
+        });
 }
 
 /**
@@ -391,10 +392,7 @@ export function destroy<S, PK extends Key<S>>(
  *
  * @param filters Filters defining which rows to count
  */
-export function count<S>(
-    resource: Resource<S, any, any>,
-    filters: Filters<S>,
-): SqlOperation<number> {
+export function count<S>(resource: Resource<S, any, any>, filters: Filters<S>): SqlOperation<number> {
     return async (connection, db) => {
         const query = countQuery(resource, filters, db.defaultsByTable);
         return executeQuery(connection, query);
@@ -418,9 +416,7 @@ export function batchRetrieve<S, PK extends Key<S>>(
     return async (connection, db) => {
         const query = batchSelectQuery(resource, db.defaultsByTable, filtersList);
         const items = await executeQuery(connection, query);
-        return filtersList.map((identity) => (
-            items.find((item) => item && hasProperties(item, identity)) || null
-        ));
+        return filtersList.map((identity) => items.find((item) => item && hasProperties(item, identity)) || null);
     };
 }
 
@@ -440,14 +436,14 @@ interface Aggregation<S> {
     target: Resource<any, any, any>;
     type: 'count' | 'sum';
     field: string;
-    by: {[pk: string]: Key<S>};
+    by: { [pk: string]: Key<S> };
     filters: Partial<S>;
 }
 
 class DatabaseDefinition implements Database {
     public readonly tables: DatabaseTable<any, any>[] = [];
     public defaultsByTable: TableDefaults = {};
-    private aggregationsBySource: {[name: string]: Aggregation<any>[]} = {};
+    private aggregationsBySource: { [name: string]: Aggregation<any>[] } = {};
 
     public getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null) {
         const idValues = newValues || oldValues;
@@ -470,16 +466,16 @@ class DatabaseDefinition implements Database {
                 const diff = (isMatching ? 1 : 0) - (wasMatching ? 1 : 0);
                 if (diff !== 0) {
                     const insertion = { ...newIdentifier, [field]: Math.max(diff, 0) };
-                    operations.push(upsert(target, insertion, {[field]: increment(diff)}));
+                    operations.push(upsert(target, insertion, { [field]: increment(diff) }));
                 }
             } else {
                 // Need to increase one and decrease another
                 if (wasMatching && oldIdentifier) {
-                    operations.push(update(target, oldIdentifier, {[field]: increment(-1)}));
+                    operations.push(update(target, oldIdentifier, { [field]: increment(-1) }));
                 }
                 if (isMatching && newIdentifier) {
                     const insertion = { ...newIdentifier, [field]: 1 };
-                    operations.push(upsert(target, insertion, {[field]: increment(1)}));
+                    operations.push(upsert(target, insertion, { [field]: increment(1) }));
                 }
             }
             return operations;
@@ -487,8 +483,8 @@ class DatabaseDefinition implements Database {
     }
 
     public addTable<S, PK extends Key<S>>(resource: Resource<S, PK, Key<S>>, options?: TableOptions<S, PK>): this {
-        this.tables.push(new DatabaseTable(resource, options && options.indexes || []));
-        this.defaultsByTable[resource.name] = options && options.migrate || {};
+        this.tables.push(new DatabaseTable(resource, (options && options.indexes) || []));
+        this.defaultsByTable[resource.name] = (options && options.migrate) || {};
         return this;
     }
 
@@ -496,7 +492,7 @@ class DatabaseDefinition implements Database {
         source: Resource<S, any, Key<S>>,
         target: Resource<T, TPK, Key<T>>,
         field: string & FilteredKeys<T, number>,
-        by: {[P in TPK]: string & FilteredKeys<S, T[P]>},
+        by: { [P in TPK]: string & FilteredKeys<S, T[P]> },
         filters: Partial<S> = {},
     ): this {
         const aggregations = this.aggregationsBySource[source.name] || [];
@@ -523,7 +519,8 @@ export function getResourceState(name: string, resource: Resource<any, any, any>
             .map((key) => ({
                 name: key,
                 type: fields[key].type,
-            })),        indexes: indexes.map((keys) => ({ keys })),
+            })),
+        indexes: indexes.map((keys) => ({ keys })),
     };
 }
 

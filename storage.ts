@@ -33,10 +33,7 @@ export interface FileStorage {
 
 export class AWSFileStorage implements FileStorage {
     private s3 = new AmazonS3(this.region);
-    constructor(
-        private readonly stackName: string,
-        private readonly region: string,
-    ) {}
+    constructor(private readonly stackName: string, private readonly region: string) {}
     public async allowUpload(bucket: Bucket, config: UploadConfig): Promise<UploadForm> {
         const { userId, ...options } = config;
         const presignedPost = await this.s3.createPresignedPost({
@@ -50,8 +47,8 @@ export class AWSFileStorage implements FileStorage {
             'Content-Type': null,
             'Content-Disposition': null,
             ...presignedPost.fields,
-            'action': presignedPost.url,
-            'method': 'POST',
+            action: presignedPost.url,
+            method: 'POST',
         } as UploadForm;
     }
     public async retrieve(bucket: Bucket, key: string): Promise<BucketObject> {
@@ -67,25 +64,22 @@ export class AWSFileStorage implements FileStorage {
 }
 
 export class LocalFileStorage implements FileStorage {
-    constructor(
-        private serverOrigin: string,
-        private rootPath: string,
-    ) {}
+    constructor(private serverOrigin: string, private rootPath: string) {}
     public async allowUpload(bucket: Bucket, config: UploadConfig): Promise<UploadForm> {
         const now = new Date();
         return uploadFormSerializer.validate({
-            'acl': config.access,
-            'key': generateKey(),
-            'action': `${this.serverOrigin}/__upload/${encodeURIComponent(bucket.name)}`,
-            'method': 'POST',
-            'success_action_status': '201',
+            acl: config.access,
+            key: generateKey(),
+            action: `${this.serverOrigin}/__upload/${encodeURIComponent(bucket.name)}`,
+            method: 'POST',
+            success_action_status: '201',
             'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
             'X-Amz-Credential': getAmzCredential('XXXXXXXX', 'local', now),
             'Content-Disposition': null,
             'Content-Type': null,
             'X-Amz-Date': getAmzDate(now),
             'X-Amz-Meta-user-id': config.userId,
-            'Policy': 'LOCAL_POLICY',
+            Policy: 'LOCAL_POLICY',
             'X-Amz-Signature': 'LOCAL_SIGNATURE',
             'X-Amz-Security-Token': 'LOCAL_SECURITY_TOKEN',
         });
@@ -94,10 +88,7 @@ export class LocalFileStorage implements FileStorage {
         const filePath = path.join(this.rootPath, bucket.name, key);
         const metaFilePath = path.join(this.rootPath, bucket.name, '.meta', key);
         try {
-            const [buffer, metaJson] = await Promise.all([
-                readFileBuffer(filePath),
-                readFile(metaFilePath),
-            ]);
+            const [buffer, metaJson] = await Promise.all([readFileBuffer(filePath), readFile(metaFilePath)]);
             const meta = JSON.parse(metaJson);
             return {
                 key,
@@ -116,12 +107,10 @@ export const LOCAL_UPLOAD_ENDPOINT_NAME = 'localUpload';
 export class LocalUploadController implements Controller {
     public readonly methods: HttpMethod[] = ['POST'];
     public readonly pattern = pattern`/__upload/${'bucket'}`;
-    constructor(
-        private rootPath: string,
-    ) {}
+    constructor(private rootPath: string) {}
     public async execute(request: HttpRequest, context: HandlerServerContext): Promise<HttpResponse> {
         const url = new Url(request.path, request.queryParameters);
-        const match = this.pattern.match(url) as {[key: string]: string};
+        const match = this.pattern.match(url) as { [key: string]: string };
         const bucketName = match.bucket;
         const { 'Content-Type': contentTypeHeader = 'multipart/form-data' } = request.headers;
         const body = request.body ? request.body.toString() : '';
@@ -144,9 +133,9 @@ export class LocalUploadController implements Controller {
         const dirPath = path.dirname(filePath);
         const metaDirPath = path.dirname(metaFilePath);
         const { 'Content-Type': contentType, 'Content-Disposition': contentDisposition } = file.meta || {};
-        const meta: {[key: string]: string} = {
+        const meta: { [key: string]: string } = {
             key,
-            'acl': payload.acl,
+            acl: payload.acl,
             'Content-Length': String(size),
         };
         if (userId != null) {
@@ -160,10 +149,7 @@ export class LocalUploadController implements Controller {
         }
         await ensureDirectoryExists(dirPath);
         await ensureDirectoryExists(metaDirPath);
-        await Promise.all([
-            writeFile(filePath, file.data),
-            writeFile(metaFilePath, JSON.stringify(meta)),
-        ]);
+        await Promise.all([writeFile(filePath, file.data), writeFile(metaFilePath, JSON.stringify(meta))]);
         // Trigger the handler (asyncrhonously)
         this.triggerEvent(context, bucketName, key, size);
         return {
@@ -177,15 +163,18 @@ export class LocalUploadController implements Controller {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const triggers: Trigger[] = Object.values(require('_triggers'));
         await triggerEvent(
-            triggers, {
-                Records: [{
-                    eventName: 'ObjectCreated:Post',
-                    eventTime: new Date().toISOString(),
-                    s3: {
-                        bucket: { name: fakeBucketName },
-                        object: { key, size },
+            triggers,
+            {
+                Records: [
+                    {
+                        eventName: 'ObjectCreated:Post',
+                        eventTime: new Date().toISOString(),
+                        s3: {
+                            bucket: { name: fakeBucketName },
+                            object: { key, size },
+                        },
                     },
-                }],
+                ],
             },
             context,
         );

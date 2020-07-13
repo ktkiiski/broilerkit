@@ -22,9 +22,17 @@ export interface ResourceRemoval<T, K extends keyof T> {
     resourceIdentity: Pick<T, K>;
 }
 
-export type ResourceChange<T, K extends keyof T> = ResourceAddition<T, K> | ResourceUpdate<T, K> | ResourceRemoval<T, K>;
+export type ResourceChange<T, K extends keyof T> =
+    | ResourceAddition<T, K>
+    | ResourceUpdate<T, K>
+    | ResourceRemoval<T, K>;
 
-export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(collection: AsyncIterable<T>, change: ResourceChange<T, K>, ordering: S, direction: 'asc' | 'desc'): AsyncIterable<T> {
+export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(
+    collection: AsyncIterable<T>,
+    change: ResourceChange<T, K>,
+    ordering: S,
+    direction: 'asc' | 'desc',
+): AsyncIterable<T> {
     const resourceIdentity = change.resourceIdentity;
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
@@ -38,16 +46,22 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(c
                     // Ensure that the item won't show up from the original collection
                     filterAsync(collection, (item) => !hasProperties(item, resourceIdentity)),
                 ],
-                ordering, direction,
+                ordering,
+                direction,
             ),
         );
     } else {
         // Apply the changes to an item whose ID matches
-        return shareIterator(mapAsync(collection, (item): T => {
-            if (hasProperties(item, resourceIdentity)) {
-                return {...item, ...change.resource};
-            }
-            return item;
-        }));
+        return shareIterator(
+            mapAsync(
+                collection,
+                (item): T => {
+                    if (hasProperties(item, resourceIdentity)) {
+                        return { ...item, ...change.resource };
+                    }
+                    return item;
+                },
+            ),
+        );
     }
 }

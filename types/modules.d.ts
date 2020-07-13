@@ -1,7 +1,7 @@
 /**
  * When importing a PNG file, the imported value is the URL of the image.
  */
-declare module "*.png" {
+declare module '*.png' {
     const imageUrl: string;
     export = imageUrl;
 }
@@ -9,7 +9,7 @@ declare module "*.png" {
 /**
  * When importing a JPG file, the imported value is the URL of the image.
  */
-declare module "*.jpg" {
+declare module '*.jpg' {
     const imageUrl: string;
     export = imageUrl;
 }
@@ -17,7 +17,7 @@ declare module "*.jpg" {
 /**
  * When importing a GIF file, the imported value is the URL of the image.
  */
-declare module "*.gif" {
+declare module '*.gif' {
     const imageUrl: string;
     export = imageUrl;
 }

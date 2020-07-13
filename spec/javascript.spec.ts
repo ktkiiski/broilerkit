@@ -4,10 +4,7 @@ import { toJavaScript } from '../javascript';
 
 describe('toJavaScript()', () => {
     it('converts a string', () => {
-        assert.equal(
-            toJavaScript('Ekke ekke ekke ptang zooboing!'),
-            `"Ekke ekke ekke ptang zooboing!"`,
-        );
+        assert.equal(toJavaScript('Ekke ekke ekke ptang zooboing!'), `"Ekke ekke ekke ptang zooboing!"`);
     });
     it('converts a number', () => {
         assert.equal(toJavaScript(123), `123`);
@@ -31,10 +28,7 @@ describe('toJavaScript()', () => {
         assert.equal(toJavaScript(new Date(1234)), `new Date(1234)`);
     });
     it('converts an array', () => {
-        assert.equal(
-            toJavaScript([123, 'asdf', true, null, undefined]),
-            `[123,"asdf",true,null,undefined]`,
-        );
+        assert.equal(toJavaScript([123, 'asdf', true, null, undefined]), `[123,"asdf",true,null,undefined]`);
     });
     it('converts an object', () => {
         assert.equal(
@@ -50,10 +44,13 @@ describe('toJavaScript()', () => {
     });
     it('indents an array with objects', () => {
         assert.equal(
-            toJavaScript([
-                {foo: 'bar', asdf: 'qwerty'},
-                {ekke: 123, isCool: true},
-            ], 4),
+            toJavaScript(
+                [
+                    { foo: 'bar', asdf: 'qwerty' },
+                    { ekke: 123, isCool: true },
+                ],
+                4,
+            ),
             `[
     {
         "foo": "bar",
@@ -68,10 +65,13 @@ describe('toJavaScript()', () => {
     });
     it('indents an object with arrays', () => {
         assert.equal(
-            toJavaScript({
-                foo: ['bar', 123, true],
-                bar: ['asdf', 456, false],
-            }, 4),
+            toJavaScript(
+                {
+                    foo: ['bar', 123, true],
+                    bar: ['asdf', 456, false],
+                },
+                4,
+            ),
             `{
     "foo": [
         "bar",

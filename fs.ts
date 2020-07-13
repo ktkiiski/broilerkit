@@ -70,7 +70,9 @@ export function readStream(stream: NodeJS.ReadableStream): Promise<any[]> {
         const results: any[] = [];
         stream.on('end', () => resolve(results));
         stream.on('error', (error) => reject(error));
-        stream.on('data', (item) => { results.push(item); });
+        stream.on('data', (item) => {
+            results.push(item);
+        });
     });
 }
 
@@ -145,9 +147,9 @@ export async function fileExists(filePath: string): Promise<boolean> {
 }
 
 export async function getFileStats(filePath: string): Promise<fs.Stats> {
-    return new Promise((resolve, reject) => fs.lstat(filePath, (error, stats) => (
-        error ? reject(error) : resolve(stats)
-    )));
+    return new Promise((resolve, reject) =>
+        fs.lstat(filePath, (error, stats) => (error ? reject(error) : resolve(stats))),
+    );
 }
 
 /**
@@ -155,9 +157,9 @@ export async function getFileStats(filePath: string): Promise<fs.Stats> {
  * @param filePath File to read
  */
 export function readLines(filePath: string): AsyncIterable<string> {
-    return generate<string>(({next, error, complete}) => {
+    return generate<string>(({ next, error, complete }) => {
         const fileStream = fs.createReadStream(filePath);
-        const rl =  readline.createInterface({
+        const rl = readline.createInterface({
             input: fileStream,
             crlfDelay: Infinity,
             // Note: we use the crlfDelay option to recognize all instances of CR LF
@@ -165,7 +167,6 @@ export function readLines(filePath: string): AsyncIterable<string> {
         });
         rl.on('line', (line) => next(line))
             .on('close', () => complete())
-            .on('error', (err) => error(err))
-        ;
+            .on('error', (err) => error(err));
     });
 }

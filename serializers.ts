@@ -71,8 +71,8 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
         if (typeof input !== 'object' || !input) {
             throw new ValidationError(`Invalid object`);
         }
-        const fields: {[key: string]: Field<any>} = this.fields;
-        const output: {[key: string]: any} = {};
+        const fields: { [key: string]: Field<any> } = this.fields;
+        const output: { [key: string]: any } = {};
         const errors: KeyErrorData<string>[] = [];
         // Deserialize each field
         forEachKey(fields, (key, field) => {
@@ -85,7 +85,7 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
             } catch (error) {
                 // Collect nested validation errors
                 if (isApiResponse(error)) {
-                    errors.push({...error.data, key});
+                    errors.push({ ...error.data, key });
                 } else {
                     // Pass this error through, causing an internal server error
                     throw error;
@@ -124,37 +124,40 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Extendab
             defaults: {},
         });
     }
-    public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(options: OptionalOptions<T, R, O, D>): ExtendableSerializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
+    public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(
+        options: OptionalOptions<T, R, O, D>,
+    ): ExtendableSerializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
         return new OptionalSerializer(options, this.fields);
     }
-    public defaults<D extends keyof T>(defaults: {[P in D]: T[P]}): DefaultsSerializer<T, D> {
+    public defaults<D extends keyof T>(defaults: { [P in D]: T[P] }): DefaultsSerializer<T, D> {
         return new DefaultsSerializer(defaults, this.fields);
     }
     public extend<E>(fields: Fields<E>): FieldSerializer<T & E> {
-        return new FieldSerializer({...this.fields, ...fields} as Fields<T & E>);
+        return new FieldSerializer({ ...this.fields, ...fields } as Fields<T & E>);
     }
 }
 
 export interface OptionalOptions<S, R extends keyof S, O extends keyof S, D extends keyof S> {
     required: R[];
     optional: O[];
-    defaults: {[P in D]: S[P]};
+    defaults: { [P in D]: S[P] };
 }
 
-export type OptionalInput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Pick<S, R> & Partial<Pick<S, O | D>>;
-export type OptionalOutput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Pick<S, R | D> & Partial<Pick<S, O>>;
+export type OptionalInput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Pick<S, R> &
+    Partial<Pick<S, O | D>>;
+export type OptionalOutput<S, R extends keyof S, O extends keyof S, D extends keyof S> = Pick<S, R | D> &
+    Partial<Pick<S, O>>;
 
 export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D extends keyof S>
     extends BaseSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>>
     implements ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
-
     private readonly requiredFields: R[];
     private readonly optionalFields: (O | D)[];
-    private readonly defaults: {[P in D]: S[P]};
+    private readonly defaults: { [P in D]: S[P] };
 
     constructor(private readonly options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
         super();
-        const {required, optional, defaults} = options;
+        const { required, optional, defaults } = options;
         this.requiredFields = required;
         this.optionalFields = [...optional, ...keys(defaults)];
         this.defaults = defaults;
@@ -163,15 +166,18 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     public extend<E>(fields: Fields<E>): OptionalSerializer<S & E, R | keyof E, O, D> {
         const additionalKeys = keys(fields) as (keyof E)[];
         const options = this.options;
-        return new OptionalSerializer<S & E, R | keyof E, O, D>({
-            required: [...options.required, ...additionalKeys] as (R | keyof E)[],
-            optional: options.optional,
-            defaults: options.defaults as {[P in D]: (S & E)[P]},
-        }, {...this.fields, ...fields} as Fields<S & E>);
+        return new OptionalSerializer<S & E, R | keyof E, O, D>(
+            {
+                required: [...options.required, ...additionalKeys] as (R | keyof E)[],
+                optional: options.optional,
+                defaults: options.defaults as { [P in D]: (S & E)[P] },
+            },
+            { ...this.fields, ...fields } as Fields<S & E>,
+        );
     }
 
     protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
-        const {requiredFields, optionalFields, defaults} = this;
+        const { requiredFields, optionalFields, defaults } = this;
         if (typeof value === 'undefined') {
             // Value is missing
             const defaultValue = defaults[key as D];
@@ -192,8 +198,11 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     }
 }
 
-export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pick<S, Exclude<keyof S, D> & Partial<Pick<S, D>>>, S> {
-    constructor(private readonly defaults: {[P in D]: S[P]}, protected fields: Fields<S>) {
+export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<
+    Pick<S, Exclude<keyof S, D> & Partial<Pick<S, D>>>,
+    S
+> {
+    constructor(private readonly defaults: { [P in D]: S[P] }, protected fields: Fields<S>) {
         super();
     }
 
@@ -212,7 +221,8 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
 }
 
 class NestedSerializerField<I> implements Field<I, Serialization> {
-    public readonly type: string = 'jsonb';    constructor(private serializer: Serializer<I, any>) {}
+    public readonly type: string = 'jsonb';
+    constructor(private serializer: Serializer<I, any>) {}
     public validate(value: I): I {
         return this.serializer.validate(value);
     }

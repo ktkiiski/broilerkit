@@ -14,8 +14,8 @@ class SharedIterator<T, R, N> implements AsyncIterator<T, R, N> {
 
     public next(value?: any): Promise<IteratorResult<T, R>> {
         // TODO: Do not cache anything called after completion
-        const index = (this.index ++);
-        const {buffer} = this;
+        const index = this.index++;
+        const { buffer } = this;
         let promise = buffer[index];
         if (promise == null) {
             promise = buffer[index] = this.iterator.next(value);

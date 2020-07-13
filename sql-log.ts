@@ -27,11 +27,15 @@ export async function logSql<S>(sql: string, params: any[] | undefined, action: 
         } else if (result.rowCount != null) {
             rowCount = result.rowCount;
         }
-        const rowText = rowCount == null ? '' : rowCount === 1 ? `1 row ` : `${rowCount} rows `;        console.debug(`${formattedSql} => ${green('✔︎')} ${dim(`${rowText}`)}${formatDuration(duration)}`);
+        const rowText = rowCount == null ? '' : rowCount === 1 ? `1 row ` : `${rowCount} rows `;
+        console.debug(`${formattedSql} => ${green('✔︎')} ${dim(`${rowText}`)}${formatDuration(duration)}`);
         return result;
     } catch (error) {
         const duration = new Date().getTime() - startTime;
-        const { code, message } = error;        console.debug(`${formattedSql} => ${red(message || '×')} ${dim(`${code ? `#${code} ` : ''}`)}${formatDuration(duration)}`);
+        const { code, message } = error;
+        console.debug(
+            `${formattedSql} => ${red(message || '×')} ${dim(`${code ? `#${code} ` : ''}`)}${formatDuration(duration)}`,
+        );
         throw error;
     }
 }

@@ -6,7 +6,9 @@ import { DatabaseClient } from './postgres';
 import { Serializer } from './serializers';
 import { User, users } from './users';
 
-interface UserIdentity { id: string; }
+interface UserIdentity {
+    id: string;
+}
 type UserPartialUpdate = Partial<Omit<User, 'id' | 'email' | 'updatedAt' | 'createdAt'>>;
 
 export interface UserPool {
@@ -36,16 +38,15 @@ export class DummyUserPool implements UserPool {
 }
 
 export class CognitoUserPool implements UserPool {
-
-    private updateSerializer = users
-        .omit(['id', 'email', 'updatedAt', 'createdAt'])
-        .fullPartial() as Serializer<UserPartialUpdate>;
+    private updateSerializer = users.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<
+        UserPartialUpdate
+    >;
     private identitySerializer = users.pick(['id']);
 
     constructor(private userPoolId: string, private region: string) {}
 
     public async retrieve(query: UserIdentity): Promise<User> {
-        const {identitySerializer} = this;
+        const { identitySerializer } = this;
         const serializedQuery = identitySerializer.serialize(query);
         const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
         const cognitoUser = await cognito.getUserById(serializedQuery.id, new NotFound(`User not found.`));
@@ -54,17 +55,21 @@ export class CognitoUserPool implements UserPool {
     }
 
     public async update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
-        const {identitySerializer, updateSerializer} = this;
+        const { identitySerializer, updateSerializer } = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedChanges = updateSerializer.serialize(changes);
         const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
-        const cognitoUser = await cognito.updateUserById(serializedIdentity.id, serializedChanges, new NotFound(`User not found.`));
+        const cognitoUser = await cognito.updateUserById(
+            serializedIdentity.id,
+            serializedChanges,
+            new NotFound(`User not found.`),
+        );
         // No deserialization needed
         return cognitoUser;
     }
 
     public async destroy(identity: UserIdentity): Promise<void> {
-        const {identitySerializer} = this;
+        const { identitySerializer } = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedId = serializedIdentity.id;
         const cognito = new AmazonCognitoIdentity<User>(this.region, this.userPoolId);
@@ -77,53 +82,40 @@ export class CognitoUserPool implements UserPool {
     }
 
     public batchRetrieve(identities: UserIdentity[]): Promise<(User | null)[]> {
-        const promises = mapCached(identities, (identity) => (
+        const promises = mapCached(identities, (identity) =>
             this.retrieve(identity).catch((error) => {
                 if (isResponse(error, HttpStatus.NotFound)) {
                     return null;
                 }
                 throw error;
-            })
-        ));
+            }),
+        );
         return Promise.all(promises);
     }
 }
 
 export class LocalUserPool implements UserPool {
-
-    constructor(
-        private readonly db: DatabaseClient,
-    ) {}
+    constructor(private readonly db: DatabaseClient) {}
 
     public retrieve(query: UserIdentity): Promise<User> {
-        return this.db.run(
-            retrieve(users, query as Pick<User, 'id'>),
-        );
+        return this.db.run(retrieve(users, query as Pick<User, 'id'>));
     }
 
     public update(identity: UserIdentity, changes: UserPartialUpdate): Promise<User> {
-        const updates = {...changes, updatedAt: new Date()};
-        return this.db.run(
-            update(users, identity as Pick<User, 'id'>, updates as Partial<User>),
-        );
+        const updates = { ...changes, updatedAt: new Date() };
+        return this.db.run(update(users, identity as Pick<User, 'id'>, updates as Partial<User>));
     }
 
     public destroy(identity: UserIdentity): Promise<void> {
-        return this.db.run(
-            destroy(users, identity as Pick<User, 'id'>),
-        );
+        return this.db.run(destroy(users, identity as Pick<User, 'id'>));
     }
 
     public scan(query?: Record<never, never>): AsyncIterableIterator<User[]> {
-        return this.db.scan(
-            scan(users, query as Query<User>),
-        );
+        return this.db.scan(scan(users, query as Query<User>));
     }
 
     public batchRetrieve(identities: UserIdentity[]): Promise<(User | null)[]> {
-        return this.db.run(
-            batchRetrieve(users, identities as Pick<User, 'id'>[]),
-        );
+        return this.db.run(batchRetrieve(users, identities as Pick<User, 'id'>[]));
     }
 }
 

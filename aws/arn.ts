@@ -13,5 +13,5 @@ interface ARN {
 export function parseARN(arn: string): ARN {
     const [, , service, region, accountId, resource] = arn.split(':', 6);
     const [resourceType, resourceId] = resource.split(/[:/]/g, 2);
-    return {service, region, accountId, resource, resourceType, resourceId};
+    return { service, region, accountId, resource, resourceType, resourceId };
 }

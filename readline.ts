@@ -1,4 +1,4 @@
-import {createInterface} from 'readline';
+import { createInterface } from 'readline';
 
 /**
  * Writes a question to stdout and waits until the user writes a line of input

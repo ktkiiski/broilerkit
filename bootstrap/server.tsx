@@ -79,9 +79,8 @@ const sessionEncryptionKey$ = retrieveSecret(encryptionSecretArn).then(async (se
     return JWK.asKey(keyJson);
 });
 
-const serverContext$ = Promise
-    .all([dbConnectionPool$, sessionEncryptionKey$])
-    .then(([dbConnectionPool, sessionEncryptionKey]): ServerContext => {
+const serverContext$ = Promise.all([dbConnectionPool$, sessionEncryptionKey$]).then(
+    ([dbConnectionPool, sessionEncryptionKey]): ServerContext => {
         const storage = new AWSFileStorage(stackName, region);
         return {
             stackName,
@@ -98,7 +97,8 @@ const serverContext$ = Promise
             authSignOutUri,
             authTokenUri,
         };
-    });
+    },
+);
 
 const handleRequest = lambdaMiddleware(middleware(authenticationMiddleware(service.execute)));
 const handleEvent = async (event: LambdaEvent, context: ServerContext) => {
@@ -135,7 +135,7 @@ function getApiService() {
     return new ApiService(apiModule.default);
 }
 
-function getTriggers(): {[name: string]: Trigger} {
+function getTriggers(): { [name: string]: Trigger } {
     try {
         return require('_triggers');
     } catch {

@@ -6,7 +6,7 @@ import { splitOnce } from './strings';
 interface MultipartData {
     name?: string;
     filename?: string;
-    headers: {[header: string]: string};
+    headers: { [header: string]: string };
     body: string;
 }
 
@@ -34,7 +34,7 @@ export function parseFormData(body: string, boundary: string): MultipartData[] {
         if (typeof value === 'undefined') {
             throw new ValidationError(`Invalid multipart/form-data part: no content`);
         }
-        const {'Content-Disposition': contentDisposition, ...headers} = parseHeaders(headersStr);
+        const { 'Content-Disposition': contentDisposition, ...headers } = parseHeaders(headersStr);
         const headerFields = parseContentDisposition(contentDisposition);
         return {
             ...headerFields,

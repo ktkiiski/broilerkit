@@ -8,7 +8,10 @@
  *
  * The example above would print "Hi, John!"
  */
-export function tmpl<T extends string = never>(strings: TemplateStringsArray, ...placeholders: T[]): (values: Record<T, string | number>) => string {
+export function tmpl<T extends string = never>(
+    strings: TemplateStringsArray,
+    ...placeholders: T[]
+): (values: Record<T, string | number>) => string {
     function interpolate(values: Record<T, string | number>) {
         const chunks = strings.slice();
         placeholders.forEach((placeholder, index) => {

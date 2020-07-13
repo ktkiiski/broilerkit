@@ -30,7 +30,7 @@ export function getApiService(pageHtml$: Promise<string>, uploadDirPath: string)
     return apiService.extend({
         [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(
             apiService,
-            () => (<LocalAuthRouter component={view} />),
+            () => <LocalAuthRouter component={view} />,
             pageHtml$,
         ),
         [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),

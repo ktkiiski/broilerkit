@@ -11,12 +11,8 @@ const StaticContextContext = createContext<MetaContext>({
     idCounter: 0,
 });
 
-export function MetaContextProvider(props: {context: MetaContext, children?: React.ReactNode}): JSX.Element {
-    return (
-        <StaticContextContext.Provider value={props.context}>
-            {props.children}
-        </StaticContextContext.Provider>
-    );
+export function MetaContextProvider(props: { context: MetaContext; children?: React.ReactNode }): JSX.Element {
+    return <StaticContextContext.Provider value={props.context}>{props.children}</StaticContextContext.Provider>;
 }
 
 export function useTitle(title: string): void {
@@ -31,10 +27,7 @@ export function useTitle(title: string): void {
 
 export function useCss(renderCss: () => string | null, deps?: unknown[]): void {
     const metaContext = useContext(StaticContextContext);
-    const id = useMemo(
-        () => `style-${metaContext.idCounter++}`,
-        [metaContext],
-    );
+    const id = useMemo(() => `style-${metaContext.idCounter++}`, [metaContext]);
     useEffect(() => {
         if (!id) {
             return;
@@ -66,7 +59,7 @@ export function useCss(renderCss: () => string | null, deps?: unknown[]): void {
             // Remove the style node from DOM
             removeNode(styleTag);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, deps && [id, ...deps]);
 
     if (metaContext.styles && id) {

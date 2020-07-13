@@ -22,7 +22,7 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
     constructor(private region: string, private userPoolId: string) {}
 
     public async getUserById(id: string, notFoundError?: Error): Promise<CognitoUser & S> {
-        for await (const users of this.listUsers({limit: 1, filterKey: 'sub', filterValue: id})) {
+        for await (const users of this.listUsers({ limit: 1, filterKey: 'sub', filterValue: id })) {
             for (const user of users) {
                 return user;
             }
@@ -30,12 +30,16 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
         throw notFoundError || new NotFound(`User was not found.`);
     }
 
-    public async updateUserById<T extends {[attr: string]: string}>(id: string, attrs: T, notFoundError?: Error): Promise<CognitoUser & S> {
+    public async updateUserById<T extends { [attr: string]: string }>(
+        id: string,
+        attrs: T,
+        notFoundError?: Error,
+    ): Promise<CognitoUser & S> {
         const user = await this.getUserById(id, notFoundError);
         const request = this.cognito.adminUpdateUserAttributes({
             Username: user.username,
             UserPoolId: this.userPoolId,
-            UserAttributes: mapObject(attrs, (Value, Name) => ({Name, Value})),
+            UserAttributes: mapObject(attrs, (Value, Name) => ({ Name, Value })),
         });
         try {
             await request.promise();
@@ -45,7 +49,7 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
             }
             throw error;
         }
-        return {...user, attrs};
+        return { ...user, attrs };
     }
 
     public async deleteUserById(id: string, notFoundError?: Error): Promise<void> {
@@ -57,7 +61,11 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
         await request.promise();
     }
 
-    public async *listUsers(options?: {limit?: number, filterKey?: string, filterValue?: string}): AsyncIterableIterator<(CognitoUser & S)[]> {
+    public async *listUsers(options?: {
+        limit?: number;
+        filterKey?: string;
+        filterValue?: string;
+    }): AsyncIterableIterator<(CognitoUser & S)[]> {
         const limit = options && options.limit;
         const filterKey = options && options.filterKey;
         const filterValue = options && options.filterValue;
@@ -71,14 +79,14 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
             if (users) {
                 for (const user of users) {
                     const results: (CognitoUser & S)[] = [];
-                    const {Attributes, Username} = user;
+                    const { Attributes, Username } = user;
                     if (Attributes && Username) {
                         const result: any = {
                             username: Username,
                             createdAt: user.UserCreateDate,
                             updatedAt: user.UserLastModifiedDate,
                         };
-                        for (const {Name, Value} of Attributes) {
+                        for (const { Name, Value } of Attributes) {
                             if (Value != null) {
                                 if (Name === 'picture') {
                                     result.picture = parsePictureUrl(Value);

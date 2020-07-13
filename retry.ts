@@ -19,7 +19,11 @@ const retryableStatusCodes: HttpErrorStatus[] = [
  * @param maxRetryCount Maximum number of retry attempts
  * @param fn The function to execute
  */
-export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, retryCheck?: (error: any, retryCount: number) => boolean): Promise<T> {
+export async function retryWithBackoff<T>(
+    maxRetryCount: number,
+    fn: (retryCount: number) => Promise<T>,
+    retryCheck?: (error: any, retryCount: number) => boolean,
+): Promise<T> {
     let retryCount = 0;
     const startTime = new Date().getTime();
     for (;;) {
@@ -51,7 +55,11 @@ export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount
  * @param maxRetryCount Maximum number of retry attempts
  * @param fn The function to execute
  */
-export async function retryRequestWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, statusCodes = retryableStatusCodes): Promise<T> {
+export async function retryRequestWithBackoff<T>(
+    maxRetryCount: number,
+    fn: (retryCount: number) => Promise<T>,
+    statusCodes = retryableStatusCodes,
+): Promise<T> {
     let retryCount = 0;
     const startTime = new Date().getTime();
     for (;;) {
@@ -107,7 +115,10 @@ function getRetryDelay(startTime: number, retryAfter?: string): number {
  * @param fn Function that will be executed as many times necessary
  * @param shouldRetry Function that returns whether retry
  */
-export async function retry<T>(fn: (retryCount: number) => Promise<T>, shouldRetry: (error: any, retryCount: number) => boolean): Promise<T> {
+export async function retry<T>(
+    fn: (retryCount: number) => Promise<T>,
+    shouldRetry: (error: any, retryCount: number) => boolean,
+): Promise<T> {
     let retryCount = 0;
     for (;;) {
         try {
@@ -122,10 +133,7 @@ export async function retry<T>(fn: (retryCount: number) => Promise<T>, shouldRet
     }
 }
 
-const conflictStatusCodes = [
-    HttpStatus.PreconditionFailed,
-    HttpStatus.Conflict,
-];
+const conflictStatusCodes = [HttpStatus.PreconditionFailed, HttpStatus.Conflict];
 
 /**
  * Utility for performing a simple conditional update using
@@ -133,7 +141,10 @@ const conflictStatusCodes = [
  * it raises a 409 or 412 or error.
  * @param fn Function that performs a "transaction"
  */
-export async function retryOptimistically<T>(fn: (retryCount: number) => Promise<T>, statusCodes = conflictStatusCodes): Promise<T> {
+export async function retryOptimistically<T>(
+    fn: (retryCount: number) => Promise<T>,
+    statusCodes = conflictStatusCodes,
+): Promise<T> {
     return retry(fn, (error) => {
         if (isErrorResponse(error)) {
             const { statusCode } = error;

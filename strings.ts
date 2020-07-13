@@ -65,9 +65,15 @@ export function countBytes(str: string): number {
     // returns the byte length of an utf8 string
     let len = str.length;
     for (let i = str.length - 1; i >= 0; i--) {
-      const code = str.charCodeAt(i);
-      if (code > 0x7f && code <= 0x7ff) { len++; } else if (code > 0x7ff && code <= 0xffff) { len += 2; }
-      if (code >= 0xDC00 && code <= 0xDFFF) { i--; } // trail surrogate
+        const code = str.charCodeAt(i);
+        if (code > 0x7f && code <= 0x7ff) {
+            len++;
+        } else if (code > 0x7ff && code <= 0xffff) {
+            len += 2;
+        }
+        if (code >= 0xdc00 && code <= 0xdfff) {
+            i--;
+        } // trail surrogate
     }
     return len;
 }
@@ -77,10 +83,7 @@ export function shortenSentences(str: string, maxLength: number, replacement?: s
         return str;
     }
     str = str.slice(0, maxLength);
-    const result = str.replace(
-        /([.?!…]+)[^.?!…]*?$/,
-        (_, term) => !term ? '' : replacement || term,
-    );
+    const result = str.replace(/([.?!…]+)[^.?!…]*?$/, (_, term) => (!term ? '' : replacement || term));
     return result === str ? '' : result;
 }
 
@@ -88,7 +91,7 @@ export function findAllMatches(str: string, regex: RegExp, group = 0): string[] 
     const results: string[] = [];
     let match: RegExpExecArray | null;
     // eslint-disable-next-line no-cond-assign
-    while (match = regex.exec(str)) {
+    while ((match = regex.exec(str))) {
         results.push(match[group]);
     }
     return results;

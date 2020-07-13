@@ -54,7 +54,6 @@ export class DummyAuthClient implements AuthClient {
 }
 
 export class BrowserAuthClient implements AuthClient {
-
     private readonly signInUri = '/oauth2/sign_in';
     private readonly signOutUri = '/oauth2/sign_out';
     private auth!: Auth | null;
@@ -143,7 +142,7 @@ export class BrowserAuthClient implements AuthClient {
      * the authentication changes.
      */
     public subscribeAuthentication(fn: (auth: Auth | null) => void): () => void {
-        const {authListeners} = this;
+        const { authListeners } = this;
         // Wrap as a async function to avoid rising errors through
         async function listener(auth: Auth | null) {
             fn(auth);

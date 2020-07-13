@@ -27,20 +27,20 @@ describe('shorten()', () => {
 
 describe('findAllMatches()', () => {
     it('returns all matches of RegExp', () => {
-        assert.deepEqual(
-            findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /"[^"]*"/g),
-            [`"67ab43"`, `"54ed21"`, `"7892dd"`],
-        );
+        assert.deepEqual(findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /"[^"]*"/g), [
+            `"67ab43"`,
+            `"54ed21"`,
+            `"7892dd"`,
+        ]);
     });
     it('returns the given capture group values', () => {
-        assert.deepEqual(
-            findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /"([^"]*)"/g, 1),
-            [`67ab43`, `54ed21`, `7892dd`],
-        );
+        assert.deepEqual(findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /"([^"]*)"/g, 1), [
+            `67ab43`,
+            `54ed21`,
+            `7892dd`,
+        ]);
     });
     it('returns empty array if no matches', () => {
-        assert.deepEqual(
-            findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /'[^"]*'/g), [],
-        );
+        assert.deepEqual(findAllMatches(`W/"67ab43", "54ed21", "7892dd"`, /'[^"]*'/g), []);
     });
 });

@@ -5,8 +5,7 @@ import { JWE, JWK } from 'node-jose';
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export async function encryptToken(payload: any, secretKey: JWK.Key): Promise<string> {
     const packaged = msgpack.encode(payload);
-    return JWE.createEncrypt({ format: 'compact' }, secretKey)
-        .update(packaged).final();
+    return JWE.createEncrypt({ format: 'compact' }, secretKey).update(packaged).final();
 }
 
 export async function decryptToken(token: string, keyStore: JWK.KeyStore): Promise<any> {

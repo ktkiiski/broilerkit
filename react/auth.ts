@@ -9,9 +9,7 @@ export function useAuth(): Auth | null {
     const [auth, setAuth] = useState<Auth | null>(authClient.getAuthentication());
     useEffect(() => {
         return authClient.subscribeAuthentication((newAuth) => {
-            setAuth((prevAuth) => (
-                isEqual(newAuth, prevAuth, 1) ? prevAuth : newAuth
-            ));
+            setAuth((prevAuth) => (isEqual(newAuth, prevAuth, 1) ? prevAuth : newAuth));
         });
     }, [authClient]);
     return auth;

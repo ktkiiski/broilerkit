@@ -7,7 +7,7 @@ import { choice, Field } from './fields';
 import { Resource } from './resources';
 import { Encoding, Serialization, Serializer } from './serializers';
 
-type PageCursor<C extends OrderedQuery<any, any, any>> = C & {since: Exclude<C['since'], undefined>};
+type PageCursor<C extends OrderedQuery<any, any, any>> = C & { since: Exclude<C['since'], undefined> };
 
 /**
  * Represents a paginated response to a query.
@@ -22,10 +22,10 @@ export interface Page<T, C extends OrderedQuery<T, any, any>> {
  */
 export type OrderedQuery<T, O extends keyof T, D extends 'asc' | 'desc' = 'asc' | 'desc'> = {
     [P in O]: {
-        ordering: P,
-        direction: D,
-        since?: T[P],
-    }
+        ordering: P;
+        direction: D;
+        since?: T[P];
+    };
 }[O];
 
 export type PageResponse<T> = Page<T, OrderedQuery<T, Key<T>> & Partial<T>>;
@@ -34,9 +34,12 @@ export type PageResponse<T> = Page<T, OrderedQuery<T, Key<T>> & Partial<T>>;
  * A "cursor" is a full query, including the ordering and slicing attributes,
  * and the filtering parameters, to get a page from a collection.
  */
-export type Cursor<T, U extends keyof T, O extends keyof T, F extends keyof T> = Pick<T, U> & Partial<Pick<T, F>> & OrderedQuery<T, O>;
+export type Cursor<T, U extends keyof T, O extends keyof T, F extends keyof T> = Pick<T, U> &
+    Partial<Pick<T, F>> &
+    OrderedQuery<T, O>;
 
-export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends Key<T>> implements Serializer<Cursor<T, U, O, F>> {
+export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends Key<T>>
+    implements Serializer<Cursor<T, U, O, F>> {
     private serializer = this.resource
         .optional({
             required: this.urlKeywords,
@@ -46,8 +49,7 @@ export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends K
         .extend({
             ordering: choice(this.orderingKeys),
             direction: choice(['asc', 'desc']),
-        })
-    ;
+        });
     constructor(
         private resource: Resource<T, any, any>,
         private urlKeywords: U[],
@@ -86,7 +88,7 @@ export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends K
     private extendSince(data: any, since: any, serialize: (field: Field<T[O], any>, since: any) => any) {
         const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[O], any>;
         if (since !== undefined) {
-            return {...data, since: serialize(orderingField, since)};
+            return { ...data, since: serialize(orderingField, since) };
         }
         return data;
     }

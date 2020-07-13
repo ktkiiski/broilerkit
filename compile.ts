@@ -8,10 +8,7 @@ export function compile(config: webpack.Configuration): Promise<webpack.Stats> {
             if (error || !stats) {
                 reject(error || stats);
             } else if (stats.hasErrors()) {
-                reject(Object.assign(
-                    new Error(stats.toString('errors-only')),
-                    {stats},
-                ));
+                reject(Object.assign(new Error(stats.toString('errors-only')), { stats }));
             } else {
                 resolve(stats);
             }
@@ -20,19 +17,22 @@ export function compile(config: webpack.Configuration): Promise<webpack.Stats> {
 }
 
 export function watch(config: webpack.Configuration): AsyncIterableIterator<webpack.Stats> {
-    return generate(({next, error}) => {
+    return generate(({ next, error }) => {
         const compiler = webpack(config);
-        const watching = compiler.watch({
-            aggregateTimeout: 300,
-            poll: 5000,
-        }, (err, stats) => {
-            if (err) {
-                error(err);
-            } else {
-                // NOTE: There may still be compilation errors
-                next(stats);
-            }
-        });
+        const watching = compiler.watch(
+            {
+                aggregateTimeout: 300,
+                poll: 5000,
+            },
+            (err, stats) => {
+                if (err) {
+                    error(err);
+                } else {
+                    // NOTE: There may still be compilation errors
+                    next(stats);
+                }
+            },
+        );
         return () => watching.close(() => undefined);
     });
 }

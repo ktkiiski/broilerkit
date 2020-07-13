@@ -35,21 +35,23 @@ interface ClientProviderProps {
  * Provides the proper client context for all the nested components
  * that have been bound to the API resources.
  */
-export function ClientProvider({client, ...props}: ClientProviderProps): JSX.Element {
-    return (
-        <ClientContext.Provider value={client} {...props} />
-    );
+export function ClientProvider({ client, ...props }: ClientProviderProps): JSX.Element {
+    return <ClientContext.Provider value={client} {...props} />;
 }
 
 /**
  * Converts a union type, e.g. `A | B | C` to an intersection
  * type, e.g. `A & B & C`
  */
-export type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
+export type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void
+    ? I
+    : never;
 
 /**
  * Infers the properties for a component by a return value of `connect`.
  */
 export type ConnectedProps<I> = I extends PropInjector<infer R, unknown> ? R : never;
 
-export type PropInjector<B, X> = <A extends B>(cmp: React.ComponentType<A>) => React.ComponentType<Pick<A, Exclude<keyof A, keyof B>> & X>;
+export type PropInjector<B, X> = <A extends B>(
+    cmp: React.ComponentType<A>,
+) => React.ComponentType<Pick<A, Exclude<keyof A, keyof B>> & X>;

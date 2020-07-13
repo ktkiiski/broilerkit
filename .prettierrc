@@ -1,0 +1,8 @@
+{
+  semi: true,
+  trailingComma: "all",
+  singleQuote: true,
+  quoteProps: "preserve",
+  printWidth: 120,
+  tabWidth: 4
+}

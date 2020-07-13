@@ -137,16 +137,16 @@ export interface ApiResponse<T = any> {
 }
 
 export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
-    public readonly abstract statusCode: HttpSuccessStatus;
+    public abstract readonly statusCode: HttpSuccessStatus;
     constructor(public readonly data: T, public readonly headers: HttpResponseHeaders = {}) {}
 }
 
 export abstract class ExceptionResponse extends Error implements ApiResponse {
-    public readonly abstract statusCode: HttpRedirectStatus | HttpErrorStatus;
+    public abstract readonly statusCode: HttpRedirectStatus | HttpErrorStatus;
     public readonly data: any;
     constructor(message: string, data?: Record<string, unknown>, public readonly headers: HttpResponseHeaders = {}) {
         super(message);
-        this.data = {...data, message};
+        this.data = { ...data, message };
     }
 }
 
@@ -217,13 +217,14 @@ export function isResponse(response: any, statusCode?: HttpStatus): response is 
     if (!response) {
         return false;
     }
-    const {statusCode: responseStatusCode} = response;
-    return typeof responseStatusCode === 'number'
-        && !isNaN(responseStatusCode)
-        && typeof response.headers === 'object'
-        && (typeof response.body === 'string' || typeof response.data !== 'undefined')
-        && (statusCode == null || responseStatusCode === statusCode)
-    ;
+    const { statusCode: responseStatusCode } = response;
+    return (
+        typeof responseStatusCode === 'number' &&
+        !isNaN(responseStatusCode) &&
+        typeof response.headers === 'object' &&
+        (typeof response.body === 'string' || typeof response.data !== 'undefined') &&
+        (statusCode == null || responseStatusCode === statusCode)
+    );
 }
 
 export function isErrorResponse(response: any): response is HttpResponse | ApiResponse {
@@ -234,7 +235,7 @@ export function acceptsContentType(request: HttpRequest, contentType: string): b
     const splittedContentType = contentType.split('/');
     const type = splittedContentType[0].toLowerCase();
     const subType = splittedContentType[1].toLowerCase();
-    const {headers} = request;
+    const { headers } = request;
     const acceptHeader = headers && headers.Accept;
     if (!acceptHeader) {
         // No Accept header available
@@ -284,9 +285,9 @@ interface RawHttpHeaders {
     [header: string]: string | string[] | undefined | null;
 }
 
-export function normalizeHeaders(rawHeaders: RawHttpHeaders): {[header: string]: string} {
+export function normalizeHeaders(rawHeaders: RawHttpHeaders): { [header: string]: string } {
     const wordRegex = /\w+/g;
-    const headers: {[header: string]: string} = {};
+    const headers: { [header: string]: string } = {};
     forEachKey(rawHeaders, (rawHeader) => {
         const rawValue = rawHeaders[rawHeader];
         const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;

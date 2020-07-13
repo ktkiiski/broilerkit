@@ -12,11 +12,10 @@ export function parsePayload<I>(serializer: Serializer<I, any>, body: string, co
         // NOTE: An empty string is interpreted as an empty object!
         const serializedPayload = body ? parseJSON(body) : {};
         return serializer.deserialize(serializedPayload);
-
     } else if (contentType === 'multipart/form-data') {
         // Decode multipart/form-data
         const formData = parseFormData(body, meta.boundary);
-        const encodedPayload = build(formData, ({name, headers, filename, body}) => {
+        const encodedPayload = build(formData, ({ name, headers, filename, body }) => {
             if (!name) {
                 return undefined;
             }
@@ -24,11 +23,14 @@ export function parsePayload<I>(serializer: Serializer<I, any>, body: string, co
                 const { 'Content-Type': typeHeader = 'application/octet-stream' } = headers;
                 const [fileType, fileMeta] = parseHeaderDirectives(typeHeader);
                 // This is an uploaded file
-                return [name, encodeDataUri({
-                    data: body,
-                    contentType: fileType,
-                    meta: { ...fileMeta, filename },
-                })];
+                return [
+                    name,
+                    encodeDataUri({
+                        data: body,
+                        contentType: fileType,
+                        meta: { ...fileMeta, filename },
+                    }),
+                ];
             }
             return [name, body];
         });

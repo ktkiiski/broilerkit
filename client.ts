@@ -42,9 +42,21 @@ export interface Client {
     request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
     upload(file: File, upload: UploadForm): Promise<void>;
     inquiryResource<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): ResourceState<S>;
-    subscribeResourceChanges<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>, callback: (state: ResourceState<S>) => void): () => void;
-    inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S>;
-    subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>, minCount: number, listener: (collection: CollectionState) => void): () => void;
+    subscribeResourceChanges<S, U extends Key<S>>(
+        op: RetrieveOperation<S, U, any, any>,
+        input: Pick<S, U>,
+        callback: (state: ResourceState<S>) => void,
+    ): () => void;
+    inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+    ): CollectionState<S>;
+    subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+        minCount: number,
+        listener: (collection: CollectionState) => void,
+    ): () => void;
     registerOptimisticChange(change: ResourceChange<any, any>): () => void;
     commitChange(change: ResourceChange<any, any>): void;
     refreshAll(): Promise<void>;
@@ -88,11 +100,13 @@ interface ResourceListener {
 
 interface StateEffect {
     resourceName: string;
-    encodedResource: {[attr: string]: string};
+    encodedResource: { [attr: string]: string };
     available: boolean;
 }
 
-const doNothing = () => { /* Does nothing */ };
+const doNothing = () => {
+    /* Does nothing */
+};
 
 abstract class BaseClient implements Client {
     protected resourceListeners: ListMapping<ResourceListener> = {};
@@ -102,16 +116,20 @@ abstract class BaseClient implements Client {
     private optimisticChanges: ResourceChange<any, any>[] = [];
     private uniqueIdCounter = 0;
 
-    constructor(
-        public resourceCache: ResourceCache = {},
-        public collectionCache: CollectionCache = {},
-    ) {}
+    constructor(public resourceCache: ResourceCache = {}, public collectionCache: CollectionCache = {}) {}
 
-    public inquiryResource<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): ResourceState<S> {
+    public inquiryResource<S, U extends Key<S>>(
+        op: RetrieveOperation<S, U, any, any>,
+        input: Pick<S, U>,
+    ): ResourceState<S> {
         return this.initResourceState(op, input)[1];
     }
 
-    public subscribeResourceChanges<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>, fn: (state: ResourceState<S>) => void): () => void {
+    public subscribeResourceChanges<S, U extends Key<S>>(
+        op: RetrieveOperation<S, U, any, any>,
+        input: Pick<S, U>,
+        fn: (state: ResourceState<S>) => void,
+    ): () => void {
         // Wrap to a async function that prevents errors being passed through!
         const callback = wrapCallback(fn);
         const [url, initialState] = this.initResourceState(op, input);
@@ -122,7 +140,10 @@ abstract class BaseClient implements Client {
         const resourceUrl = url.toString();
         const { resource } = op.endpoint;
         const unsubscribe = addToMapping(this.resourceListeners, resourceUrl, {
-            url, op, callback, resource,
+            url,
+            op,
+            callback,
+            resource,
         });
         // If the resource has not yet been loaded, then ensure that it will be
         const state = this.getRealResourceState(resource.name, resourceUrl);
@@ -138,11 +159,19 @@ abstract class BaseClient implements Client {
         };
     }
 
-    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S> {
+    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+    ): CollectionState<S> {
         return this.initCollectionState(op, input)[1];
     }
 
-    public subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>, minCount: number, fn: (collection: CollectionState) => void): () => void {
+    public subscribeCollectionChanges<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+        minCount: number,
+        fn: (collection: CollectionState) => void,
+    ): () => void {
         // Wrap to a async function that prevents errors being passed through!
         const callback = wrapCallback(fn);
         const [url, initialState] = this.initCollectionState(op, input);
@@ -153,8 +182,11 @@ abstract class BaseClient implements Client {
         const collectionUrl = url.toString();
         const { resource } = op.endpoint;
         const unsubscribe = addToMapping(this.collectionListeners, collectionUrl, {
-            op, url, input,
-            callback, minCount,
+            op,
+            url,
+            input,
+            callback,
+            minCount,
             resource: op.endpoint.resource,
         });
         // If the collection has not yet been loaded, then ensure that it will be
@@ -174,7 +206,7 @@ abstract class BaseClient implements Client {
     }
 
     public registerOptimisticChange(change: ResourceChange<any, any>): () => void {
-        const {optimisticChanges} = this;
+        const { optimisticChanges } = this;
         optimisticChanges.push(change);
         // TODO: Optimize by avoid triggered non-related listeners
         if (change.type === 'update') {
@@ -194,7 +226,7 @@ abstract class BaseClient implements Client {
     }
 
     public commitChange(change: ResourceChange<any, any>): void {
-        const {resourceName} = change;
+        const { resourceName } = change;
         const collectionsByUrl = this.collectionCache[resourceName];
         const resourcesByUrl = this.resourceCache[resourceName];
         const changedResourceUrls: string[] = [];
@@ -248,7 +280,12 @@ abstract class BaseClient implements Client {
         await Promise.all(promises.map((promise) => promise.catch(doNothing)));
     }
 
-    public abstract request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse>;
+    public abstract request(
+        url: Url,
+        method: HttpMethod,
+        payload: any | null,
+        token: string | null,
+    ): Promise<ApiResponse>;
     public abstract upload(file: File, upload: UploadForm): Promise<void>;
 
     protected applyStateEffects(effects: StateEffect[]) {
@@ -392,65 +429,83 @@ abstract class BaseClient implements Client {
     }
 
     private triggerCollectionByName(resourceName: string) {
-        const {collectionListeners} = this;
+        const { collectionListeners } = this;
         this.triggerCollectionUrls(resourceName, keys(collectionListeners));
     }
 
-    private initResourceState<S, U extends Key<S>>(op: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): [Url | null, ResourceState<S>] {
+    private initResourceState<S, U extends Key<S>>(
+        op: RetrieveOperation<S, U, any, any>,
+        input: Pick<S, U>,
+    ): [Url | null, ResourceState<S>] {
         const resourceName = op.endpoint.resource.name;
         try {
             const url = op.route.compile(input);
             const state = this.getResourceState(resourceName, url.toString());
-            return [url, state || {
-                resource: null,
-                isLoading: false,
-                isLoaded: false,
-                error: null,
-            }];
+            return [
+                url,
+                state || {
+                    resource: null,
+                    isLoading: false,
+                    isLoaded: false,
+                    error: null,
+                },
+            ];
         } catch (error) {
             if (!isErrorResponse(error)) {
                 throw error;
             }
-            return [null, {
-                resource: null,
-                isLoading: false,
-                isLoaded: false,
-                error,
-            }];
+            return [
+                null,
+                {
+                    resource: null,
+                    isLoading: false,
+                    isLoaded: false,
+                    error,
+                },
+            ];
         }
     }
-    private initCollectionState<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): [Url | null, CollectionState<S>] {
+    private initCollectionState<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+    ): [Url | null, CollectionState<S>] {
         const { ordering, direction, since, ...filters } = input;
         const resourceName = op.endpoint.resource.name;
         try {
             const url = op.route.compile(input);
             const state = this.getCollectionState(resourceName, url.toString());
-            return [url, state || {
-                resources: [],
-                isLoading: false,
-                isComplete: false,
-                isLoaded: false,
-                error: null,
-                count: 0,
-                ordering,
-                direction,
-                filters: filters as any,
-            }];
+            return [
+                url,
+                state || {
+                    resources: [],
+                    isLoading: false,
+                    isComplete: false,
+                    isLoaded: false,
+                    error: null,
+                    count: 0,
+                    ordering,
+                    direction,
+                    filters: filters as any,
+                },
+            ];
         } catch (error) {
             if (!isErrorResponse(error)) {
                 throw error;
             }
-            return [null, {
-                resources: [],
-                isLoading: false,
-                isComplete: false,
-                isLoaded: false,
-                error,
-                count: 0,
-                ordering,
-                direction,
-                filters: filters as any,
-            }];
+            return [
+                null,
+                {
+                    resources: [],
+                    isLoading: false,
+                    isComplete: false,
+                    isLoaded: false,
+                    error,
+                    count: 0,
+                    ordering,
+                    direction,
+                    filters: filters as any,
+                },
+            ];
         }
     }
     private getRealResourceState(resourceName: string, url: string): ResourceState | null {
@@ -465,10 +520,7 @@ abstract class BaseClient implements Client {
         // Apply optimistic changes
         return this.optimisticChanges
             .filter((change) => change.resourceName === resourceName)
-            .reduce(
-                (result, change) => applyChangeToResource(result, change), state,
-            )
-        ;
+            .reduce((result, change) => applyChangeToResource(result, change), state);
     }
     private getRealCollectionState(resourceName: string, url: string): CollectionState | null {
         const collectionsByUrl = this.collectionCache[resourceName];
@@ -482,10 +534,7 @@ abstract class BaseClient implements Client {
         // Apply optimistic changes
         return this.optimisticChanges
             .filter((change) => change.resourceName === resourceName)
-            .reduce(
-                (result, change) => applyChangeToCollection(result, change) || result, state,
-            )
-        ;
+            .reduce((result, change) => applyChangeToCollection(result, change) || result, state);
     }
 
     private async loadCollectionByUrl(url: string): Promise<void> {
@@ -502,7 +551,11 @@ abstract class BaseClient implements Client {
         return this.requestLoad(url.toString(), () => this.requestResource(url, op));
     }
 
-    private async loadCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(url: Url, op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): Promise<void> {
+    private async loadCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        url: Url,
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+    ): Promise<void> {
         return this.requestLoad(url.toString(), () => this.requestCollection(url, op, input));
     }
 
@@ -543,7 +596,8 @@ abstract class BaseClient implements Client {
         const resourceName = op.endpoint.resource.name;
         const resourceUrl = url.toString();
         const currentState = this.getRealResourceState(resourceName, resourceUrl);
-        if (currentState && currentState.isLoading) {            console.warn(`Started loading resource while previous load was still in progress: ${url}`);
+        if (currentState && currentState.isLoading) {
+            console.warn(`Started loading resource while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
         let state: ResourceState<S> = {
@@ -577,13 +631,18 @@ abstract class BaseClient implements Client {
         }
     }
 
-    private async requestCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(url: Url, op: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>) {
+    private async requestCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        url: Url,
+        op: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+    ) {
         const { direction, ordering, since, ...filters } = input;
         const { resource } = op.endpoint;
         const resourceName = resource.name;
         const collectionUrl = url.toString();
         const currentState = this.getRealCollectionState(resourceName, collectionUrl);
-        if (currentState && currentState.isLoading) {            console.warn(`Started loading collection while previous load was still in progress: ${url}`);
+        if (currentState && currentState.isLoading) {
+            console.warn(`Started loading collection while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
         let loadedResources: S[] = [];
@@ -611,13 +670,13 @@ abstract class BaseClient implements Client {
             while (nextUrl) {
                 // Ensure that there are listeners
                 const listeners = this.collectionListeners[collectionUrl];
-                if (!listeners || listeners.every(({minCount}) => minCount <= state.count)) {
+                if (!listeners || listeners.every(({ minCount }) => minCount <= state.count)) {
                     // No one is interested (any more)
                     break;
                 }
                 const token = await this.getToken(op.authType);
                 const response = await this.request(nextUrl, 'GET', null, token);
-                const {next, results} = op.responseSerializer.deserialize(response.data);
+                const { next, results } = op.responseSerializer.deserialize(response.data);
                 // Add loaded results to the resources
                 loadedResources = addResourcesToCollection(loadedResources, results, resource);
                 state = {
@@ -633,11 +692,11 @@ abstract class BaseClient implements Client {
             }
         } catch (error) {
             // Set the error to the state
-            state = {...state, error};
+            state = { ...state, error };
             this.setCollectionState(resourceName, collectionUrl, state);
         } finally {
             // Set the collection not loading any more
-            state = {...state, isLoading: false};
+            state = { ...state, isLoading: false };
             this.setCollectionState(resourceName, collectionUrl, state);
         }
     }
@@ -657,13 +716,20 @@ export class BrowserClient extends BaseClient implements Client {
         super(resourceCache, collectionCache);
     }
 
-    public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse> {
-        const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
+    public async request(
+        url: Url,
+        method: HttpMethod,
+        payload: any | null,
+        token: string | null,
+    ): Promise<ApiResponse> {
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         let response;
         try {
             response = await ajaxJson({
                 url: `${this.apiRoot}${url}`,
-                method, payload, headers,
+                method,
+                payload,
+                headers,
             });
         } catch (error) {
             // If a request returns 401, we assume that the user session has expired,
@@ -675,7 +741,7 @@ export class BrowserClient extends BaseClient implements Client {
         }
         const stateHeader = response.headers['Resource-State'];
         const effects: StateEffect[] = [];
-        for (const header of Array.isArray(stateHeader) ? stateHeader : stateHeader && [stateHeader] || []) {
+        for (const header of Array.isArray(stateHeader) ? stateHeader : (stateHeader && [stateHeader]) || []) {
             for (const state of header.split(/,\s+/g)) {
                 const removal = stripPrefix(state, '!');
                 const parsedHeader = parseUrl(removal || state);
@@ -708,7 +774,7 @@ export class BrowserClient extends BaseClient implements Client {
         // Add each file
         formData.set('file', file);
         await ajax({ url, method, payload: formData });
-    }
+    };
 
     /**
      * Clears those resources and collections from the cache that
@@ -737,18 +803,24 @@ export class DummyClient extends BaseClient implements Client {
         throw new NotImplemented(`No client defined`);
     }
 
-    public inquiryResource<S, U extends Key<S>>(operation: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): ResourceState<S> {
+    public inquiryResource<S, U extends Key<S>>(
+        operation: RetrieveOperation<S, U, any, any>,
+        input: Pick<S, U>,
+    ): ResourceState<S> {
         const result = super.inquiryResource(operation, input);
         if (this.retrievals) {
-            this.retrievals.push({operation, input});
+            this.retrievals.push({ operation, input });
         }
         return result;
     }
 
-    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(operation: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S> {
+    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
+        operation: ListOperation<S, U, O, F, any, any>,
+        input: Cursor<S, U, O, F>,
+    ): CollectionState<S> {
         const result = super.inquiryCollection(operation, input);
         if (this.listings) {
-            this.listings.push({operation, input});
+            this.listings.push({ operation, input });
         }
         return result;
     }
@@ -783,9 +855,18 @@ function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChang
     };
 }
 
-function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceAddition<any, any> | ResourceRemoval<any, any>): CollectionState<T>;
-function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> | null;
-function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceChange<any, any>): CollectionState<T> | null {
+function applyChangeToCollection<T>(
+    state: CollectionState<T>,
+    change: ResourceAddition<any, any> | ResourceRemoval<any, any>,
+): CollectionState<T>;
+function applyChangeToCollection<T>(
+    state: CollectionState<T>,
+    change: ResourceChange<any, any>,
+): CollectionState<T> | null;
+function applyChangeToCollection<T>(
+    state: CollectionState<T>,
+    change: ResourceChange<any, any>,
+): CollectionState<T> | null {
     const isChangedResource = (item: any) => hasProperties(item, change.resourceIdentity, 0);
     const isNotChangedResource = (item: any) => !hasProperties(item, change.resourceIdentity, 0);
     if (change.type === 'removal') {
@@ -801,11 +882,7 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         // Ensure that the item won't show up from the original collection
         let resources = filter(state.resources, isNotChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
-        const sortedIndex = findOrderedIndex(
-            resources, change.resource,
-            state.ordering,
-            state.direction,
-        );
+        const sortedIndex = findOrderedIndex(resources, change.resource, state.ordering, state.direction);
         // If added at the end of the collection, then add only if complete or loading
         if (sortedIndex < resources.length || state.isComplete || state.isLoading) {
             resources = splice(resources, sortedIndex, 0, change.resource);
@@ -835,12 +912,12 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
         // the filters, then we need to reload the collection.
         const filterKeys = Object.keys(filters);
         const update = change.resource;
-        const hasMatchingFilterProp = filterKeys.some((key) => (
-            typeof update[key] !== 'undefined' && isEqual(update[key], filters[key as keyof T])
-        ));
-        const hasUnmatchingFilterProp = filterKeys.some((key) => (
-            typeof update[key] !== 'undefined' && !isEqual(update[key], filters[key as keyof T])
-        ));
+        const hasMatchingFilterProp = filterKeys.some(
+            (key) => typeof update[key] !== 'undefined' && isEqual(update[key], filters[key as keyof T]),
+        );
+        const hasUnmatchingFilterProp = filterKeys.some(
+            (key) => typeof update[key] !== 'undefined' && !isEqual(update[key], filters[key as keyof T]),
+        );
         if (hasMatchingFilterProp && !hasUnmatchingFilterProp) {
             // The updated resource COULD match these filters, so the resource COULD
             // have become a member of this collection. Must reload.
@@ -851,7 +928,9 @@ function applyChangeToCollection<T>(state: CollectionState<T>, change: ResourceC
 }
 
 function applyStateEffectToResource(
-    effect: StateEffect, oldState: ResourceState, resource: Resource<any, any, any>,
+    effect: StateEffect,
+    oldState: ResourceState,
+    resource: Resource<any, any, any>,
 ): ResourceState | null {
     if (!oldState.resource) {
         // Resource not available yet, so nothing to apply
@@ -861,14 +940,13 @@ function applyStateEffectToResource(
     if (!results) {
         return null; // Means reload!
     }
-    return results.reduce(
-        (state, change) => applyChangeToResource(state, change),
-        oldState,
-    );
+    return results.reduce((state, change) => applyChangeToResource(state, change), oldState);
 }
 
 function applyStateEffectToCollection(
-    effect: StateEffect, oldState: CollectionState, resource: Resource<any, any, any>,
+    effect: StateEffect,
+    oldState: CollectionState,
+    resource: Resource<any, any, any>,
 ) {
     const results = convertEffectToResourceChanges(effect, resource);
     if (!results) {
@@ -886,7 +964,8 @@ function applyStateEffectToCollection(
 }
 
 function convertEffectToResourceChanges(
-    effect: StateEffect, resource: Resource<any, any, any>,
+    effect: StateEffect,
+    resource: Resource<any, any, any>,
 ): ResourceChange<any, any>[] | null {
     const resourceName = resource.name;
     const { encodedResource, available } = effect;
@@ -912,10 +991,7 @@ function convertEffectToResourceChanges(
                     });
                 } catch {
                     // Not full attributes. Assume an update
-                    const updatedAttrs = resource
-                        .omit(resource.identifyBy)
-                        .fullPartial()
-                        .decode(encodedResource);
+                    const updatedAttrs = resource.omit(resource.identifyBy).fullPartial().decode(encodedResource);
                     results.push({
                         type: 'update',
                         resourceName,
@@ -924,12 +1000,12 @@ function convertEffectToResourceChanges(
                     });
                 }
             }
-        } catch (error) {            console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
+        } catch (error) {
+            console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
         }
     }
     // Try to apply the effect to joined resources
-    joinLoop:
-    for (const join of resource.joins) {
+    joinLoop: for (const join of resource.joins) {
         if (join.resource.name === resourceName) {
             let joinResourceProperties: any;
             try {
@@ -940,7 +1016,8 @@ function convertEffectToResourceChanges(
                     defaults: {},
                 });
                 joinResourceProperties = joinResourceSerializer.decode(encodedResource);
-            } catch {                console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
+            } catch {
+                console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
                 continue;
             }
             const resourceIdentity: any = {};

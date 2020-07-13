@@ -3,7 +3,7 @@ import { creatable, listable } from './operations';
 import { pattern } from './url';
 import { users } from './users';
 
-const usersCollection = endpoint(users, pattern `/_users`);
+const usersCollection = endpoint(users, pattern`/_users`);
 
 export const _listUsers = listable(usersCollection, {
     auth: 'none',

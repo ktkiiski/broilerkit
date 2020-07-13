@@ -81,21 +81,25 @@ export async function updateTable(client: Client, state: TableState, oldState: T
         await logSql(sql, [], () => client.query(sql));
     }
     for (const column of columns) {
-        const sql = `ALTER TABLE ${escapeRef(tableName)} ADD COLUMN IF NOT EXISTS ${escapeRef(column.name)} ${column.type} NULL;`;
+        const sql = `ALTER TABLE ${escapeRef(tableName)} ADD COLUMN IF NOT EXISTS ${escapeRef(column.name)} ${
+            column.type
+        } NULL;`;
         await logSql(sql, [], () => client.query(sql));
     }
     // Create and delete indexes
     const newIndexes = state.indexes.map((index) => ({
-        name: getIndexName(index, tableName), ...index,
+        name: getIndexName(index, tableName),
+        ...index,
     }));
     const newIndexNames = newIndexes.map((index) => index.name);
-    const oldIndexNames = (oldState ? oldState.indexes : [])
-        .map((index) => getIndexName(index, tableName));
+    const oldIndexNames = (oldState ? oldState.indexes : []).map((index) => getIndexName(index, tableName));
     // Create new index
     const createdIndexes = newIndexes.filter((index) => !oldIndexNames.includes(index.name));
     for (const index of createdIndexes) {
         const colDefs = index.keys.map(escapeRef).join(', ');
-        const sql = `CREATE INDEX CONCURRENTLY IF NOT EXISTS ${escapeRef(index.name)} ON ${escapeRef(tableName)} (${colDefs});`;
+        const sql = `CREATE INDEX CONCURRENTLY IF NOT EXISTS ${escapeRef(index.name)} ON ${escapeRef(
+            tableName,
+        )} (${colDefs});`;
         await logSql(sql, [], () => client.query(sql));
     }
     // Delete each index that no longer exist
@@ -121,17 +125,17 @@ function respond(ev: MigrationCFRRequest, status: 'SUCCESS' | 'FAILED', reason: 
     const { hostname, path } = url.parse(ev.ResponseURL);
     const request = { hostname, path, method: 'PUT' };
     return new Promise((resolve, reject) => {
-        https.request(request, resolve)
+        https
+            .request(request, resolve)
             .on('error', (error) => {
                 console.error('Failed to respond to the custom resource request:', error);
                 reject(error);
             })
-            .end(JSON.stringify(response))
-        ;
+            .end(JSON.stringify(response));
     });
 }
 
-async function getCredentials(parameters: MigrationCRFProperties): Promise<{ username: string, password: string }> {
+async function getCredentials(parameters: MigrationCRFProperties): Promise<{ username: string; password: string }> {
     const { SecretId, Region } = parameters;
     const sdk = new SecretsManager({
         apiVersion: '2017-10-17',
@@ -154,7 +158,9 @@ export async function migrate(ev: MigrationCFRRequest): Promise<void> {
     const operation: RequestType = ev.RequestType;
     const parameters = ev.ResourceProperties;
     const { username, password } = await getCredentials(parameters);
-    console.log(`Performing ${operation} to table ${parameters.Table} at postregsql://${username}@${parameters.Host}:${parameters.Port}/${parameters.Database}`);
+    console.log(
+        `Performing ${operation} to table ${parameters.Table} at postregsql://${username}@${parameters.Host}:${parameters.Port}/${parameters.Database}`,
+    );
     const oldParameters = ev.OldResourceProperties;
     const table = parameters && parameters.Table;
     const oldTable = oldParameters && oldParameters.Table;

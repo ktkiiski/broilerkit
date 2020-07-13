@@ -156,9 +156,9 @@ export class App {
     constructor(public readonly config: AppConfig) {}
 
     public configure(options: ConfigOptions): AppStageConfig {
-        const {stage} = options;
-        const {config} = this;
-        return {...config, ...config.stages[stage], ...options};
+        const { stage } = options;
+        const { config } = this;
+        return { ...config, ...config.stages[stage], ...options };
     }
 }
 

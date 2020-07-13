@@ -29,7 +29,7 @@ export function renderRoute<S>(
             const routeMatch = route.match(match.url);
             if (routeMatch) {
                 setStatusCode(props, statusCode);
-                return React.createElement(component, {...routeMatch, ...props});
+                return React.createElement(component, { ...routeMatch, ...props });
             }
             setStatusCode(props, HttpStatus.NotFound);
         } catch (error) {
@@ -44,12 +44,7 @@ export function renderRoute<S>(
         }
         return React.createElement(errorComponent, props);
     };
-    return <ReactRoute
-        exact={true}
-        sensitive={true}
-        path={pathPattern}
-        component={routedComponent}
-    />;
+    return <ReactRoute exact={true} sensitive={true} path={pathPattern} component={routedComponent} />;
 }
 
 export function renderStaticRoute(component: React.ComponentType, statusCode = HttpStatus.OK): JSX.Element {
@@ -60,7 +55,7 @@ export function renderStaticRoute(component: React.ComponentType, statusCode = H
     return <ReactRoute component={routedComponent} />;
 }
 
-function setStatusCode({staticContext}: RouteComponentProps<any>, statusCode: HttpStatus) {
+function setStatusCode({ staticContext }: RouteComponentProps<any>, statusCode: HttpStatus) {
     if (staticContext) {
         staticContext.statusCode = statusCode;
     }

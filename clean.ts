@@ -7,7 +7,7 @@ import { getFileStats } from './fs';
  * including all of its contents.
  * @param dirPath directory path
  */
-export async function *clean(dirPath: string): AsyncIterableIterator<string> {
+export async function* clean(dirPath: string): AsyncIterableIterator<string> {
     if (!dirPath || dirPath === '/') {
         throw new Error(`Invalid directory path: ${dirPath}`);
     }
@@ -31,24 +31,20 @@ export async function *clean(dirPath: string): AsyncIterableIterator<string> {
     for (const fileName of contents) {
         // Recursively delete contents
         const filePath = path.join(dirPath, fileName);
-        yield *clean(filePath);
+        yield* clean(filePath);
     }
     // The directory should now be clean. Delete it
     await removeDirectory(dirPath);
 }
 
 function unlinkFile(filePath: string): Promise<void> {
-    return new Promise((resolve, reject) => fs.unlink(filePath, (error) => (
-        error ? reject(error) : resolve()
-    )));
+    return new Promise((resolve, reject) => fs.unlink(filePath, (error) => (error ? reject(error) : resolve())));
 }
 function removeDirectory(dirPath: string): Promise<void> {
-    return new Promise((resolve, reject) => fs.rmdir(dirPath, (error) => (
-        error ? reject(error) : resolve()
-    )));
+    return new Promise((resolve, reject) => fs.rmdir(dirPath, (error) => (error ? reject(error) : resolve())));
 }
 function readDirectory(dirPath: string): Promise<string[]> {
-    return new Promise((resolve, reject) => fs.readdir(dirPath, (error, fileNames) => (
-        error ? reject(error) : resolve(fileNames)
-    )));
+    return new Promise((resolve, reject) =>
+        fs.readdir(dirPath, (error, fileNames) => (error ? reject(error) : resolve(fileNames))),
+    );
 }

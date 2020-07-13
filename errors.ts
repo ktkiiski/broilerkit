@@ -17,7 +17,7 @@ export class ValidationError extends Error implements ApiResponse<ErrorData> {
     public readonly data: ErrorData;
     constructor(message: string, public readonly errors?: ErrorList) {
         super(message);
-        this.data = {message};
+        this.data = { message };
         if (errors) {
             this.data.errors = errors;
         }

@@ -48,8 +48,7 @@ const userSessionSerializer = serializer({
 
 export async function encryptSession(session: UserSession, secretKey: JWK.Key): Promise<string> {
     const validSession = userSessionSerializer.validate(session);
-    const tokenCmps = validSession.refreshToken.split('.')
-        .map((cmp) => base64url.toBuffer(cmp));
+    const tokenCmps = validSession.refreshToken.split('.').map((cmp) => base64url.toBuffer(cmp));
     const payload: UserSessionTokenPayload = {
         sub: validSession.id,
         name: validSession.name,

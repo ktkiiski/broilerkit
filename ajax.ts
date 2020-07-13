@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ApiResponse, HttpMethod, HttpRequestHeaders, HttpResponse, HttpResponseHeaders, HttpStatus, parseHeaders } from './http';
+import {
+    ApiResponse,
+    HttpMethod,
+    HttpRequestHeaders,
+    HttpResponse,
+    HttpResponseHeaders,
+    HttpStatus,
+    parseHeaders,
+} from './http';
 import hasOwnProperty from 'immuton/hasOwnProperty';
 
 const enum AjaxState {
@@ -19,17 +27,17 @@ export interface AjaxRequest {
 
 export async function ajaxJson(request: AjaxRequest): Promise<ApiResponse> {
     const textResponse = await requestRaw(request);
-    const {statusCode, body, headers} = textResponse;
+    const { statusCode, body, headers } = textResponse;
     let response;
     if (body) {
         // Attempt to parse the response text as JSON object.
         try {
-            response = {statusCode, headers, data: JSON.parse(body)};
+            response = { statusCode, headers, data: JSON.parse(body) };
         } catch (error) {
             throw new AjaxError(request, statusCode, {}, body, undefined, error);
         }
     } else {
-        response = {statusCode, headers};
+        response = { statusCode, headers };
     }
     if (200 <= statusCode && statusCode < 300) {
         return response;
@@ -48,9 +56,10 @@ export async function ajax(request: AjaxRequest): Promise<HttpResponse> {
 
 function requestRaw(request: AjaxRequest): Promise<HttpResponse> {
     return new Promise<HttpResponse>((resolve, reject) => {
-        const {headers, payload, url, method} = request;
+        const { headers, payload, url, method } = request;
         const xhr = new XMLHttpRequest();
-        function onReadyStateChange(this: XMLHttpRequest) {            if (xhr.readyState === AjaxState.DONE) {
+        function onReadyStateChange(this: XMLHttpRequest) {
+            if (xhr.readyState === AjaxState.DONE) {
                 // Ajax request has completed
                 let statusCode = xhr.status;
                 // normalize IE9 bug (http://bugs.jquery.com/ticket/1450)

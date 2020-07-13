@@ -108,7 +108,7 @@ class NumberField implements Field<number> {
     constructor(private options: NumberFieldOptions) {}
     public validate(value: number): number {
         if (typeof value === 'number' && isFinite(value)) {
-            const {min = NEGATIVE_INFINITY, max = POSITIVE_INFINITY} = this.options;
+            const { min = NEGATIVE_INFINITY, max = POSITIVE_INFINITY } = this.options;
             if (value < min) {
                 throw new ValidationError(`Value cannot be less than ${min}`);
             }
@@ -144,7 +144,7 @@ class NumberField implements Field<number> {
     public encodeSortable(value: number): string {
         value = this.validate(value);
         const bytes = Array.from(new Uint16Array(Float64Array.from([Math.abs(value)]).buffer));
-        const chunks = bytes.map((byte) => padStart((value < 0 ? 0xFFFF ^ byte : byte).toString(16), 4, '0')).reverse();
+        const chunks = bytes.map((byte) => padStart((value < 0 ? 0xffff ^ byte : byte).toString(16), 4, '0')).reverse();
         return `${value < 0 ? '-' : '0'}${chunks.join('')}`;
     }
     public decodeSortable(value: string): number {
@@ -156,7 +156,7 @@ class NumberField implements Field<number> {
             if (isNaN(bytes)) {
                 throw new ValidationError(`Invalid decoded number`);
             }
-            byteArr.unshift(sign === '-' ? 0xFFFF ^ bytes : bytes);
+            byteArr.unshift(sign === '-' ? 0xffff ^ bytes : bytes);
         }
         const float = new Float64Array(Uint16Array.from(byteArr).buffer)[0];
         return this.validate(sign === '-' ? -float : float);
@@ -298,11 +298,7 @@ class DateTimeField implements Field<Date, string> {
 class DateField implements Field<Date, string> {
     public readonly type: string = 'date';
     public validate(value: Date): Date {
-        return new Date(
-            value.getFullYear(),
-            value.getMonth(),
-            value.getDate(),
-        );
+        return new Date(value.getFullYear(), value.getMonth(), value.getDate());
     }
     public serialize(value: Date): string {
         return serializeDate(value);
@@ -327,7 +323,8 @@ class DateField implements Field<Date, string> {
 class RegexpField extends TextField {
     constructor(
         private readonly regexp: RegExp,
-        private readonly errorMessage = `String not matching regular expression ${regexp}`) {
+        private readonly errorMessage = `String not matching regular expression ${regexp}`,
+    ) {
         super();
     }
     public validate(value: string): string {
@@ -343,13 +340,10 @@ class DecimalField extends RegexpField {
     public readonly type: string = 'numeric';
     private numberField = new NumberField({});
     constructor(private decimals: number) {
-        super(
-            /^[+-]?\d+(\.\d+)$/,
-            `Value is not a valid decimal string`,
-        );
+        super(/^[+-]?\d+(\.\d+)$/, `Value is not a valid decimal string`);
     }
     public validate(value: string | number): string {
-        const {decimals} = this;
+        const { decimals } = this;
         if (typeof value === 'number') {
             // Just convert the numeric value to a string
             return this.numberField.validate(value).toFixed(decimals);
@@ -383,10 +377,7 @@ class EmailField extends RegexpField {
 
 class URLField extends RegexpField {
     constructor() {
-        super(
-            /^https?:\/\/[\w.-]+(?:\.[\w.-]+)*[\w\-._~:%/?#[\]@!$&'()*+,;=.]+$/i,
-            `Value is not a valid URL`,
-        );
+        super(/^https?:\/\/[\w.-]+(?:\.[\w.-]+)*[\w\-._~:%/?#[\]@!$&'()*+,;=.]+$/i, `Value is not a valid URL`);
     }
 }
 
@@ -394,7 +385,10 @@ class UUIDField extends RegexpField {
     public readonly type: string = 'uuid';
     constructor(version?: 1 | 4 | 5) {
         super(
-            new RegExp(`^[0-9a-f]{8}-[0-9a-f]{4}-[${version || '145'}][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, 'i'),
+            new RegExp(
+                `^[0-9a-f]{8}-[0-9a-f]{4}-[${version || '145'}][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+                'i',
+            ),
             version ? `Value is not a valid UUID version ${version}` : `Value is not a valid UUID`,
         );
     }
@@ -458,25 +452,25 @@ class NullableField<I, O> implements Field<I | null, O | null> {
     public readonly type: string = this.field.type;
     constructor(public readonly field: Field<I, O>) {}
     public validate(value: I | null): I | null {
-        return !isNullable(value) && this.field.validate(value) || null;
+        return (!isNullable(value) && this.field.validate(value)) || null;
     }
     public serialize(value: I | null): O | null {
-        return !isNullable(value) && this.field.serialize(value) || null;
+        return (!isNullable(value) && this.field.serialize(value)) || null;
     }
     public deserialize(value: unknown): I | null {
         return value === null || value === '' ? null : this.field.deserialize(value);
     }
     public encode(value: I | null): string {
-        return !isNullable(value) && this.field.encode(value) || '';
+        return (!isNullable(value) && this.field.encode(value)) || '';
     }
     public decode(value: string): I | null {
-        return !isNullable(value) && this.field.decode(value) || null;
+        return (!isNullable(value) && this.field.decode(value)) || null;
     }
     public encodeSortable(value: I): string {
-        return !isNullable(value) && this.field.encodeSortable(value) || '';
+        return (!isNullable(value) && this.field.encodeSortable(value)) || '';
     }
     public decodeSortable(value: string): I | null {
-        return !isNullable(value) && this.field.decodeSortable(value) || null;
+        return (!isNullable(value) && this.field.decodeSortable(value)) || null;
     }
 }
 
@@ -519,7 +513,7 @@ class ListField<I, O> implements Field<I[], O[]> {
             } catch (error) {
                 // Collect nested validation errors
                 if (isApiResponse(error)) {
-                    errors.push({...error.data, key});
+                    errors.push({ ...error.data, key });
                 } else {
                     // Pass through the error
                     throw error;

@@ -4,7 +4,16 @@ import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
 import { Auth, authSerializer, DummyAuthClient } from './auth';
-import { Client, CollectionCache, CollectionState, DummyClient, Listing, ResourceCache, ResourceState, Retrieval } from './client';
+import {
+    Client,
+    CollectionCache,
+    CollectionState,
+    DummyClient,
+    Listing,
+    ResourceCache,
+    ResourceState,
+    Retrieval,
+} from './client';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { ApiResponse, HttpRequest, HttpResponse, HttpStatus, Redirect } from './http';
 import { toJavaScript } from './javascript';
@@ -31,9 +40,9 @@ export class SsrController implements Controller {
     public async execute(request: HttpRequest, context: ServerContext): Promise<HttpResponse> {
         // TODO: Could be awaited inside renderView for a tiny performance boost?
         const templateHtml = await this.templateHtml$;
-        return renderView(request, templateHtml, this.view, (apiRequest) => (
-            this.apiService.execute(apiRequest, context)
-        ));
+        return renderView(request, templateHtml, this.view, (apiRequest) =>
+            this.apiService.execute(apiRequest, context),
+        );
     }
 }
 
@@ -70,7 +79,7 @@ async function renderView(
         client = new DummyClient(authClient, null, null, resourceCache, collectionCache);
         renderResult = render(view, client, location);
     }
-    const {viewHtml, meta, routerContext} = renderResult;
+    const { viewHtml, meta, routerContext } = renderResult;
     const title = meta.title;
     const styleTags = mapObject(meta.styles, (renderCss, id) => {
         const css = renderCss();
@@ -92,9 +101,7 @@ async function renderView(
         encodePrettyJavaScript(client.collectionCache),
     ];
     const startupScript = `<script>\napp.start(${
-        process.env.NODE_ENV === 'production'
-            ? launchParams.join(',')
-            : `\n${launchParams.join(',\n')}\n`
+        process.env.NODE_ENV === 'production' ? launchParams.join(',') : `\n${launchParams.join(',\n')}\n`
     });\n</script>`;
     const body = templateHtml
         // Inject the bootstrap script just before enclosing </body>
@@ -102,12 +109,11 @@ async function renderView(
         // Inject the view HTML to the div with the ID "app"
         .replace(/(<div\s+id="app">)[\s\S]*?(<\/div>)/i, (_, start, end) => `${start}${viewHtml}${end}`)
         // Replace the title
-        .replace(/(<title>)([\s\S]*?)(<\/title>)/i, (match, start, _, end) => (
-            title ? `${start}${escapeHtml(title)}${end}` : match
-        ))
+        .replace(/(<title>)([\s\S]*?)(<\/title>)/i, (match, start, _, end) =>
+            title ? `${start}${escapeHtml(title)}${end}` : match,
+        )
         // Inject any meta tags just before enclosing </head>
-        .replace(/<\/head>/i, (end) => `${metaHtml}\n${end}`)
-    ;
+        .replace(/<\/head>/i, (end) => `${metaHtml}\n${end}`);
     // Return the HTML response
     return {
         statusCode: routerContext.statusCode || 200,
@@ -127,32 +133,36 @@ function render(View: React.ComponentType, client: Client, location: Location) {
         styles: {} as Record<string, () => string | null>,
         idCounter: 0,
     };
-    const viewHtml = renderToString((
+    const viewHtml = renderToString(
         <MetaContextProvider context={meta}>
             <ClientProvider client={client}>
                 <StaticRouter location={location} context={routerContext}>
                     <View />
                 </StaticRouter>
             </ClientProvider>
-        </MetaContextProvider>
-    ));
+        </MetaContextProvider>,
+    );
     if (routerContext.url) {
         // Redirect
-        let {statusCode} = routerContext;
+        let { statusCode } = routerContext;
         if (statusCode !== HttpStatus.Found && statusCode !== HttpStatus.MovedPermanently) {
             statusCode = HttpStatus.Found;
         }
         throw new Redirect(routerContext.url, statusCode);
     }
-    return {viewHtml, routerContext, meta};
+    return { viewHtml, routerContext, meta };
 }
 
-async function executeRetrievals(execute: RequestHandler, retrievals: Retrieval[], request: HttpRequest): Promise<ResourceCache> {
+async function executeRetrievals(
+    execute: RequestHandler,
+    retrievals: Retrieval[],
+    request: HttpRequest,
+): Promise<ResourceCache> {
     const distinctRetrievals = getActionUrls(retrievals);
     const cache: ResourceCache = {};
     await Promise.all(
         mapObject(distinctRetrievals, async ([url, retrieval], urlStr) => {
-            const {operation} = retrieval;
+            const { operation } = retrieval;
             const resourceName = operation.endpoint.resource.name;
             const [resource, error] = await executeRenderRequest(execute, url, request, operation.responseSerializer);
             const state: ResourceState = {
@@ -161,18 +171,22 @@ async function executeRetrievals(execute: RequestHandler, retrievals: Retrieval[
                 isLoading: false,
                 isLoaded: false, // Causes to reload once initialized
             };
-            cache[resourceName] = Object.assign(cache[resourceName] || {}, {[urlStr]: state});
+            cache[resourceName] = Object.assign(cache[resourceName] || {}, { [urlStr]: state });
         }),
     );
     return cache;
 }
 
-async function executeListings(execute: RequestHandler, listings: Listing[], request: HttpRequest): Promise<CollectionCache> {
+async function executeListings(
+    execute: RequestHandler,
+    listings: Listing[],
+    request: HttpRequest,
+): Promise<CollectionCache> {
     const distinctListings = getActionUrls(listings);
     const cache: CollectionCache = {};
     await Promise.all(
         mapObject(distinctListings, async ([url, listing], urlStr) => {
-            const {operation} = listing;
+            const { operation } = listing;
             const resourceName = operation.endpoint.resource.name;
             const [page, error] = await executeRenderRequest(execute, url, request, operation.responseSerializer);
             const { ordering, direction, since, ...filters } = listing.input;
@@ -187,7 +201,7 @@ async function executeListings(execute: RequestHandler, listings: Listing[], req
                 direction,
                 filters,
             };
-            cache[resourceName] = Object.assign(cache[resourceName] || {}, {[urlStr]: state});
+            cache[resourceName] = Object.assign(cache[resourceName] || {}, { [urlStr]: state });
         }),
     );
     return cache;
@@ -205,7 +219,12 @@ function getActionUrls<T extends Retrieval | Listing>(actions: T[]): Record<stri
     });
 }
 
-async function executeRenderRequest<T>(execute: (request: HttpRequest) => Promise<HttpResponse | ApiResponse>, url: Url, origRequest: HttpRequest, serializer: Serializer<T>): Promise<[T | null, ApiResponse | null]> {
+async function executeRenderRequest<T>(
+    execute: (request: HttpRequest) => Promise<HttpResponse | ApiResponse>,
+    url: Url,
+    origRequest: HttpRequest,
+    serializer: Serializer<T>,
+): Promise<[T | null, ApiResponse | null]> {
     const response = await execute({
         // Copy the properties from the original request
         ...origRequest,
@@ -231,13 +250,9 @@ async function executeRenderRequest<T>(execute: (request: HttpRequest) => Promis
 }
 
 function encodePrettySafeJSON(value: unknown) {
-    return encodeSafeJSON(
-        value, null, process.env.NODE_ENV === 'production' ? undefined : 2,
-    );
+    return encodeSafeJSON(value, null, process.env.NODE_ENV === 'production' ? undefined : 2);
 }
 
 function encodePrettyJavaScript(value: unknown) {
-    return toJavaScript(
-        value, process.env.NODE_ENV === 'production' ? undefined : 2,
-    );
+    return toJavaScript(value, process.env.NODE_ENV === 'production' ? undefined : 2);
 }

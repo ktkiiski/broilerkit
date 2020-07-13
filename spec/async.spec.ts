@@ -3,50 +3,36 @@ import { asap, deferred, flatMapAsyncParallel, toArray, toAsync, wait } from '..
 
 describe('flatMapAsyncParallel', () => {
     it('yields all the results (smaller than max currency)', async () => {
-        const results = flatMapAsyncParallel(
-            3,
-            toAsync(['A', 'B']),
-            async function *(item, index) {
-                yield `${item}${index}+`;
-                await asap();
-                yield `${item}${index}-`;
-            },
-        );
-        await assertIterable(results, [
-            'A0+', 'A0-', 'B1+', 'B1-',
-        ]);
+        const results = flatMapAsyncParallel(3, toAsync(['A', 'B']), async function* (item, index) {
+            yield `${item}${index}+`;
+            await asap();
+            yield `${item}${index}-`;
+        });
+        await assertIterable(results, ['A0+', 'A0-', 'B1+', 'B1-']);
     });
     it('yields all the results (larter than max currency)', async () => {
-        const results = flatMapAsyncParallel(
-            3,
-            toAsync(['A', 'B', 'C', 'D', 'E']),
-            async function *(item, index) {
-                yield `${item}${index}+`;
-                await asap();
-                yield `${item}${index}-`;
-            },
-        );
-        await assertIterable(results, [
-            'A0+', 'A0-', 'B1+', 'B1-', 'C2+', 'C2-', 'D3+', 'D3-', 'E4+', 'E4-',
-        ]);
+        const results = flatMapAsyncParallel(3, toAsync(['A', 'B', 'C', 'D', 'E']), async function* (item, index) {
+            yield `${item}${index}+`;
+            await asap();
+            yield `${item}${index}-`;
+        });
+        await assertIterable(results, ['A0+', 'A0-', 'B1+', 'B1-', 'C2+', 'C2-', 'D3+', 'D3-', 'E4+', 'E4-']);
     });
     it('yields nothing if callbacks yield nothing', async () => {
         const results = flatMapAsyncParallel(
             3,
             toAsync(['A', 'B', 'C', 'D', 'E']),
-            async function *(): AsyncIterableIterator<never> { /* yield nothing */ },
+            async function* (): AsyncIterableIterator<never> {
+                /* yield nothing */
+            },
         );
         await assertIterable(results, []);
     });
     it('yields nothing if the mapped iterable is empty', async () => {
-        const results = flatMapAsyncParallel(
-            3,
-            toAsync([]),
-            async function *(item, index) {
-                yield `${item}${index}+`;
-                yield `${item}${index}-`;
-            },
-        );
+        const results = flatMapAsyncParallel(3, toAsync([]), async function* (item, index) {
+            yield `${item}${index}+`;
+            yield `${item}${index}-`;
+        });
         await assertIterable(results, []);
     });
     it('keeps results in their original order', async () => {
@@ -58,7 +44,9 @@ describe('flatMapAsyncParallel', () => {
             for await (const result of flatMapAsyncParallel(
                 3,
                 toAsync([defferred1, defferred2, defferred3]),
-                async function *(item) { yield await item.promise; },
+                async function* (item) {
+                    yield await item.promise;
+                },
             )) {
                 results.push(result);
             }
@@ -85,14 +73,13 @@ describe('flatMapAsyncParallel', () => {
         const d4 = deferred<string>();
         const results: string[] = [];
         async function startTest() {
-            for await (const result of flatMapAsyncParallel(
-                2,
-                toAsync([d0, d1, d2, d3, d4]),
-                async function *(item, index) {
-                    calls.push(index);
-                    yield await item.promise;
-                },
-            )) {
+            for await (const result of flatMapAsyncParallel(2, toAsync([d0, d1, d2, d3, d4]), async function* (
+                item,
+                index,
+            ) {
+                calls.push(index);
+                yield await item.promise;
+            })) {
                 results.push(result);
             }
         }

@@ -13,8 +13,8 @@ const urlPlaceholderRegexp = /^\{(.+?)(\+)?\}$/;
  * @param pattern URL pattern with {xxx} placeholders
  */
 export function makeUrlRegexp(pattern: string): RegExp {
-    const regexpComponents = pattern.split('/').map(
-        (component) => urlPlaceholderRegexp.test(component)
+    const regexpComponents = pattern.split('/').map((component) =>
+        urlPlaceholderRegexp.test(component)
             ? '([^/]+)' // capturing group
             : escapeRegExp(component),
     );
@@ -25,16 +25,16 @@ export function makeUrlRegexp(pattern: string): RegExp {
  * An object describing an URL path and query parameters as an object.
  */
 export class Url {
-    constructor(public readonly path: string, public readonly queryParams: {[param: string]: string} = {}) {}
+    constructor(public readonly path: string, public readonly queryParams: { [param: string]: string } = {}) {}
 
     public toString(): string {
-        const {queryParams} = this;
+        const { queryParams } = this;
         const query = buildQuery(queryParams);
         return this.path + (query && '?' + query);
     }
 
-    public withParameters(params: {[param: string]: string}): Url {
-        return new Url(this.path, {...this.queryParams, ...params});
+    public withParameters(params: { [param: string]: string }): Url {
+        return new Url(this.path, { ...this.queryParams, ...params });
     }
 }
 
@@ -59,7 +59,7 @@ export class UrlPattern<T extends string = string> {
         this.pathKeywords = pathKeywords;
     }
 
-    public match(url: string | Url, defaults?: {[param: string]: string}): {[param: string]: string} | null {
+    public match(url: string | Url, defaults?: { [param: string]: string }): { [param: string]: string } | null {
         if (typeof url === 'string') {
             try {
                 url = parseUrl(url);
@@ -72,9 +72,9 @@ export class UrlPattern<T extends string = string> {
         if (!pathMatch) {
             return null;
         }
-        const {pathKeywords} = this;
-        const {length} = pathKeywords;
-        const pathParameters: {[param: string]: string} = {};
+        const { pathKeywords } = this;
+        const { length } = pathKeywords;
+        const pathParameters: { [param: string]: string } = {};
         for (let i = 0; i < length; i++) {
             const pathKey = pathKeywords[i];
             try {
@@ -84,11 +84,11 @@ export class UrlPattern<T extends string = string> {
                 return null;
             }
         }
-        return {...defaults, ...url.queryParams, ...pathParameters};
+        return { ...defaults, ...url.queryParams, ...pathParameters };
     }
 
-    public compile(urlParameters: {[key: string]: string}): Url {
-        const queryParameters = {...urlParameters};
+    public compile(urlParameters: { [key: string]: string }): Url {
+        const queryParameters = { ...urlParameters };
         const path = this.pattern.replace(/\{(\w+)(\+)?\}/g, (_, urlKeyword: T, greedy: string) => {
             delete queryParameters[urlKeyword];
             const encoded = encodeURIComponent(urlParameters[urlKeyword]);
@@ -97,7 +97,7 @@ export class UrlPattern<T extends string = string> {
         return new Url(path, queryParameters);
     }
 
-    public pickQueryParameters(urlParameters: {[key: string]: string}): {[key: string]: string} {
+    public pickQueryParameters(urlParameters: { [key: string]: string }): { [key: string]: string } {
         return omit(urlParameters, this.pathKeywords);
     }
 }
@@ -111,9 +111,9 @@ export function parseUrl(url: string): Url {
     return new Url(path, parseQuery(queryCmps.join('?') || ''));
 }
 
-export function parseQuery(query: string): {[key: string]: string} {
+export function parseQuery(query: string): { [key: string]: string } {
     query = query.replace(/^[#?]/, ''); // Strip any leading # or ?
-    const result: {[key: string]: string} = {};
+    const result: { [key: string]: string } = {};
     for (const item of query.split('&')) {
         const [key, value] = splitOnce(item, '=');
         if (key && value != null) {
@@ -129,7 +129,7 @@ function escapeRegExp(str: string) {
 
 function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
     const components: string[] = [];
-    for (let i = 0; i < strings.length; i ++) {
+    for (let i = 0; i < strings.length; i++) {
         components.push(strings[i]);
         if (i < keywords.length) {
             components.push(`{${keywords[i]}}`);
@@ -138,7 +138,7 @@ function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
     return components.join('');
 }
 
-export function buildQuery(queryParams: {[param: string]: string}): string {
+export function buildQuery(queryParams: { [param: string]: string }): string {
     const sortedQueryKeys = keys(queryParams).sort();
     const queryItems = sortedQueryKeys.map(
         (key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`,

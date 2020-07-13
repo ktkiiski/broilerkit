@@ -24,7 +24,15 @@ import { clean } from './clean';
 import { compile } from './compile';
 import { BroilerConfig } from './config';
 import { create, DatabaseTable, scan, Table, write } from './db';
-import { ensureDirectoryExists, readFileBuffer, readJSONFile, readLines, searchFiles, writeAsyncIterable, writeJSONFile } from './fs';
+import {
+    ensureDirectoryExists,
+    readFileBuffer,
+    readJSONFile,
+    readLines,
+    searchFiles,
+    writeAsyncIterable,
+    writeJSONFile,
+} from './fs';
 import { HttpStatus, isResponse } from './http';
 import { AppStageConfig } from './index';
 import { launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
@@ -61,7 +69,6 @@ const dbTableMigrationVersion = '0.0.3';
 const localDbPortNumber = 54320;
 
 export class Broiler {
-
     private readonly config: BroilerConfig;
     // The name of the stack to be deployed
     private readonly stackName: string;
@@ -78,17 +85,17 @@ export class Broiler {
      * @param options An object of options
      */
     constructor(config: AppStageConfig) {
-        const {name, stage, projectRootPath, region} = config;
-        const stackName = this.stackName = `${name}-${stage}`;
+        const { name, stage, projectRootPath, region } = config;
+        const stackName = (this.stackName = `${name}-${stage}`);
         const stageDir = path.join(projectRootPath, '.broiler', stage);
-        const buildDir = this.buildDir = path.join(stageDir, 'build');
+        const buildDir = (this.buildDir = path.join(stageDir, 'build'));
 
         this.cloudFormation = new AmazonCloudFormation(region, stackName);
         this.cloudWatch = new AmazonCloudWatch(region);
         this.route53 = new AmazonRoute53(region);
         this.s3 = new AmazonS3(region);
 
-        this.config = {...config, stackName, stageDir, buildDir};
+        this.config = { ...config, stackName, stageDir, buildDir };
     }
 
     /**
@@ -98,9 +105,7 @@ export class Broiler {
     public async deploy(): Promise<void> {
         await this.clean();
         await Promise.all([
-            this.initialize().then(() => (
-                this.uploadDatabaseTableResource()
-            )),
+            this.initialize().then(() => this.uploadDatabaseTableResource()),
             this.compileFrontend(false),
             this.compileBackend(false),
             this.deployVpc(),
@@ -108,7 +113,11 @@ export class Broiler {
         await this.uploadBackend();
         await this.deployStack();
         await this.uploadFrontend();
-        this.log(`${green('Deployment complete!')} The web app is now available at ${underline(`${this.config.serverRoot}/`)}`);
+        this.log(
+            `${green('Deployment complete!')} The web app is now available at ${underline(
+                `${this.config.serverRoot}/`,
+            )}`,
+        );
         await this.printAuthClientInfo();
     }
 
@@ -120,10 +129,7 @@ export class Broiler {
      * - Required hosted zones (which may be shared with other deployments)
      */
     public async initialize(): Promise<void> {
-        await Promise.all([
-            this.initializeHostedZones(),
-            this.initializeStack(),
-        ]);
+        await Promise.all([this.initializeHostedZones(), this.initializeStack()]);
     }
 
     /**
@@ -132,7 +138,7 @@ export class Broiler {
     public async undeploy(): Promise<CloudFormation.Stack> {
         this.log(`Removing the stack ${bold(this.stackName)} from region ${bold(this.config.region)}`);
         const output = await this.cloudFormation.getStackOutput();
-        const {DeploymentManagementS3BucketName, AssetsS3BucketName} = output;
+        const { DeploymentManagementS3BucketName, AssetsS3BucketName } = output;
         // Empty the deployement bucket
         const iterators = [this.s3.emptyBucket(DeploymentManagementS3BucketName)];
         if (AssetsS3BucketName) {
@@ -145,7 +151,7 @@ export class Broiler {
             } else {
                 this.log(`Deleted ${bold(item.Key)} from bucket ${item.Bucket}`);
             }
-            count ++;
+            count++;
         }
         this.log(`Deleted total of ${count} items`);
         let oldStack = await this.cloudFormation.describeStackWithResources();
@@ -159,10 +165,7 @@ export class Broiler {
 
     public async compile(analyze = true): Promise<WebpackStats[]> {
         await this.clean();
-        const [backend, frontend] = await Promise.all([
-            this.compileBackend(analyze),
-            this.compileFrontend(analyze),
-        ]);
+        const [backend, frontend] = await Promise.all([this.compileBackend(analyze), this.compileFrontend(analyze)]);
         return backend ? [backend, frontend] : [frontend];
     }
 
@@ -170,13 +173,19 @@ export class Broiler {
      * Compiles the assets with Webpack to the build directory.
      */
     public async compileFrontend(analyze: boolean): Promise<WebpackStats> {
-        this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app frontend for the stage ${bold(this.config.stage)}...`);
-        const stats = await compile(getFrontendWebpackConfig({
-            ...this.config,
-            devServer: false,
-            analyze,
-        }));
-        this.log(stats.toString({colors: true}));
+        this.log(
+            `Compiling the ${
+                this.config.debug ? yellow('debugging') : cyan('release')
+            } version of the app frontend for the stage ${bold(this.config.stage)}...`,
+        );
+        const stats = await compile(
+            getFrontendWebpackConfig({
+                ...this.config,
+                devServer: false,
+                analyze,
+            }),
+        );
+        this.log(stats.toString({ colors: true }));
         return stats;
     }
 
@@ -184,9 +193,13 @@ export class Broiler {
      * Compiles the backend code with Webpack to the build directory.
      */
     public async compileBackend(analyze: boolean): Promise<WebpackStats> {
-        this.log(`Compiling the ${this.config.debug ? yellow('debugging') : cyan('release')} version of the app backend for the stage ${bold(this.config.stage)}...`);
-        const stats = await compile(getBackendWebpackConfig({...this.config, devServer: false, analyze}));
-        this.log(stats.toString({colors: true}));
+        this.log(
+            `Compiling the ${
+                this.config.debug ? yellow('debugging') : cyan('release')
+            } version of the app backend for the stage ${bold(this.config.stage)}...`,
+        );
+        const stats = await compile(getBackendWebpackConfig({ ...this.config, devServer: false, analyze }));
+        this.log(stats.toString({ colors: true }));
         return stats;
     }
 
@@ -256,7 +269,9 @@ export class Broiler {
             });
         }
         await Promise.all([
-            serveFrontEnd(opts, () => this.log(`Serving the local development website at ${underline(`${opts.serverRoot}/`)}`)),
+            serveFrontEnd(opts, () =>
+                this.log(`Serving the local development website at ${underline(`${opts.serverRoot}/`)}`),
+            ),
             serveBackEnd(opts, params, dbConnectionPool),
         ]);
     }
@@ -281,7 +296,7 @@ export class Broiler {
         }
         if (stack.Outputs) {
             this.log('Outputs:');
-            order(stack.Outputs, 'OutputKey', 'asc').forEach(({OutputKey, OutputValue}) => {
+            order(stack.Outputs, 'OutputKey', 'asc').forEach(({ OutputKey, OutputValue }) => {
                 this.log(`- ${OutputKey} = ${bold(String(OutputValue))}`);
             });
         }
@@ -292,8 +307,8 @@ export class Broiler {
     /**
      * Outputs the logs
      */
-    public async printLogs(options: {follow?: boolean, since?: string, maxCount?: number} = {}): Promise<void> {
-        const {follow = false, since = '5min', maxCount} = options;
+    public async printLogs(options: { follow?: boolean; since?: string; maxCount?: number } = {}): Promise<void> {
+        const { follow = false, since = '5min', maxCount } = options;
         const startDate = new Date();
         const minutesMatch = /(\d+)min/.exec(since);
         if (minutesMatch) {
@@ -310,10 +325,12 @@ export class Broiler {
         const output = await this.cloudFormation.getStackOutput();
         const logGroupNames = mapObject(output, (value, key) => [key, value])
             .filter(([key]) => key.endsWith('LogGroupName'))
-            .map(([, logGroupName]) => logGroupName)
-        ;
+            .map(([, logGroupName]) => logGroupName);
         const logStream = this.cloudWatch.streamLogGroups({
-            follow, maxCount, logGroupNames, startTime: +startDate,
+            follow,
+            maxCount,
+            logGroupNames,
+            startTime: +startDate,
         });
         for await (const event of logStream) {
             this.log(formatLogEvent(event, this.stackName));
@@ -348,7 +365,7 @@ export class Broiler {
         const dbClient = await this.getDatabaseClient();
         let index = 0;
         for await (const line of readLines(filePath)) {
-            index ++;
+            index++;
             try {
                 const serializedItem = JSON.parse(line);
                 const item = table.resource.deserialize(serializedItem);
@@ -367,26 +384,31 @@ export class Broiler {
         const tables = this.getTables();
         this.log(`Backing up ${tables.length} database tables…`);
         await ensureDirectoryExists(basePath);
-        const results = await Promise.all(tables.map(async (table) => {
-            const { resource } = table;
-            const { name } = resource;
-            this.log(`${dim('Backing up')} ${name}`);
-            try {
-                const filePath = path.resolve(basePath, `${name}.jsonl`);
-                await writeAsyncIterable(filePath, mapAsync(dbClient.scan(scan(resource)), (rows) => {
-                    const jsonRows = rows.map((record) => {
-                        const serializedItem = resource.serialize(record);
-                        return JSON.stringify(serializedItem) + '\n';
-                    });
-                    return jsonRows.join('');
-                }));
-                this.log(`${name} ${green('✔︎')}`);
-                return null;
-            } catch (error) {
-                this.log(`${name} ${red('×')}`);
-                return error;
-            }
-        }));
+        const results = await Promise.all(
+            tables.map(async (table) => {
+                const { resource } = table;
+                const { name } = resource;
+                this.log(`${dim('Backing up')} ${name}`);
+                try {
+                    const filePath = path.resolve(basePath, `${name}.jsonl`);
+                    await writeAsyncIterable(
+                        filePath,
+                        mapAsync(dbClient.scan(scan(resource)), (rows) => {
+                            const jsonRows = rows.map((record) => {
+                                const serializedItem = resource.serialize(record);
+                                return JSON.stringify(serializedItem) + '\n';
+                            });
+                            return jsonRows.join('');
+                        }),
+                    );
+                    this.log(`${name} ${green('✔︎')}`);
+                    return null;
+                } catch (error) {
+                    this.log(`${name} ${red('×')}`);
+                    return error;
+                }
+            }),
+        );
         const error = results.find((error) => error != null);
         if (error) {
             throw error;
@@ -411,38 +433,40 @@ export class Broiler {
         const dbClient = await this.getDatabaseClient();
         const tables = this.getTables();
         this.log(`Restoring ${tables.length} database tables…`);
-        const results = await Promise.all(tables.map(async (table) => {
-            const { resource } = table;
-            const { name } = resource;
-            this.log(`${dim('Restoring')} ${name}`);
-            try {
-                const filePath = path.resolve(dirPath, `${name}.jsonl`);
-                let index = 0;
-                for await (const line of readLines(filePath)) {
-                    index ++;
-                    try {
-                        const serializedItem = JSON.parse(line);
-                        const item = resource.deserialize(serializedItem);
-                        const operation = overwrite ? write(resource, item) : create(resource, item);
+        const results = await Promise.all(
+            tables.map(async (table) => {
+                const { resource } = table;
+                const { name } = resource;
+                this.log(`${dim('Restoring')} ${name}`);
+                try {
+                    const filePath = path.resolve(dirPath, `${name}.jsonl`);
+                    let index = 0;
+                    for await (const line of readLines(filePath)) {
+                        index++;
                         try {
-                            await dbClient.run(operation);
-                        } catch (error) {
-                            if (!isResponse(error, HttpStatus.PreconditionFailed)) {
-                                throw error;
+                            const serializedItem = JSON.parse(line);
+                            const item = resource.deserialize(serializedItem);
+                            const operation = overwrite ? write(resource, item) : create(resource, item);
+                            try {
+                                await dbClient.run(operation);
+                            } catch (error) {
+                                if (!isResponse(error, HttpStatus.PreconditionFailed)) {
+                                    throw error;
+                                }
                             }
+                        } catch (err) {
+                            this.log(`${name}: line ${index} ${red('×')}`);
+                            this.logError(err.stack);
                         }
-                    } catch (err) {
-                        this.log(`${name}: line ${index} ${red('×')}`);
-                        this.logError(err.stack);
                     }
+                    this.log(`${name} ${green('✔︎')}`);
+                    return null;
+                } catch (error) {
+                    this.log(`${name} ${red('×')}`);
+                    return error;
                 }
-                this.log(`${name} ${green('✔︎')}`);
-                return null;
-            } catch (error) {
-                this.log(`${name} ${red('×')}`);
-                return error;
-            }
-        }));
+            }),
+        );
         const error = results.find((error) => error != null);
         if (error) {
             throw error;
@@ -486,7 +510,7 @@ export class Broiler {
      * Ensures that the required hosted zone(s) exist, creating them if not.
      */
     public async initializeHostedZones(): Promise<void> {
-        const {serverRoot, assetsRoot} = this.config;
+        const { serverRoot, assetsRoot } = this.config;
         const siteRootUrl = new URL(serverRoot);
         const siteHostedZone = getHostedZone(siteRootUrl.hostname);
         const assetsRootUrl = new URL(assetsRoot);
@@ -573,9 +597,9 @@ export class Broiler {
     public async uploadFrontend(): Promise<IFileUpload[]> {
         const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!server*.js']);
         const output = await this.cloudFormation.getStackOutput();
-        return await toArray(this.uploadFilesToS3Bucket(
-            output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false,
-        ));
+        return await toArray(
+            this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false),
+        );
     }
 
     /**
@@ -583,7 +607,7 @@ export class Broiler {
      */
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public async getStackParameters() {
-        const {serverRoot, assetsRoot, auth, parameters, vpc} = this.config;
+        const { serverRoot, assetsRoot, auth, parameters, vpc } = this.config;
         const serverRootUrl = new URL(serverRoot);
         const serverDomain = serverRootUrl.hostname;
         const assetsRootUrl = new URL(assetsRoot);
@@ -598,24 +622,26 @@ export class Broiler {
             ? `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`
             : undefined;
         // Facebook client settings
-        const facebookClientId = auth && auth.facebookClientId || undefined;
+        const facebookClientId = (auth && auth.facebookClientId) || undefined;
         let facebookClientSecret: string | null | undefined = prevParams && prevParams.FacebookClientSecret;
         if (facebookClientId && facebookClientSecret === undefined) {
             facebookClientSecret = await readAnswer(
-                `Check your Facebook client app secret at ${underline(`https://developers.facebook.com/apps/${facebookClientId}/settings/basic/`)}\n` +
-                `Please enter the client secret:`,
+                `Check your Facebook client app secret at ${underline(
+                    `https://developers.facebook.com/apps/${facebookClientId}/settings/basic/`,
+                )}\n` + `Please enter the client secret:`,
             );
             if (!facebookClientSecret) {
                 throw new Error(`Facebook client app secret is required!`);
             }
         }
         // Google client settings
-        const googleClientId = auth && auth.googleClientId || undefined;
+        const googleClientId = (auth && auth.googleClientId) || undefined;
         let googleClientSecret: string | null | undefined = prevParams && prevParams.GoogleClientSecret;
         if (googleClientId && googleClientSecret === undefined) {
             googleClientSecret = await readAnswer(
-                `Check your Google client app secret at ${underline(`https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`)}\n` +
-                `Please enter the client secret:`,
+                `Check your Google client app secret at ${underline(
+                    `https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`,
+                )}\n` + `Please enter the client secret:`,
             );
             if (!googleClientSecret) {
                 throw new Error(`Google client app secret is required!`);
@@ -652,29 +678,45 @@ export class Broiler {
      * @param file$ Observable of vinyl files
      * @param cacheDuration How long the files should be cached
      */
-    public async *uploadFilesToS3Bucket(bucketName: string, file$: Promise<File[]>, cacheDuration: number, overwrite: boolean): AsyncGenerator<IFileUpload, void> {
-        const files = [...await file$];
+    public async *uploadFilesToS3Bucket(
+        bucketName: string,
+        file$: Promise<File[]>,
+        cacheDuration: number,
+        overwrite: boolean,
+    ): AsyncGenerator<IFileUpload, void> {
+        const files = [...(await file$)];
         const uploads$: Promise<IFileUpload>[] = [];
         const startNext = () => {
             const file = files.shift();
-            if (!file) { return; }
-            const upload$ = this.createS3File$({
-                Bucket: bucketName,
-                Key: formatS3KeyName(file.relative),
-                Body: file.contents as Buffer,
-                ACL: 'public-read',
-                CacheControl: `max-age=${cacheDuration}`,
-                ContentType: mime.getType(file.relative) || undefined,
-                ContentLength: file.isStream() && file.stat ? file.stat.size : undefined,
-            }, overwrite);
-            uploads$.push(upload$.then((result) => {
-                startNext();
-                return {file, bucketName, result} as IFileUpload;
-            }));
+            if (!file) {
+                return;
+            }
+            const upload$ = this.createS3File$(
+                {
+                    Bucket: bucketName,
+                    Key: formatS3KeyName(file.relative),
+                    Body: file.contents as Buffer,
+                    ACL: 'public-read',
+                    CacheControl: `max-age=${cacheDuration}`,
+                    ContentType: mime.getType(file.relative) || undefined,
+                    ContentLength: file.isStream() && file.stat ? file.stat.size : undefined,
+                },
+                overwrite,
+            );
+            uploads$.push(
+                upload$.then((result) => {
+                    startNext();
+                    return { file, bucketName, result } as IFileUpload;
+                }),
+            );
         };
         // TODO: This does not handle well rejections or errors! Improve!
         // Start 5 first uploads
-        startNext(); startNext(); startNext(); startNext(); startNext();
+        startNext();
+        startNext();
+        startNext();
+        startNext();
+        startNext();
         // Wait for each upload and yield them in order
         while (uploads$.length) {
             const next = await uploads$.shift();
@@ -691,16 +733,22 @@ export class Broiler {
      */
     private async uploadDatabaseTableResource(): Promise<S3.PutObjectOutput> {
         const packageFileName = 'cloudformation-migration-lambda.zip';
-        const bucketName$ = this.cloudFormation.getStackOutput().then((output) => output.DeploymentManagementS3BucketName);
+        const bucketName$ = this.cloudFormation
+            .getStackOutput()
+            .then((output) => output.DeploymentManagementS3BucketName);
         const resDir = path.join(__dirname, 'res');
         const packageFile$ = readFileBuffer(path.join(resDir, packageFileName));
-        return Promise.all([bucketName$, packageFile$])
-            .then(([bucketName, packageFile]) => this.createS3File$({
-                Bucket: bucketName,
-                Key: `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`,
-                Body: packageFile,
-                ContentType: 'application/zip',
-            }, true));
+        return Promise.all([bucketName$, packageFile$]).then(([bucketName, packageFile]) =>
+            this.createS3File$(
+                {
+                    Bucket: bucketName,
+                    Key: `cloudformation-migration-lambda-${dbTableMigrationVersion}.zip`,
+                    Body: packageFile,
+                    ContentType: 'application/zip',
+                },
+                true,
+            ),
+        );
     }
 
     /**
@@ -708,27 +756,25 @@ export class Broiler {
      * Amazon S3 buckets in the deployed stack.
      */
     private async uploadBackend() {
-        const [serverFile, htmlFile] = await Promise.all([
-            this.getCompiledServerFile(),
-            this.getCompiledHtmlFile(),
-        ]);
+        const [serverFile, htmlFile] = await Promise.all([this.getCompiledServerFile(), this.getCompiledHtmlFile()]);
         const zipFileData$ = zipAll([
-            {filename: 'server.js', data: serverFile.contents as Buffer | NodeJS.ReadableStream},
-            {filename: 'index.html', data: htmlFile.contents as Buffer | NodeJS.ReadableStream},
+            { filename: 'server.js', data: serverFile.contents as Buffer | NodeJS.ReadableStream },
+            { filename: 'index.html', data: htmlFile.contents as Buffer | NodeJS.ReadableStream },
         ]);
         const output$ = this.cloudFormation.getStackOutput();
-        const [output, zipFileData, key] = await Promise.all([
-            output$, zipFileData$, this.getServerZipFileS3Key(),
-        ]);
+        const [output, zipFileData, key] = await Promise.all([output$, zipFileData$, this.getServerZipFileS3Key()]);
         const bucketName = output.DeploymentManagementS3BucketName;
         this.log(`Zipped the server implementation as ${bold(key)}`);
-        return this.createS3File$({
-            Bucket: bucketName,
-            Key: key,
-            Body: zipFileData,
-            ACL: 'private',
-            ContentType: 'application/zip',
-        }, false);
+        return this.createS3File$(
+            {
+                Bucket: bucketName,
+                Key: key,
+                Body: zipFileData,
+                ACL: 'private',
+                ContentType: 'application/zip',
+            },
+            false,
+        );
     }
 
     /**
@@ -737,7 +783,7 @@ export class Broiler {
      */
     private async initializeHostedZone(domain: string) {
         try {
-            const {DelegationSet} = await this.route53.getHostedZone(domain);
+            const { DelegationSet } = await this.route53.getHostedZone(domain);
             this.log(dim(`Hosted zone for domain ${bold(domain)} exists`), green('✔︎'));
             if (this.config.debug && DelegationSet) {
                 this.log(`Set up your domain name registrar (e.g. GoDaddy) to use these DNS servers:\n`);
@@ -752,7 +798,7 @@ export class Broiler {
             }
             // Hosted zone does not exist yet -> create it!
             this.log(`Hosted zone for domain ${bold(domain)} does not exist yet. Creating it...`);
-            const {DelegationSet} = await this.route53.createHostedZone(domain);
+            const { DelegationSet } = await this.route53.createHostedZone(domain);
             this.log(`Hosted zone ${bold(domain)} created successfully!`, green('✔︎'));
             if (DelegationSet) {
                 this.log(`Set up your domain name registrar (e.g. GoDaddy) to use these DNS servers:\n`);
@@ -775,7 +821,7 @@ export class Broiler {
             'cloudformation-app.yml',
             'cloudformation-custom-resource.yml',
         ];
-        const {auth, parameters} = this.config;
+        const { auth, parameters } = this.config;
         if (auth) {
             // User registry enabled
             templateFiles.push('cloudformation-user-registry.yml');
@@ -835,9 +881,7 @@ export class Broiler {
             return {};
         }
         const dbSetupTemplate = await readTemplates(['cloudformation-db.yml']);
-        return tables
-            .map((table) => this.generateDbTableTemplate(table))
-            .reduce(mergeTemplates, dbSetupTemplate);
+        return tables.map((table) => this.generateDbTableTemplate(table)).reduce(mergeTemplates, dbSetupTemplate);
     }
 
     private generateDbTableTemplate(table: Table) {
@@ -924,7 +968,7 @@ export class Broiler {
     private async createS3File$(params: S3.PutObjectRequest, overwrite: true): Promise<S3.PutObjectOutput>;
     private async createS3File$(params: S3.PutObjectRequest, overwrite: boolean): Promise<S3.PutObjectOutput | void>;
     private async createS3File$(params: S3.PutObjectRequest, overwrite: boolean): Promise<S3.PutObjectOutput | void> {
-        if (!overwrite && await this.s3.objectExists(params)) {
+        if (!overwrite && (await this.s3.objectExists(params))) {
             this.log('File', bold(params.Key), 'already exists in bucket', params.Bucket, green('✔︎'));
         } else {
             const result = await this.s3.putObject(params);
@@ -944,12 +988,15 @@ export class Broiler {
         const [stackOutput, template] = await Promise.all([stackOutput$, template$]);
         const bucketName = stackOutput.DeploymentManagementS3BucketName;
         const bucketDomain = stackOutput.DeploymentManagementS3BucketDomain;
-        const templateUpload$ = this.createS3File$({
-            Bucket: bucketName,
-            Key: templateFileName,
-            Body: dumpTemplate(template),
-            ContentType: 'application/x-yaml',
-        }, true);
+        const templateUpload$ = this.createS3File$(
+            {
+                Bucket: bucketName,
+                Key: templateFileName,
+                Body: dumpTemplate(template),
+                ContentType: 'application/x-yaml',
+            },
+            true,
+        );
         await templateUpload$;
         return `http://${bucketDomain}/${templateFileName}`;
     }
@@ -976,16 +1023,14 @@ export class Broiler {
     }
 
     private async getSiteHash(): Promise<string> {
-        const [serverFile, htmlFile] = await Promise.all([
-            this.getCompiledServerFile(), this.getCompiledHtmlFile(),
-        ]);
+        const [serverFile, htmlFile] = await Promise.all([this.getCompiledServerFile(), this.getCompiledHtmlFile()]);
         const [, serverFileHash] = serverFile.basename.split('.');
         const [, htmlFileHash] = htmlFile.basename.split('.');
         return `${serverFileHash}${htmlFileHash}`;
     }
 
     private async printAuthClientInfo() {
-        const {auth} = this.config;
+        const { auth } = this.config;
         if (!auth) {
             // Nothing to print
             return;
@@ -1002,11 +1047,11 @@ export class Broiler {
             const conifigureUrl = `https://developers.facebook.com/apps/${facebookClientId}/fb-login/settings/`;
             this.log(
                 `\n` +
-                yellow(`${bold(`Remember to configure your Facebook client`)} with ID ${facebookClientId}`) +
-                `\n1. Navigate to the app's ${bold(`Facebook Login`)} settings at:` +
-                `\n   ${underline(conifigureUrl)}` +
-                `\n2. Add the following URL to the ${bold(`"Valid OAuth Redirect URIs"`)}:` +
-                `\n   ${underline(oauthRedirectUri)}`,
+                    yellow(`${bold(`Remember to configure your Facebook client`)} with ID ${facebookClientId}`) +
+                    `\n1. Navigate to the app's ${bold(`Facebook Login`)} settings at:` +
+                    `\n   ${underline(conifigureUrl)}` +
+                    `\n2. Add the following URL to the ${bold(`"Valid OAuth Redirect URIs"`)}:` +
+                    `\n   ${underline(oauthRedirectUri)}`,
             );
         }
         // Google client settings
@@ -1015,11 +1060,11 @@ export class Broiler {
             const conifigureUrl = `https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`;
             this.log(
                 `\n` +
-                yellow(`${bold(`Remember to configure your Google client`)} with ID ${googleClientId}`) +
-                `\n1. Navigate to the app's ${bold(`Client ID settings`)} at` +
-                `\n   ${underline(conifigureUrl)}` +
-                `\n2. Add the following URL to the ${bold(`"Authorized redirect URIs"`)}:` +
-                `\n   ${underline(oauthRedirectUri)}`,
+                    yellow(`${bold(`Remember to configure your Google client`)} with ID ${googleClientId}`) +
+                    `\n1. Navigate to the app's ${bold(`Client ID settings`)} at` +
+                    `\n   ${underline(conifigureUrl)}` +
+                    `\n2. Add the following URL to the ${bold(`"Authorized redirect URIs"`)}:` +
+                    `\n   ${underline(oauthRedirectUri)}`,
             );
         }
     }
@@ -1037,23 +1082,21 @@ export class Broiler {
             return;
         }
         this.log(`Changes to be performed to the stack:`);
-        for (const {ResourceChange} of changeSet.Changes) {
+        for (const { ResourceChange } of changeSet.Changes) {
             if (ResourceChange) {
                 const { Action, LogicalResourceId, Details } = ResourceChange;
-                const colorize = Action === 'Add' ? green
-                    : Action === 'Modify' ? cyan
-                    : red
-                ;
-                const icon = Action === 'Add' ? '+'
-                    : Action === 'Modify' ? '●'
-                    : '-'
-                ;
+                const colorize = Action === 'Add' ? green : Action === 'Modify' ? cyan : red;
+                const icon = Action === 'Add' ? '+' : Action === 'Modify' ? '●' : '-';
                 if (Details && Details.length) {
                     for (const { Target, CausingEntity, ChangeSource } of Details) {
                         const cause = CausingEntity || ChangeSource;
                         const suffix = cause ? ` ${dim(`← ${cause}`)}` : '';
                         if (Target) {
-                            this.log(`[${colorize(icon)}] ${colorize(LogicalResourceId as string)}.${Target.Attribute}.${Target.Name}${suffix}`);
+                            this.log(
+                                `[${colorize(icon)}] ${colorize(LogicalResourceId as string)}.${Target.Attribute}.${
+                                    Target.Name
+                                }${suffix}`,
+                            );
                         }
                     }
                 } else {
@@ -1155,12 +1198,13 @@ export class Broiler {
             };
         }
         const output = await this.cloudFormation.getStackOutput();
-        return async () => new RemotePostgreSqlConnection(
-            region,
-            output.DatabaseDBClusterArn,
-            output.DatabaseMasterSecretArn,
-            this.getDatabaseName(),
-        );
+        return async () =>
+            new RemotePostgreSqlConnection(
+                region,
+                output.DatabaseDBClusterArn,
+                output.DatabaseMasterSecretArn,
+                this.getDatabaseName(),
+            );
     }
 
     private async getDatabaseClient(): Promise<DatabaseClient> {
@@ -1171,7 +1215,10 @@ export class Broiler {
 }
 
 function formatLogicalId(str: string): string {
-    return str.split(/[^A-Za-z0-9]+/g).map(upperFirst).join('');
+    return str
+        .split(/[^A-Za-z0-9]+/g)
+        .map(upperFirst)
+        .join('');
 }
 
 function getHostedZone(domain: string) {

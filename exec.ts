@@ -30,10 +30,7 @@ export async function spawn(cmd: string, args: string[] = []): Promise<void> {
         const process = childProcess.spawn(cmd, args, { stdio: 'inherit' });
         process.on('close', (code, signal) => {
             if (code) {
-                reject(Object.assign(
-                    new Error(`Process exited with status code ${code}`),
-                    {code, signal},
-                ));
+                reject(Object.assign(new Error(`Process exited with status code ${code}`), { code, signal }));
             } else {
                 resolve();
             }
@@ -57,9 +54,10 @@ export function escapeForShell(...a: string[]): string {
     const ret: string[] = [];
     a.forEach((s) => {
         if (/[^A-Za-z0-9_/:=-]/.test(s)) {
-            s = '\'' + s.replace(/'/g, '\'\\\'\'') + '\'';
-            s = s.replace(/^(?:'')+/g, '') // unduplicate single-quote at the beginning
-                .replace(/\\'''/g, '\\\''); // remove non-escaped single-quote if there are enclosed between 2 escaped
+            s = "'" + s.replace(/'/g, "'\\''") + "'";
+            s = s
+                .replace(/^(?:'')+/g, '') // unduplicate single-quote at the beginning
+                .replace(/\\'''/g, "\\'"); // remove non-escaped single-quote if there are enclosed between 2 escaped
         }
         ret.push(s);
     });

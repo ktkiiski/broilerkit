@@ -37,13 +37,14 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     const serverPort = parseInt(assetsRootUrl.port, 10);
     const enableHttps = assetsProtocol === 'https:';
     const config = getFrontendWebpackConfig({
-        ...options, debug: options.debug, devServer: true, analyze: false,
+        ...options,
+        debug: options.debug,
+        devServer: true,
+        analyze: false,
     });
     const devServerOptions: WebpackDevServer.Configuration = {
         inline: true,
-        allowedHosts: [
-            assetsRootUrl.hostname,
-        ],
+        allowedHosts: [assetsRootUrl.hostname],
         https: enableHttps,
         stats: {
             colors: true,
@@ -82,7 +83,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
  */
 export async function serveBackEnd(
     options: BroilerConfig,
-    params: {[param: string]: string},
+    params: { [param: string]: string },
     dbConnectionPool: Pool | null,
 ): Promise<void> {
     const { stackName, auth, serverRoot, stageDir, buildDir, projectRootPath } = options;
@@ -93,11 +94,16 @@ export async function serveBackEnd(
     const serverEnableHttps = serverProtocol === 'https:';
     const storageDir = path.join(stageDir, 'storage');
     if (serverRoot && serverEnableHttps) {
-        throw new Error(`HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(/^https/, 'http')} instead!`);
+        throw new Error(
+            `HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(
+                /^https/,
+                'http',
+            )} instead!`,
+        );
     }
     const htmlPagePath = path.resolve(buildDir, './index.html');
     const sessionEncryptionKey = auth ? await JWK.asKey(rawSessionEncryptionKey) : null;
-    const config = getBackendWebpackConfig({...options, debug: true, devServer: true, analyze: false});
+    const config = getBackendWebpackConfig({ ...options, debug: true, devServer: true, analyze: false });
     let server: http.Server | undefined;
     try {
         for await (const stats of watch(config)) {
@@ -107,10 +113,13 @@ export async function serveBackEnd(
                 server = undefined;
             }
             // Check for compilation errors
-            if (stats.hasErrors()) {                console.error(stats.toString({
-                    chunks: false, // Makes the build much quieter
-                    colors: true, // Shows colors in the console
-                }));
+            if (stats.hasErrors()) {
+                console.error(
+                    stats.toString({
+                        chunks: false, // Makes the build much quieter
+                        colors: true, // Shows colors in the console
+                    }),
+                );
                 continue;
             }
             // Successful compilation -> start the HTTP server
@@ -121,9 +130,7 @@ export async function serveBackEnd(
             const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
             // Get compiled server-site rendering view
             const serverRequestHandlerFileName: string = assetsByChunkName.server && assetsByChunkName.server[0];
-            const serverRequestHandlerFilePath = path.resolve(
-                projectRootPath, buildDir, serverRequestHandlerFileName,
-            );
+            const serverRequestHandlerFilePath = path.resolve(projectRootPath, buildDir, serverRequestHandlerFileName);
             // Ensure that module will be re-loaded
             delete require.cache[serverRequestHandlerFilePath];
             // Load the module exporting the service getter
@@ -132,13 +139,12 @@ export async function serveBackEnd(
             const service: ApiService = serverModule.getApiService(htmlPagePath$, storageDir);
             const db: Database | null = serverModule.getDatabase();
             // Get handler for the API requests (if defined)
-            const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) => (
-                await convertNodeRequest(httpRequest, serverOrigin, serverRoot)
-            ));
-            // Set up the server
-            const executeServerRequest = middleware(
-                authenticationMiddleware(service.execute),
+            const nodeMiddleware = requestMiddleware(
+                async (httpRequest: http.IncomingMessage) =>
+                    await convertNodeRequest(httpRequest, serverOrigin, serverRoot),
             );
+            // Set up the server
+            const executeServerRequest = middleware(authenticationMiddleware(service.execute));
             const storage = new LocalFileStorage(serverOrigin, storageDir);
             const serverContext: ServerContext = {
                 stackName,
@@ -155,9 +161,7 @@ export async function serveBackEnd(
                 authTokenUri: null,
                 environment: params,
             };
-            server = createServer(nodeMiddleware((req) => (
-                executeServerRequest(req, serverContext)
-            )));
+            server = createServer(nodeMiddleware((req) => executeServerRequest(req, serverContext)));
             server.listen(serverPort);
         }
     } finally {
@@ -177,14 +181,16 @@ function getDbDockerContainerName(name: string, stage: string) {
     return `${name}_${stage}_postgres`.replace(/-+/g, '_');
 }
 
-export async function launchLocalDatabase({name, stage, port}: LocalDatabaseLaunchOptions): Promise<void> {
+export async function launchLocalDatabase({ name, stage, port }: LocalDatabaseLaunchOptions): Promise<void> {
     const containerName = escapeForShell(getDbDockerContainerName(name, stage));
     try {
         // Assume that the container already exists. Restart it.
         await execute(`docker restart ${containerName}`);
     } catch {
         // Assuming that the container did not exist. Start a new one.
-        await execute(`docker run -d --name ${containerName} -v ${containerName}:/var/lib/postgresql/data -p ${port}:5432 postgres:10`);
+        await execute(
+            `docker run -d --name ${containerName} -v ${containerName}:/var/lib/postgresql/data -p ${port}:5432 postgres:10`,
+        );
     }
 }
 
@@ -193,20 +199,26 @@ export async function openLocalDatabasePsql(name: string, stage: string): Promis
     await spawn('docker', ['exec', '-it', '--user=postgres', containerName, 'psql']);
 }
 
-function createServer<P extends unknown[]>(handler: (request: http.IncomingMessage, ...args: P) => Promise<HttpResponse>, ...args: P) {
+function createServer<P extends unknown[]>(
+    handler: (request: http.IncomingMessage, ...args: P) => Promise<HttpResponse>,
+    ...args: P
+) {
     return http.createServer(async (httpRequest, httpResponse) => {
         try {
             const response = await handler(httpRequest, ...args);
             const contentTypes = response.headers['Content-Type'];
             const contentType = Array.isArray(contentTypes) ? contentTypes[0] : contentTypes;
             const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
-            const textColor = isHtml ? cyan :
-                httpRequest.method === 'OPTIONS' ? dim :
-                (x: string) => x // no color
-            ;            console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
+            const textColor = isHtml ? cyan : httpRequest.method === 'OPTIONS' ? dim : (x: string) => x; // no color
+            console.log(
+                textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode),
+            );
             httpResponse.writeHead(response.statusCode, response.headers);
             httpResponse.end(response.body);
-        } catch (error) {            console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`);
+        } catch (error) {
+            console.error(
+                `${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`,
+            );
             httpResponse.writeHead(500, {
                 'Content-Type': 'text/plain',
             });
@@ -215,8 +227,12 @@ function createServer<P extends unknown[]>(handler: (request: http.IncomingMessa
     });
 }
 
-async function convertNodeRequest(nodeRequest: http.IncomingMessage, serverOrigin: string, serverRoot: string): Promise<HttpRequest> {
-    const {method} = nodeRequest;
+async function convertNodeRequest(
+    nodeRequest: http.IncomingMessage,
+    serverOrigin: string,
+    serverRoot: string,
+): Promise<HttpRequest> {
+    const { method } = nodeRequest;
     const headers = flattenParameters(nodeRequest.headers);
     const requestUrlObj = url.parse(nodeRequest.url as string, true);
     const req: HttpRequest = {
@@ -251,6 +267,8 @@ function colorizeStatusCode(statusCode: HttpStatus): string {
     return codeStr;
 }
 
-function flattenParameters<K extends string>(params: {[P in K]: string | string[] | undefined}): {[P in K]: string} {
-    return transform(params || {}, (values) => Array.isArray(values) ? values[0] : String(values || ''));
+function flattenParameters<K extends string>(
+    params: { [P in K]: string | string[] | undefined },
+): { [P in K]: string } {
+    return transform(params || {}, (values) => (Array.isArray(values) ? values[0] : String(values || '')));
 }

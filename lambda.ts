@@ -30,18 +30,18 @@ export interface LambdaHttpRequestContext {
     apiId: string;
     authorizer?: {
         claims?: {
-            'aud': string;
+            aud: string;
             'cognito:groups': string;
             'cognito:username': string;
-            'email': string;
-            'exp': string;
-            'iat': string;
-            'identities': string;
-            'iss': string;
-            'name': string;
-            'sub': string;
-            'picture': string | null;
-            'token_use': string;
+            email: string;
+            exp: string;
+            iat: string;
+            identities: string;
+            iss: string;
+            name: string;
+            sub: string;
+            picture: string | null;
+            token_use: string;
         };
     };
 }
@@ -50,10 +50,10 @@ export interface LambdaHttpRequest {
     resource: string;
     httpMethod: HttpMethod;
     path: string;
-    queryStringParameters: {[parameter: string]: string};
-    pathParameters: {[parameter: string]: string};
+    queryStringParameters: { [parameter: string]: string };
+    pathParameters: { [parameter: string]: string };
     headers: HttpRequestHeaders;
-    stageVariables: {[variable: string]: string} | void;
+    stageVariables: { [variable: string]: string } | void;
     requestContext: LambdaHttpRequestContext;
     body?: string;
     isBase64Encoded?: boolean;
@@ -66,16 +66,19 @@ export interface LambdaHttpResponse {
     body: string;
 }
 
-export type LambdaHttpHandler = (request: LambdaHttpRequest, context: LambdaHttpRequestContext) => Promise<LambdaHttpResponse>;
+export type LambdaHttpHandler = (
+    request: LambdaHttpRequest,
+    context: LambdaHttpRequestContext,
+) => Promise<LambdaHttpResponse>;
 
-export function lambdaMiddleware<P extends any[]>(handler: (request: HttpRequest, ...params: P) => Promise<HttpResponse>): (request: LambdaHttpRequest, ...params: P) => Promise<LambdaHttpResponse> {
+export function lambdaMiddleware<P extends any[]>(
+    handler: (request: HttpRequest, ...params: P) => Promise<HttpResponse>,
+): (request: LambdaHttpRequest, ...params: P) => Promise<LambdaHttpResponse> {
     async function handleLambdaRequest(lambdaRequest: LambdaHttpRequest, ...params: P): Promise<LambdaHttpResponse> {
         const { httpMethod, isBase64Encoded, body } = lambdaRequest;
         const queryParameters = lambdaRequest.queryStringParameters || {};
         const headers = lambdaRequest.headers || {};
-        const bodyBuffer = body == null ? body : Buffer.from(
-            body, isBase64Encoded ? 'base64' : 'utf8',
-        );
+        const bodyBuffer = body == null ? body : Buffer.from(body, isBase64Encoded ? 'base64' : 'utf8');
         const environment = lambdaRequest.stageVariables || {};
         const region = environment.Region;
         if (!region) {
@@ -92,9 +95,11 @@ export function lambdaMiddleware<P extends any[]>(handler: (request: HttpRequest
         const request = {
             method: httpMethod,
             path: lambdaRequest.path,
-            queryParameters, headers,
+            queryParameters,
+            headers,
             body: bodyBuffer,
-            environment, region,
+            environment,
+            region,
             serverRoot,
             serverOrigin,
             // Auth will be set by another middleware
@@ -103,9 +108,9 @@ export function lambdaMiddleware<P extends any[]>(handler: (request: HttpRequest
             // directoryPath: process.env.LAMBDA_TASK_ROOT as string,
         };
         const response = await handler(request, ...params);
-        const responseHeaders = transform(response.headers, (headerValue) => (
-            Array.isArray(headerValue) ? headerValue : [headerValue]
-        ));
+        const responseHeaders = transform(response.headers, (headerValue) =>
+            Array.isArray(headerValue) ? headerValue : [headerValue],
+        );
         return {
             statusCode: response.statusCode,
             multiValueHeaders: responseHeaders,

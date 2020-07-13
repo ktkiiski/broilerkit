@@ -13,7 +13,7 @@ let red = noFormat;
 let underline = noFormat;
 let yellow = noFormat;
 
-function stylize(modifier: { open: string, close: string }) {
+function stylize(modifier: { open: string; close: string }) {
     return (str: string) => `${modifier.open}${str}${modifier.close}`;
 }
 
@@ -22,8 +22,7 @@ try {
     const styles: typeof Styles = require('ansi-styles');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { stdout, stderr }: typeof Support = require('supports-color');
-    const isSupported = stdout && stdout.has256 && stderr && stderr.has256
-        && !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
+    const isSupported = stdout && stdout.has256 && stderr && stderr.has256 && !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
     if (isSupported) {
         blue = stylize(styles.blue);
         bold = stylize(styles.bold);
@@ -39,14 +38,4 @@ try {
     // Coloring packages not available at this environment
 }
 
-export {
-    blue,
-    bold,
-    cyan,
-    dim,
-    green,
-    magenta,
-    red,
-    underline,
-    yellow,
-};
+export { blue, bold, cyan, dim, green, magenta, red, underline, yellow };

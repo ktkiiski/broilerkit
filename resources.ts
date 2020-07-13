@@ -31,14 +31,14 @@ interface Nesting<R = any, PK extends Key<R> = any, T = any> {
     on: { [P in PK]: FilteredKeys<T, R[PK]> & string };
 }
 
-type Relations<S = any, R extends {[name: string]: Resource<any, any, any>} = any> = {
+type Relations<S = any, R extends { [name: string]: Resource<any, any, any> } = any> = {
     [P in keyof R]: Nesting<Deserialization<R[P]>, PrimaryKey<R[P]>, S>;
 };
 
 export interface Resource<T, PK extends Key<T>, W extends Key<T>> extends FieldSerializer<T> {
     readonly name: string;
     readonly identifyBy: PK[];
-    readonly columns: {[key: string]: Field<any>};
+    readonly columns: { [key: string]: Field<any> };
     readonly nestings: Relations<T>;
     readonly joins: Join[];
     readonly identifier: Serializer<Pick<T, PK>>;
@@ -48,17 +48,30 @@ export interface Resource<T, PK extends Key<T>, W extends Key<T>> extends FieldS
     /**
      * Join another resource with an inner join.
      */
-    join<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), W | Key<U>>;
+    join<S2, PK2 extends Key<S2>, U extends { [column: string]: Key<S2> }>(
+        table: Resource<S2, PK2 & Key<S2>, any>,
+        on: { [P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] } },
+        columns: U,
+    ): Resource<T & { [P in Key<U>]: S2[U[P]] }, PK | (FilteredKeys<U, PK2> & string), W | Key<U>>;
     /**
      * Join another resource with an left outer join.
      */
-    leftJoin<S2, PK2 extends Key<S2>, U extends {[column: string]: Key<S2>}>(table: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] }}, columns: U, defaults: {[P in keyof U]: S2[U[P]]}): Resource<T & {[P in Key<U>]: S2[U[P]]}, PK | (FilteredKeys<U, PK2> & string), W>;
+    leftJoin<S2, PK2 extends Key<S2>, U extends { [column: string]: Key<S2> }>(
+        table: Resource<S2, PK2 & Key<S2>, any>,
+        on: { [P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] } },
+        columns: U,
+        defaults: { [P in keyof U]: S2[U[P]] },
+    ): Resource<T & { [P in Key<U>]: S2[U[P]] }, PK | (FilteredKeys<U, PK2> & string), W>;
     /**
      * Nest related resource as a property to this resource.
      * The join is a left join, meaning that the property
      * value will be null if the related resource does not exist.
      */
-    nest<K extends string, S2, PK2 extends Key<S2>>(propertyName: K, resource: Resource<S2, PK2 & Key<S2>, any>, on: {[P in PK2 & Key<S2>]: string & FilteredKeys<T, S2[P]>}): Resource<T & Record<K, S2 | null>, PK, W>;
+    nest<K extends string, S2, PK2 extends Key<S2>>(
+        propertyName: K,
+        resource: Resource<S2, PK2 & Key<S2>, any>,
+        on: { [P in PK2 & Key<S2>]: string & FilteredKeys<T, S2[P]> },
+    ): Resource<T & Record<K, S2 | null>, PK, W>;
 }
 
 type PrimaryKey<R> = R extends Resource<any, infer PK, any> ? PK : never;
@@ -74,9 +87,9 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
      */
     constructor(
         public readonly name: string,
-        public readonly columns: {[key: string]: Field<any>},
+        public readonly columns: { [key: string]: Field<any> },
         public readonly identifyBy: PK[],
-        public readonly nestings: {[key: string]: Nesting},
+        public readonly nestings: { [key: string]: Nesting },
         public readonly joins: Join[],
     ) {
         super(buildFields(columns, nestings, joins));
@@ -93,65 +106,71 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
             pick(this.columns, attrs),
             identifyBy as (K & PK)[],
             pick(this.nestings, attrs),
-            this.joins.map((join) => (
-                join.type === 'inner' ? {
-                    ...join,
-                    fields: pick(join.fields, attrs),
-                } : {
-                    ...join,
-                    fields: pick(join.fields, attrs),
-                    defaults: pick(join.defaults, attrs),
-                }
-            )),
+            this.joins.map((join) =>
+                join.type === 'inner'
+                    ? {
+                          ...join,
+                          fields: pick(join.fields, attrs),
+                      }
+                    : {
+                          ...join,
+                          fields: pick(join.fields, attrs),
+                          defaults: pick(join.defaults, attrs),
+                      },
+            ),
         );
     }
 
     public join<S2, PK2 extends Key<S2>>(
         other: Resource<S2, PK2 & Key<S2>, any>,
-        on: {[P in any]?: JoinCondition},
-        fields: {[column: string]: string},
+        on: { [P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] } },
+        fields: { [column: string]: string },
     ): Resource<any, any, string> {
         const joinBy = select(on, isDefined);
-        const joins: Join[] = this.joins.concat([{
-            type: 'inner',
-            resource: other,
-            fields,
-            on: joinBy,
-        }]);
+        const joins: Join[] = this.joins.concat([
+            {
+                type: 'inner',
+                resource: other,
+                fields,
+                on: joinBy,
+            },
+        ]);
         const newPkKeys = Object.values(joinBy).filter((pk) => typeof pk === 'string') as string[];
         const identifyBy = union([this.identifyBy, newPkKeys]);
-        return new FieldResource(
-            this.name, this.columns, identifyBy, this.nestings, joins,
-        );
+        return new FieldResource(this.name, this.columns, identifyBy, this.nestings, joins);
     }
     public leftJoin<S2, PK2 extends Key<S2>>(
         other: Resource<S2, PK2 & Key<S2>, any>,
-        on: {[P in any]?: JoinCondition},
-        fields: {[column: string]: string},
-        defaults: {[column: string]: any},
+        on: { [P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] } },
+        fields: { [column: string]: string },
+        defaults: { [column: string]: any },
     ): Resource<any, any, W> {
-        const joins: Join[] = this.joins.concat([{
-            type: 'left',
-            resource: other,
-            fields,
-            on: select(on, isDefined),
-            defaults,
-        }]);
-        return new FieldResource(
-            this.name, this.columns, this.identifyBy, this.nestings, joins,
-        );
+        const joins: Join[] = this.joins.concat([
+            {
+                type: 'left',
+                resource: other,
+                fields,
+                on: select(on, isDefined),
+                defaults,
+            },
+        ]);
+        return new FieldResource(this.name, this.columns, this.identifyBy, this.nestings, joins);
     }
     public nest<K extends string, S2>(
         propertyName: K,
         other: Resource<S2, any, any>,
-        on: {[key: string]: string},
+        on: { [key: string]: string },
     ): Resource<T & Record<K, S2 | null>, PK, W> {
-        const nestings: {[key: string]: Nesting} = {
+        const nestings: { [key: string]: Nesting } = {
             ...this.nestings,
             [propertyName]: { resource: other, on },
         };
         return new FieldResource<T & Record<K, S2 | null>, PK, W>(
-            this.name, this.columns, this.identifyBy, nestings, this.joins,
+            this.name,
+            this.columns,
+            this.identifyBy,
+            nestings,
+            this.joins,
         );
     }
 }
@@ -173,7 +192,7 @@ function buildFields(columns: Fields, nestings: Relations, joins: Join[]): Field
 
 export type Deserialization<T extends Serializer<any, any>> = T extends Serializer<infer R> ? R : any;
 
-type ResourceFields<I, O> = {[P in keyof I]: Field<I[P], any>} & {[P in keyof O]: Field<any, O[P]>};
+type ResourceFields<I, O> = { [P in keyof I]: Field<I[P], any> } & { [P in keyof O]: Field<any, O[P]> };
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export function resource(name: string) {

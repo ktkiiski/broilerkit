@@ -25,8 +25,19 @@ export interface WebpackConfigOptions extends BroilerConfig {
  * https://webpack.js.org/configuration/
  */
 export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {devServer, debug, iconFile, sourceDir, buildDir, stageDir, title, siteFile, projectRootPath, analyze} = config;
-    const {assetsRoot, serverRoot} = config;
+    const {
+        devServer,
+        debug,
+        iconFile,
+        sourceDir,
+        buildDir,
+        stageDir,
+        title,
+        siteFile,
+        projectRootPath,
+        analyze,
+    } = config;
+    const { assetsRoot, serverRoot } = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const stageDirPath = path.resolve(projectRootPath, stageDir);
@@ -37,7 +48,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const assetsRootUrl = url.parse(assetsRoot);
     const assetsPath = assetsRootUrl.pathname || '/';
     const assetsDir = assetsPath.replace(/^\/+/, '');
-    const assetsFilePrefix = assetsDir && (assetsDir + '/');
+    const assetsFilePrefix = assetsDir && assetsDir + '/';
     const assetsOrigin = `${assetsRootUrl.protocol}//${assetsRootUrl.host}`;
     const gitCommitHash = executeSync('git rev-parse HEAD');
     const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
@@ -100,9 +111,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
             }),
             // Generate some stats for the bundles
-            getBundleAnalyzerPlugin(
-                analyze, path.resolve(stageDirPath, `report-frontend.html`),
-            ),
+            getBundleAnalyzerPlugin(analyze, path.resolve(stageDirPath, `report-frontend.html`)),
         );
     }
     // Define the entry for the app
@@ -258,23 +267,26 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 // Optimize image files and bundle them as files or data URIs
                 {
                     test: /\.(gif|png|jpe?g|svg)$/,
-                    use: [{
-                        loader: 'url-loader',
-                        options: {
-                            // Max bytes to be converted to inline data URI
-                            limit: 100,
-                            // If larger, then convert to a file instead
-                            name: `${assetsFilePrefix}images/[name].[hash].[ext]`,
-                        },
-                    }, {
-                        loader: 'image-webpack-loader',
-                        options: {
-                            disable: debug || devServer,
-                            optipng: {
-                                optimizationLevel: 7,
+                    use: [
+                        {
+                            loader: 'url-loader',
+                            options: {
+                                // Max bytes to be converted to inline data URI
+                                limit: 100,
+                                // If larger, then convert to a file instead
+                                name: `${assetsFilePrefix}images/[name].[hash].[ext]`,
                             },
                         },
-                    }],
+                        {
+                            loader: 'image-webpack-loader',
+                            options: {
+                                disable: debug || devServer,
+                                optipng: {
+                                    optimizationLevel: 7,
+                                },
+                            },
+                        },
+                    ],
                 },
                 // Include font files either as data URIs or separate files
                 {
@@ -301,10 +313,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
 
         resolveLoader: {
             // Look from this library's node modules!
-            modules: [
-                ownModulesDirPath,
-                modulesDirPath,
-            ],
+            modules: [ownModulesDirPath, modulesDirPath],
         },
 
         // Behavior for polyfilling node modules
@@ -327,9 +336,9 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
  * https://webpack.js.org/configuration/
  */
 export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.Configuration {
-    const {serverFile, databaseFile, siteFile, triggersFile} = config;
-    const {sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot} = config;
-    const {analyze, stageDir} = config;
+    const { serverFile, databaseFile, siteFile, triggersFile } = config;
+    const { sourceDir, buildDir, projectRootPath, devServer, debug, assetsRoot } = config;
+    const { analyze, stageDir } = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const buildDirPath = path.resolve(projectRootPath, buildDir);
@@ -370,9 +379,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     ];
     if (!devServer) {
         // Generate some stats for the bundles
-        plugins.push(getBundleAnalyzerPlugin(
-            analyze, path.resolve(stageDirPath, `report-backend.html`),
-        ));
+        plugins.push(getBundleAnalyzerPlugin(analyze, path.resolve(stageDirPath, `report-backend.html`)));
     }
     // Entry points to be bundled
     const entries: Record<string, string> = {
@@ -490,10 +497,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
 
         resolveLoader: {
             // Look from this library's node modules!
-            modules: [
-                ownModulesDirPath,
-                modulesDirPath,
-            ],
+            modules: [ownModulesDirPath, modulesDirPath],
         },
 
         // Enable sourcemaps for debugging webpack's output.

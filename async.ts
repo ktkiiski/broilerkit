@@ -21,7 +21,10 @@ export function timeout<T>(maxDuration: number, task: Promise<T>, message = 'Ope
     });
 }
 
-export async function *chunkify<T>(iterator: AsyncIterable<T> | Iterable<T>, bufferSize: number): AsyncIterableIterator<T[]> {
+export async function* chunkify<T>(
+    iterator: AsyncIterable<T> | Iterable<T>,
+    bufferSize: number,
+): AsyncIterableIterator<T[]> {
     let items: T[] = [];
     for await (const item of iterator) {
         items.push(item);
@@ -51,7 +54,10 @@ export async function toFlattenArray<T>(iterator: AsyncIterable<T[]>): Promise<T
     return items;
 }
 
-export async function *mapAsync<T, R>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => R): AsyncGenerator<R, void> {
+export async function* mapAsync<T, R>(
+    iterable: AsyncIterable<T>,
+    iteratee: (item: T, index: number) => R,
+): AsyncGenerator<R, void> {
     let index = 0;
     for await (const item of iterable) {
         yield iteratee(item, index);
@@ -59,7 +65,10 @@ export async function *mapAsync<T, R>(iterable: AsyncIterable<T>, iteratee: (ite
     }
 }
 
-export async function *filterAsync<T>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => boolean): AsyncIterableIterator<T> {
+export async function* filterAsync<T>(
+    iterable: AsyncIterable<T>,
+    iteratee: (item: T, index: number) => boolean,
+): AsyncIterableIterator<T> {
     let index = 0;
     for await (const item of iterable) {
         if (iteratee(item, index)) {
@@ -69,14 +78,14 @@ export async function *filterAsync<T>(iterable: AsyncIterable<T>, iteratee: (ite
     }
 }
 
-export async function *concatAsync<T>(...iterables: AsyncIterable<T>[]): AsyncGenerator<T, void, undefined> {
+export async function* concatAsync<T>(...iterables: AsyncIterable<T>[]): AsyncGenerator<T, void, undefined> {
     for (const iterator of iterables) {
-        yield *iterator;
+        yield* iterator;
     }
 }
 
 export function mergeAsync<T>(...iterables: AsyncIterable<T>[]): AsyncIterableIterator<T> {
-    return generate(({next, error, complete}) => {
+    return generate(({ next, error, complete }) => {
         const promises = iterables.map(async (iterable) => {
             for await (const item of iterable) {
                 next(item);
@@ -86,7 +95,11 @@ export function mergeAsync<T>(...iterables: AsyncIterable<T>[]): AsyncIterableIt
     });
 }
 
-export async function *mergeSortedAsync<T, K extends keyof T>(iterables: AsyncIterable<T>[], ordering: K, direction: 'asc' | 'desc'): AsyncIterableIterator<T> {
+export async function* mergeSortedAsync<T, K extends keyof T>(
+    iterables: AsyncIterable<T>[],
+    ordering: K,
+    direction: 'asc' | 'desc',
+): AsyncIterableIterator<T> {
     const iterators = iterables.map((iterable) => iterable[Symbol.asyncIterator]());
     const nextPromises: Promise<IteratorResult<T>>[] = iterators.map((iterator) => iterator.next());
     const len = iterables.length;
@@ -112,18 +125,25 @@ export async function *mergeSortedAsync<T, K extends keyof T>(iterables: AsyncIt
     }
 }
 
-export async function *flatMapAsync<T, R>(iterable: AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterable<R> | R[] | undefined): AsyncIterableIterator<R> {
+export async function* flatMapAsync<T, R>(
+    iterable: AsyncIterable<T>,
+    callback: (item: T, index: number) => IterableIterator<R> | AsyncIterable<R> | R[] | undefined,
+): AsyncIterableIterator<R> {
     let index = 0;
     for await (const sourceItem of iterable) {
         const targetItems = callback(sourceItem, index);
         if (targetItems) {
-            yield *targetItems;
+            yield* targetItems;
         }
         index += 1;
     }
 }
 
-export async function reduceAsync<T, R>(iterable: AsyncIterable<T>, callback: (accumulator: R, currentValue: T) => R, ...initialValues: R[]): Promise<R> {
+export async function reduceAsync<T, R>(
+    iterable: AsyncIterable<T>,
+    callback: (accumulator: R, currentValue: T) => R,
+    ...initialValues: R[]
+): Promise<R> {
     let h = false;
     let value!: R | T;
 
@@ -145,7 +165,7 @@ export async function reduceAsync<T, R>(iterable: AsyncIterable<T>, callback: (a
     return value as R;
 }
 
-export async function *toAsync<T>(values: T[] | Iterable<T>): AsyncGenerator<T, void> {
+export async function* toAsync<T>(values: T[] | Iterable<T>): AsyncGenerator<T, void> {
     for (const value of values) {
         yield value;
     }
@@ -157,8 +177,10 @@ export interface ExecutorParams<T> {
     error(value: unknown): void;
 }
 
-export async function *generate<T>(executor: (params: ExecutorParams<T>) => void | (() => void)): AsyncIterableIterator<T> {
-    type Token = {done: true} | {done: false, value: T};
+export async function* generate<T>(
+    executor: (params: ExecutorParams<T>) => void | (() => void),
+): AsyncIterableIterator<T> {
+    type Token = { done: true } | { done: false; value: T };
     const pendingTokens: Token[] = [];
     let nextResolve!: (value: Token) => void;
     let nextReject!: (error: unknown) => void;
@@ -175,16 +197,22 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
     }
     iterate();
     const terminate = executor({
-        next: (value: T) => { nextResolve({done: false, value}); },
-        complete: () => { nextResolve({done: true}); },
-        error: (error) => { nextReject(error); },
+        next: (value: T) => {
+            nextResolve({ done: false, value });
+        },
+        complete: () => {
+            nextResolve({ done: true });
+        },
+        error: (error) => {
+            nextReject(error);
+        },
     });
     try {
         while (true) {
             await nextPromise;
             let nextToken: Token | undefined;
             // eslint-disable-next-line no-cond-assign
-            while (nextToken = pendingTokens.shift()) {
+            while ((nextToken = pendingTokens.shift())) {
                 if (nextToken.done) {
                     return;
                 } else {
@@ -199,7 +227,7 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
     }
 }
 
-type WorkerResult<T> = { done: true } | { done: false, value: T };
+type WorkerResult<T> = { done: true } | { done: false; value: T };
 
 /**
  * Maps and flattens the values from the given iterable running them
@@ -209,7 +237,11 @@ type WorkerResult<T> = { done: true } | { done: false, value: T };
  * @param iterable Source iterables to process
  * @param callback Processor for each value
  */
-export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => IterableIterator<R> | AsyncIterable<R> | R[] | undefined): AsyncIterableIterator<R> {
+export async function* flatMapAsyncParallel<T, R>(
+    maxConcurrency: number,
+    iterable: Iterable<T> | AsyncIterable<T>,
+    callback: (item: T, index: number) => IterableIterator<R> | AsyncIterable<R> | R[] | undefined,
+): AsyncIterableIterator<R> {
     const iterator = iterate(iterable);
     let startedCount = 0;
     let runningCount = 0;
@@ -250,14 +282,16 @@ export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterab
     while (true) {
         // Promise that resolves when the next pending task resolves,
         // or if any of the running tasks fail.
-        const nextResult = await Promise.race(pendingTasks.map(async (task, taskIndex) => {
-            if (taskIndex > 0) {
-                // Not next in line, but still catch errors
-                return await errorsOnly(task);
-            }
-            // Otherwise await normally
-            return task;
-        }));
+        const nextResult = await Promise.race(
+            pendingTasks.map(async (task, taskIndex) => {
+                if (taskIndex > 0) {
+                    // Not next in line, but still catch errors
+                    return await errorsOnly(task);
+                }
+                // Otherwise await normally
+                return task;
+            }),
+        );
         if (nextResult.done) {
             // Everything completed
             return;
@@ -271,8 +305,12 @@ export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterab
     }
 }
 
-export function mapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => Promise<R>): AsyncIterableIterator<R> {
-    return flatMapAsyncParallel(maxConcurrency, iterable, async function*(item, index) {
+export function mapAsyncParallel<T, R>(
+    maxConcurrency: number,
+    iterable: Iterable<T> | AsyncIterable<T>,
+    callback: (item: T, index: number) => Promise<R>,
+): AsyncIterableIterator<R> {
+    return flatMapAsyncParallel(maxConcurrency, iterable, async function* (item, index) {
         yield await callback(item, index);
     });
 }

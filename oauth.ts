@@ -1,7 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
-import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse, HttpStatus, NotImplemented, parseCookies } from './http';
+import {
+    ApiResponse,
+    BadRequest,
+    HttpMethod,
+    HttpRequest,
+    HttpResponse,
+    HttpStatus,
+    NotImplemented,
+    parseCookies,
+} from './http';
 import { request } from './request';
 import { Controller, ServerContext } from './server';
 import { decryptSession, encryptSession, UserSession } from './sessions';
@@ -94,7 +103,8 @@ export class OAuth2SignedInController implements Controller {
         let statePayload: any;
         try {
             statePayload = await decryptToken(state, sessionEncryptionKey.keystore);
-        } catch (error) {            console.error(`Invalid "state" returned from the authentication provider:`, error);
+        } catch (error) {
+            console.error(`Invalid "state" returned from the authentication provider:`, error);
             throw new BadRequest(`Invalid "state" URL parameter`);
         }
         if (statePayload.aud !== callbackUri) {
@@ -116,7 +126,9 @@ export class OAuth2SignedInController implements Controller {
             return redirect(retryUrl.toString(), [setCookieHeader]);
         }
         if (error) {
-            const linkErrorMatch =  /^already found an entry for username (Google|Facebook)_\w+/i.exec(error_description || '');
+            const linkErrorMatch = /^already found an entry for username (Google|Facebook)_\w+/i.exec(
+                error_description || '',
+            );
             if (linkErrorMatch) {
                 // The failure is due to a bug/fuckup in AWS Cognito,
                 // when linking a signup user to an existing user. See:
@@ -160,7 +172,8 @@ export class OAuth2SignedInController implements Controller {
                     redirect_uri: callbackUri,
                     code,
                 });
-            } catch (error) {                console.error('Failed to retrieve authentication tokens:', error);
+            } catch (error) {
+                console.error('Failed to retrieve authentication tokens:', error);
                 throw new BadRequest('Authentication failed due to invalid "code" URL parameter');
             }
         }
@@ -236,7 +249,8 @@ export class OAuth2SignedOutController implements Controller {
                 if (statePayload.aud === requiredAud && statePayload.redirect_uri) {
                     redirectUri = statePayload.redirect_uri;
                 }
-            } catch (error) {                console.error(`Invalid state cookie when signing out`, error);
+            } catch (error) {
+                console.error(`Invalid state cookie when signing out`, error);
             }
         }
         const signOutCookieHeader = getSetCookieHeader('signout', '', null, region, '/oauth2');
@@ -246,7 +260,9 @@ export class OAuth2SignedOutController implements Controller {
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function authenticationMiddleware<P extends any[], R extends HttpResponse | ApiResponse>(handler: (request: HttpRequest, context: ServerContext, ...params: P) => Promise<R>) {
+export function authenticationMiddleware<P extends any[], R extends HttpResponse | ApiResponse>(
+    handler: (request: HttpRequest, context: ServerContext, ...params: P) => Promise<R>,
+) {
     async function handleAuthentication(req: HttpRequest, context: ServerContext, ...params: P): Promise<R> {
         const { sessionEncryptionKey } = context;
         const { region, headers } = req;
@@ -294,7 +310,8 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
                     });
                     tokens.refresh_token = session.refreshToken;
                     session = parseUserSession(tokens, session.session, sessionDuration);
-                } catch (error) {                    console.error('Failed to renew authentication tokens:', error);
+                } catch (error) {
+                    console.error('Failed to renew authentication tokens:', error);
                     // Could not renew the information, so assume not authenticated!
                     session = null;
                 }
@@ -332,14 +349,19 @@ interface TokenResponse {
     expires_in: number;
 }
 
-async function requestTokens(tokenUrl: string, clientId: string, clientSecret: string, query: {[key: string]: string}): Promise<TokenResponse> {
+async function requestTokens(
+    tokenUrl: string,
+    clientId: string,
+    clientSecret: string,
+    query: { [key: string]: string },
+): Promise<TokenResponse> {
     // https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html
     const credentials = base64url.encode(`${clientId}:${clientSecret}`);
     const tokenResponse = await request({
         method: 'POST',
         url: tokenUrl,
         headers: {
-            'Authorization': `Basic ${credentials}`,
+            Authorization: `Basic ${credentials}`,
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: buildQuery(query),
@@ -354,7 +376,7 @@ function parseUserSession(tokens: TokenResponse, sessionId: string, expiresIn: n
     }
     const now = new Date();
     const expiresAt = new Date(+now + expiresIn * 1000);
-    const refreshAfter = new Date(+now + tokens.expires_in * 1000 / 2);
+    const refreshAfter = new Date(+now + (tokens.expires_in * 1000) / 2);
     const userId: string = idTokenPayload.sub;
     return {
         id: userId,
@@ -372,9 +394,10 @@ function parseUserSession(tokens: TokenResponse, sessionId: string, expiresIn: n
 }
 
 function getSetCookieHeader(cookie: string, value: string, maxAge: number | null, region: string, path = '/'): string {
-    let setCookieHeader = maxAge == null
-        ? `${cookie}=; Path=${path}; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
-        : `${cookie}=${value}; Path=${path}; HttpOnly; Max-Age=${maxAge}`;
+    let setCookieHeader =
+        maxAge == null
+            ? `${cookie}=; Path=${path}; HttpOnly; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
+            : `${cookie}=${value}; Path=${path}; HttpOnly; Max-Age=${maxAge}`;
     if (region !== 'local') {
         setCookieHeader = `${setCookieHeader}; Secure`;
     }
@@ -386,7 +409,7 @@ function redirect(redirectUri: string, setCookies?: string[]): HttpResponse {
         statusCode: HttpStatus.Found,
         headers: {
             Location: redirectUri,
-            ...setCookies ? { 'Set-Cookie': setCookies } : null,
+            ...(setCookies ? { 'Set-Cookie': setCookies } : null),
         },
         body: '',
     };

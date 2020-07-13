@@ -15,7 +15,13 @@ export class Route<S, K extends Key<S> | never> {
     }
 }
 
-export function route<S = Record<never, never>, K extends Key<S> = Key<S>>(pattern: UrlPattern<K>, serializer?: Serializer<S>): Route<S, K>;
-export function route<S = Record<never, never>, K extends Key<S> | never = Key<S>>(pattern: UrlPattern<K>, serializer: Serializer<S> = new FieldSerializer({} as Fields<S>)): Route<S, K> {
+export function route<S = Record<never, never>, K extends Key<S> = Key<S>>(
+    pattern: UrlPattern<K>,
+    serializer?: Serializer<S>,
+): Route<S, K>;
+export function route<S = Record<never, never>, K extends Key<S> | never = Key<S>>(
+    pattern: UrlPattern<K>,
+    serializer: Serializer<S> = new FieldSerializer({} as Fields<S>),
+): Route<S, K> {
     return new Route<S, K>(serializer, pattern);
 }

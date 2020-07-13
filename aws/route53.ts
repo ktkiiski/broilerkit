@@ -7,14 +7,13 @@ export type HostedZone = Route53.GetHostedZoneResponse;
  * Wrapper class for Amazon S3 operations with a reactive interface.
  */
 export class AmazonRoute53 {
-
     private route53 = new Route53({
         region: this.region,
         apiVersion: '2013-04-01',
         maxRetries: 20,
     });
 
-    constructor(private region: string) { }
+    constructor(private region: string) {}
 
     /**
      * Creates a hosted zone for the given domain, e.g `example.com`
@@ -27,15 +26,16 @@ export class AmazonRoute53 {
         // Ensure that the hosted zone name ends with a dot
         const Name = domain.replace(/\.?$/, '.');
         const CallerReference = new Date().toISOString();
-        const creationResult = await this.route53.createHostedZone({Name, CallerReference}).promise();
+        const creationResult = await this.route53.createHostedZone({ Name, CallerReference }).promise();
         let change = creationResult.ChangeInfo;
         while (change.Status !== 'INSYNC') {
             // Wait for a while
-            await wait(1000);            const changeResult = await this.route53.getChange({Id: change.Id}).promise();
+            await wait(1000);
+            const changeResult = await this.route53.getChange({ Id: change.Id }).promise();
             change = changeResult.ChangeInfo;
         }
         // Return all the information about the hosted zone
-        return await this.route53.getHostedZone({Id: creationResult.HostedZone.Id}).promise();
+        return await this.route53.getHostedZone({ Id: creationResult.HostedZone.Id }).promise();
     }
 
     /**
@@ -46,12 +46,12 @@ export class AmazonRoute53 {
      */
     public async getHostedZone(domain: string): Promise<HostedZone> {
         const DNSName = domain.replace(/\.?$/, '.');
-        const {HostedZones} = await this.route53.listHostedZonesByName({DNSName, MaxItems: '1'}).promise();
+        const { HostedZones } = await this.route53.listHostedZonesByName({ DNSName, MaxItems: '1' }).promise();
         const zone = HostedZones[0];
         if (!zone || zone.Name !== DNSName) {
             throw new Error(`Hosted zone does not exist`);
         }
         // Return all the information about the hosted zone
-        return await this.route53.getHostedZone({Id: zone.Id}).promise();
+        return await this.route53.getHostedZone({ Id: zone.Id }).promise();
     }
 }

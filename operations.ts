@@ -55,9 +55,15 @@ abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, 
     ) {}
 }
 
-export class ListOperation<S, U extends Key<S>, O extends Key<S>, F extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, A, B>
-implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'> {
+export class ListOperation<
+    S,
+    U extends Key<S>,
+    O extends Key<S>,
+    F extends Key<S>,
+    A extends AuthenticationType,
+    B extends U | undefined
+> extends BaseOperation<S, U, A, B>
+    implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'> {
     public readonly type = 'list';
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly urlSerializer = new CursorSerializer(
@@ -89,8 +95,8 @@ implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A],
 }
 
 export class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, A, B>
-implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
+    extends BaseOperation<S, U, A, B>
+    implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
     public readonly type = 'retrieve';
     public readonly methods: HttpMethod[] = ['GET'];
     public readonly route = route(
@@ -106,9 +112,18 @@ implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
     }
 }
 
-export class CreateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, A, B>
-implements Bindable<CreateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'create'> {
+export class CreateOperation<
+    S,
+    U extends Key<S>,
+    R extends Key<S>,
+    O extends Key<S>,
+    D extends Key<S>,
+    A extends AuthenticationType,
+    B extends U | undefined
+> extends BaseOperation<S, U, A, B>
+    implements
+        Bindable<CreateApi<S, U, R, O, D, B>>,
+        Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'create'> {
     public readonly type = 'create';
     public readonly methods: HttpMethod[] = ['POST'];
     public readonly route = this.endpoint.asRoute();
@@ -129,22 +144,35 @@ implements Bindable<CreateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R 
     public getPayloadSerializer() {
         return this.payloadSerializer;
     }
-    public asImplementable(): Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'create'> {
+    public asImplementable(): Operation<
+        OptionalOutput<S, R | U, O, D>,
+        SuccesfulResponse<S>,
+        AuthRequestMapping[A],
+        'create'
+    > {
         return this;
     }
 }
 
-export class UpdateOperation<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, A, B>
-implements Bindable<UpdateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'update'> {
+export class UpdateOperation<
+    S,
+    U extends Key<S>,
+    R extends Key<S>,
+    O extends Key<S>,
+    D extends Key<S>,
+    A extends AuthenticationType,
+    B extends U | undefined
+> extends BaseOperation<S, U, A, B>
+    implements
+        Bindable<UpdateApi<S, U, R, O, D, B>>,
+        Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'update'> {
     public readonly type = 'update';
     public readonly methods: HttpMethod[] = ['PUT', 'PATCH'];
     public readonly route = this.endpoint.asRoute();
     public readonly replaceSerializer = this.endpoint.resource.optional(this.options);
     public readonly updateSerializer = this.endpoint.resource
         .pick([...this.options.required, ...this.options.optional, ...keys(this.options.defaults)])
-        .fullPartial()
-    ;
+        .fullPartial();
     public readonly responseSerializer = this.endpoint.resource;
     constructor(
         endpoint: Endpoint<S, any, any>,
@@ -160,14 +188,19 @@ implements Bindable<UpdateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R 
     public getPayloadSerializer(method: HttpMethod): Serializer {
         return method === 'PATCH' ? this.updateSerializer : this.replaceSerializer;
     }
-    public asImplementable(): Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'update'> {
+    public asImplementable(): Operation<
+        OptionalOutput<S, R | U, O, D>,
+        SuccesfulResponse<S>,
+        AuthRequestMapping[A],
+        'update'
+    > {
         return this;
     }
 }
 
 export class DestroyOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, A, B>
-implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'> {
+    extends BaseOperation<S, U, A, B>
+    implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'> {
     public readonly type = 'destroy';
     public readonly methods: HttpMethod[] = ['DELETE'];
     public readonly route = this.endpoint.asRoute();
@@ -184,22 +217,35 @@ implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthReques
 }
 
 export interface UploadOptions<S, F extends string, R extends keyof S, O extends keyof S, D extends keyof S>
-extends OptionalOptions<S, R, O, D> {
+    extends OptionalOptions<S, R, O, D> {
     files: F[];
 }
 
-export class UploadOperation<S, F extends string, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType, B extends U | undefined>
-extends BaseOperation<S, U, A, B>
-implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>, SuccesfulResponse<S>, AuthRequestMapping[A], 'upload'> {
+export class UploadOperation<
+    S,
+    F extends string,
+    U extends Key<S>,
+    R extends Key<S>,
+    O extends Key<S>,
+    D extends Key<S>,
+    A extends AuthenticationType,
+    B extends U | undefined
+> extends BaseOperation<S, U, A, B>
+    implements
+        Bindable<UploadApi<S, F, U, R, O, D, B>>,
+        Operation<
+            OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>,
+            SuccesfulResponse<S>,
+            AuthRequestMapping[A],
+            'upload'
+        > {
     public readonly type = 'upload';
     public readonly methods: HttpMethod[] = ['POST'];
     public readonly route = this.endpoint.asRoute();
     public readonly responseSerializer = this.endpoint.resource;
     public readonly files: F[] = this.options.files;
     public readonly requestDataSerializer = this.endpoint.resource.optional(this.options);
-    private readonly payloadSerializer = this.requestDataSerializer.extend(
-        build(this.files, (key) => [key, data()]),
-    );
+    private readonly payloadSerializer = this.requestDataSerializer.extend(build(this.files, (key) => [key, data()]));
     constructor(
         readonly endpoint: Endpoint<S, any, U>,
         private readonly options: UploadOptions<S, F, R, O, D>,
@@ -215,56 +261,101 @@ implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S,
     public getPayloadSerializer() {
         return this.payloadSerializer;
     }
-    public asImplementable(): Operation<OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>, SuccesfulResponse<S>, AuthRequestMapping[A], 'upload'> {
+    public asImplementable(): Operation<
+        OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>,
+        SuccesfulResponse<S>,
+        AuthRequestMapping[A],
+        'upload'
+    > {
         return this;
     }
 }
 
-export function listable<S, U extends Key<S>, O extends Key<S>, F extends Key<S> = never, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+export function listable<
+    S,
+    U extends Key<S>,
+    O extends Key<S>,
+    F extends Key<S> = never,
+    A extends AuthenticationType = 'none',
+    B extends U | undefined = undefined
+>(
     endpoint: Endpoint<S, any, U>,
-    options: CommonEndpointOptions<A, B> & {orderingKeys: O[], filteringKeys?: F[]},
+    options: CommonEndpointOptions<A, B> & { orderingKeys: O[]; filteringKeys?: F[] },
 ): ListOperation<S, U, O, F, A, B> {
     return new ListOperation(
-        endpoint, options.orderingKeys, options.filteringKeys || [], options.auth || 'none' as A, options.ownership as B,
+        endpoint,
+        options.orderingKeys,
+        options.filteringKeys || [],
+        options.auth || ('none' as A),
+        options.ownership as B,
     );
 }
 
-export function creatable<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+export function creatable<
+    S,
+    U extends Key<S>,
+    R extends Key<S>,
+    O extends Key<S>,
+    D extends Key<S>,
+    A extends AuthenticationType = 'none',
+    B extends U | undefined = undefined
+>(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
 ): CreateOperation<S, U, R, O, D, A, B> {
-    const {auth = 'none' as A, ownership, ...opts} = options;
+    const { auth = 'none' as A, ownership, ...opts } = options;
     return new CreateOperation(endpoint, opts, auth, ownership as B);
 }
 
-export function retrievable<S, U extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
-    endpoint: Endpoint<S, any, U>,
-    options?: CommonEndpointOptions<A, B>,
-): RetrieveOperation<S, U, A, B> {
-    const {auth = 'none' as A} = options || {};
+export function retrievable<
+    S,
+    U extends Key<S>,
+    A extends AuthenticationType = 'none',
+    B extends U | undefined = undefined
+>(endpoint: Endpoint<S, any, U>, options?: CommonEndpointOptions<A, B>): RetrieveOperation<S, U, A, B> {
+    const { auth = 'none' as A } = options || {};
     return new RetrieveOperation(endpoint, auth, (options && options.ownership) as B);
 }
 
-export function updateable<S, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+export function updateable<
+    S,
+    U extends Key<S>,
+    R extends Key<S>,
+    O extends Key<S>,
+    D extends Key<S>,
+    A extends AuthenticationType = 'none',
+    B extends U | undefined = undefined
+>(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
 ): UpdateOperation<S, U, R, O, D, A, B> {
-    const {auth = 'none' as A, ownership, ...opts} = options;
+    const { auth = 'none' as A, ownership, ...opts } = options;
     return new UpdateOperation(endpoint, opts, auth, ownership as B);
 }
 
-export function destroyable<S, U extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
-    endpoint: Endpoint<S, any, U>,
-    options?: CommonEndpointOptions<A, B>,
-): DestroyOperation<S, U, A, B> {
-    const {auth = 'none' as A} = options || {};
+export function destroyable<
+    S,
+    U extends Key<S>,
+    A extends AuthenticationType = 'none',
+    B extends U | undefined = undefined
+>(endpoint: Endpoint<S, any, U>, options?: CommonEndpointOptions<A, B>): DestroyOperation<S, U, A, B> {
+    const { auth = 'none' as A } = options || {};
     return new DestroyOperation(endpoint, auth, (options && options.ownership) as B);
 }
 
-export function uploadable<S, F extends string, U extends Key<S>, R extends Key<S>, O extends Key<S>, D extends Key<S>, A extends AuthenticationType = 'none', B extends U | undefined = undefined>(
+export function uploadable<
+    S,
+    F extends string,
+    U extends Key<S>,
+    R extends Key<S>,
+    O extends Key<S>,
+    D extends Key<S>,
+    A extends AuthenticationType = 'none',
+    B extends U | undefined = undefined
+>(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & UploadOptions<S, F, R, O, D>,
 ): UploadOperation<S, F, U, R, O, D, A, B> {
-    const {auth = 'none' as A, ownership, ...opts} = options;
+    const { auth = 'none' as A, ownership, ...opts } = options;
     return new UploadOperation(endpoint, opts, auth, ownership as B);
 }

@@ -18,21 +18,20 @@ export type StackParameterValue = string | null | undefined;
  * Wrapper class for Amazon S3 operations with a reactive interface.
  */
 export class AmazonCloudFormation {
-
     private cloudFormation = new CloudFormation({
         region: this.region,
         apiVersion: '2010-05-15',
         maxRetries: 20,
     });
 
-    constructor(private region: string, private stackName: string) { }
+    constructor(private region: string, private stackName: string) {}
 
     /**
      * Describes the CloudFormation stack, or fails if does not exist.
      * @returns Promise for the stack description
      */
     public async describeStack(): Promise<CloudFormation.Stack> {
-        const {Stacks} = await this.cloudFormation.describeStacks({ StackName: this.stackName }).promise();
+        const { Stacks } = await this.cloudFormation.describeStacks({ StackName: this.stackName }).promise();
         if (Stacks && Stacks.length) {
             return Stacks[0];
         }
@@ -62,7 +61,7 @@ export class AmazonCloudFormation {
      */
     public async describeStackWithResources(): Promise<IStackWithResources> {
         return {
-            ...await this.describeStack(),
+            ...(await this.describeStack()),
             StackResources: await this.describeStackResources(),
         };
     }
@@ -75,7 +74,7 @@ export class AmazonCloudFormation {
      */
     public async getStackOutput(): Promise<IStackOutput> {
         const stack = await this.describeStack();
-        return build(stack.Outputs || [], ({OutputKey, OutputValue}) => {
+        return build(stack.Outputs || [], ({ OutputKey, OutputValue }) => {
             if (OutputKey && OutputValue) {
                 return [OutputKey, OutputValue];
             }
@@ -85,9 +84,9 @@ export class AmazonCloudFormation {
     /**
      * Retrieves the original parameters of the CloudFormation stack.
      */
-    public async getStackParameters(): Promise<{[key: string]: string | null}> {
+    public async getStackParameters(): Promise<{ [key: string]: string | null }> {
         const stack = await this.describeStack();
-        return build(stack.Parameters || [], ({ParameterKey, ParameterValue, UsePreviousValue}) => {
+        return build(stack.Parameters || [], ({ ParameterKey, ParameterValue, UsePreviousValue }) => {
             if (ParameterKey) {
                 if (UsePreviousValue) {
                     return [ParameterKey, null];
@@ -104,19 +103,20 @@ export class AmazonCloudFormation {
      * @param template CloudFormation stack template string as JSON/YAML
      * @param parameters Template parameters as a key-value object mapping
      */
-    public async *createStack(template: string, parameters: {[name: string]: string}, pollInterval = 2000): AsyncIterableIterator<IStackWithResources> {
+    public async *createStack(
+        template: string,
+        parameters: { [name: string]: string },
+        pollInterval = 2000,
+    ): AsyncIterableIterator<IStackWithResources> {
         const request = {
             StackName: this.stackName,
             TemplateBody: template,
             OnFailure: 'ROLLBACK',
             Parameters: convertStackParameters(parameters),
-            Capabilities: [
-                'CAPABILITY_IAM',
-                'CAPABILITY_NAMED_IAM',
-            ],
+            Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
         };
         await this.cloudFormation.createStack(request).promise();
-        yield *this.waitForDeployment(pollInterval);
+        yield* this.waitForDeployment(pollInterval);
     }
 
     /**
@@ -125,15 +125,16 @@ export class AmazonCloudFormation {
      * @param template CloudFormation stack template string as JSON/YAML
      * @param parameters Template parameters as a key-value object mapping
      */
-    public async *updateStack(template: string, parameters: {[name: string]: string}, pollInterval = 2000): AsyncIterableIterator<IStackWithResources> {
+    public async *updateStack(
+        template: string,
+        parameters: { [name: string]: string },
+        pollInterval = 2000,
+    ): AsyncIterableIterator<IStackWithResources> {
         const request = {
             StackName: this.stackName,
             TemplateBody: template,
             Parameters: convertStackParameters(parameters),
-            Capabilities: [
-                'CAPABILITY_IAM',
-                'CAPABILITY_NAMED_IAM',
-            ],
+            Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
         };
         try {
             await this.cloudFormation.updateStack(request).promise();
@@ -144,7 +145,7 @@ export class AmazonCloudFormation {
             // No changes!
             return;
         }
-        yield *this.waitForDeployment(pollInterval);
+        yield* this.waitForDeployment(pollInterval);
     }
 
     /**
@@ -154,7 +155,7 @@ export class AmazonCloudFormation {
     // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public async *deleteStack(pollInterval = 2000) {
         await this.cloudFormation.deleteStack({ StackName: this.stackName }).promise();
-        yield *this.waitForDeletion(pollInterval);
+        yield* this.waitForDeletion(pollInterval);
     }
 
     /**
@@ -164,7 +165,11 @@ export class AmazonCloudFormation {
      * @param template CloudFormation stack template string as JSON/YAML
      * @param parameters Template parameters as a key-value object mapping
      */
-    public async createChangeSet(templateUrl: string, parameters: {[name: string]: StackParameterValue}, pollInterval = 2000): Promise<CloudFormation.DescribeChangeSetOutput> {
+    public async createChangeSet(
+        templateUrl: string,
+        parameters: { [name: string]: StackParameterValue },
+        pollInterval = 2000,
+    ): Promise<CloudFormation.DescribeChangeSetOutput> {
         const date = new Date();
         const StackName = this.stackName;
         const ChangeSetName = `${StackName}${date.valueOf()}`;
@@ -173,13 +178,10 @@ export class AmazonCloudFormation {
             ChangeSetType: 'UPDATE',
             StackName,
             TemplateURL: templateUrl,
-            Capabilities: [
-                'CAPABILITY_IAM',
-                'CAPABILITY_NAMED_IAM',
-            ],
+            Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
             Parameters: convertStackParameters(parameters),
         };
-        const describeChangeSetInput = {ChangeSetName, StackName};
+        const describeChangeSetInput = { ChangeSetName, StackName };
         // Start creating the change set
         await this.cloudFormation.createChangeSet(request).promise();
         await this.cloudFormation.describeChangeSet(describeChangeSetInput).promise();
@@ -193,19 +195,24 @@ export class AmazonCloudFormation {
      * just before the completion will describe the completely updated stack.
      * @param ChangeSetName Name of the change set.
      */
-    public async *executeChangeSet(ChangeSetName: string, pollInterval = 2000): AsyncIterableIterator<IStackWithResources> {
-        await this.cloudFormation.executeChangeSet({ChangeSetName, StackName: this.stackName}).promise();
-        yield *this.waitForDeployment(pollInterval);
+    public async *executeChangeSet(
+        ChangeSetName: string,
+        pollInterval = 2000,
+    ): AsyncIterableIterator<IStackWithResources> {
+        await this.cloudFormation.executeChangeSet({ ChangeSetName, StackName: this.stackName }).promise();
+        yield* this.waitForDeployment(pollInterval);
     }
 
     /**
      * Deletes a stack change set of the given name.
      * @param ChangeSetName Name of the change set.
      */
-    public async deleteChangeSet(ChangeSetName: string): Promise<CloudFormation.DeleteChangeSetInput & CloudFormation.DeleteChangeSetOutput> {
-        const request = {ChangeSetName, StackName: this.stackName};
-        const {$response, ...response} = await this.cloudFormation.deleteChangeSet(request).promise();
-        return {...request, ...response};
+    public async deleteChangeSet(
+        ChangeSetName: string,
+    ): Promise<CloudFormation.DeleteChangeSetInput & CloudFormation.DeleteChangeSetOutput> {
+        const request = { ChangeSetName, StackName: this.stackName };
+        const { $response, ...response } = await this.cloudFormation.deleteChangeSet(request).promise();
+        return { ...request, ...response };
     }
 
     /**
@@ -258,7 +265,10 @@ export class AmazonCloudFormation {
      * Waits until a change set is completely created, emitting the final state.
      * Fails if the creation fails.
      */
-    private async waitForChangeSetCreateComplete(request: CloudFormation.DescribeChangeSetInput, pollInterval: number): Promise<CloudFormation.DescribeChangeSetOutput> {
+    private async waitForChangeSetCreateComplete(
+        request: CloudFormation.DescribeChangeSetInput,
+        pollInterval: number,
+    ): Promise<CloudFormation.DescribeChangeSetOutput> {
         for (;;) {
             const changeSet = await this.cloudFormation.describeChangeSet(request).promise();
             const changeSetReq = this.cloudFormation.describeChangeSet(request);
@@ -269,12 +279,15 @@ export class AmazonCloudFormation {
                     Changes.push(...changes);
                 }
             }
-            const fullChangeSet = {...changeSet, Changes};
+            const fullChangeSet = { ...changeSet, Changes };
             const { Status, StatusReason } = fullChangeSet;
-            if (Status && Status.endsWith('_COMPLETE') || Status === 'FAILED') {
+            if ((Status && Status.endsWith('_COMPLETE')) || Status === 'FAILED') {
                 // Check if the change set creation has actually failed
                 // NOTE: If the change set would not result in changes, then this is NOT considered a failure
-                if (Status === 'FAILED' && (!StatusReason || StatusReason.indexOf(`submitted information didn't contain changes`) < 0)) {
+                if (
+                    Status === 'FAILED' &&
+                    (!StatusReason || StatusReason.indexOf(`submitted information didn't contain changes`) < 0)
+                ) {
                     throw new Error(`Failed to create a change set: ${StatusReason}`);
                 }
                 return changeSet;
@@ -291,12 +304,12 @@ export class AmazonCloudFormation {
  * @returns Array of parameter objects.
  */
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function convertStackParameters(parameters: {[key: string]: StackParameterValue}) {
+export function convertStackParameters(parameters: { [key: string]: StackParameterValue }) {
     return mapObject(parameters, (ParameterValue, ParameterKey) => {
         if (ParameterValue === null) {
-            return {ParameterKey, UsePreviousValue: true};
+            return { ParameterKey, UsePreviousValue: true };
         } else {
-            return {ParameterKey, ParameterValue};
+            return { ParameterKey, ParameterValue };
         }
-    }).filter(({UsePreviousValue, ParameterValue}) => UsePreviousValue || ParameterValue !== undefined);
+    }).filter(({ UsePreviousValue, ParameterValue }) => UsePreviousValue || ParameterValue !== undefined);
 }

@@ -8,14 +8,14 @@ import { forEachKey } from './objects';
 
 interface Request extends https.RequestOptions {
     url: string;
-    query?: {[param: string]: string};
+    query?: { [param: string]: string };
     method: HttpMethod;
     body?: string;
 }
 
 interface JsonRequest extends https.RequestOptions {
     url: string;
-    query?: {[param: string]: string};
+    query?: { [param: string]: string };
     method: HttpMethod;
     data?: any;
 }
@@ -30,7 +30,7 @@ interface JsonResponse extends Response {
     data: any;
 }
 
-export async function request({url, query, body: requestBody, ...options}: Request): Promise<Response> {
+export async function request({ url, query, body: requestBody, ...options }: Request): Promise<Response> {
     const urlObj = new URL(url);
     if (query) {
         forEachKey(query, (key, value) => {
@@ -57,19 +57,19 @@ export async function request({url, query, body: requestBody, ...options}: Reque
     });
     const chunks = await readStream(resp);
     const body = chunks.join('');
-    const {statusCode, headers: rawHeaders} = resp;
+    const { statusCode, headers: rawHeaders } = resp;
     if (statusCode == null) {
         throw new Error(`Responded with invalid status code`);
     }
     const headers = normalizeHeaders(rawHeaders);
     if (statusCode >= 200 && statusCode < 300) {
-        return {statusCode, headers, body};
+        return { statusCode, headers, body };
     } else {
-        throw {statusCode, headers, body};
+        throw { statusCode, headers, body };
     }
 }
 
-export async function requestJson({data, ...options}: JsonRequest): Promise<JsonResponse> {
+export async function requestJson({ data, ...options }: JsonRequest): Promise<JsonResponse> {
     const response = await request({
         ...options,
         body: data == null ? undefined : JSON.stringify(data),

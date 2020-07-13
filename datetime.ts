@@ -32,9 +32,5 @@ export function deserializeDate(value: unknown): Date {
         throw new ValidationError(`Invalid date format`);
     }
     const [, yearStr, monthStr, dateStr] = match;
-    return new Date(
-        parseInt(yearStr, 10),
-        parseInt(monthStr, 10) - 1,
-        parseInt(dateStr, 10),
-    );
+    return new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, parseInt(dateStr, 10));
 }

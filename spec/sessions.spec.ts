@@ -57,19 +57,14 @@ describe('descryptSession()', () => {
         assert.deepEqual(decrypted, exampleSession);
     });
     it('fails if decrypting an unknown token', async () => {
-        await assert.rejects(
-            decryptSession('foobar', keyStore),
-        );
+        await assert.rejects(decryptSession('foobar', keyStore));
     });
     it('fails if decrypted with unknown secret key', async () => {
         const anotherSecretKey = await JWK.createKey('oct', 256, { alg: 'A256GCM' });
         const token = await encryptSession(exampleSession, anotherSecretKey);
-        await assert.rejects(
-            decryptSession(token, keyStore),
-            {
-                name: 'Error',
-                message: 'no key found',
-            },
-        );
+        await assert.rejects(decryptSession(token, keyStore), {
+            name: 'Error',
+            message: 'no key found',
+        });
     });
 });

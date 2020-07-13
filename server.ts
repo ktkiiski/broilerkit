@@ -8,7 +8,17 @@ import { Pool } from 'pg';
 import { list, retrieve } from './db';
 import { getEffectHeaders, ResourceEffect } from './effects';
 import { executeHandler, Handler, HandlerContext, HandlerServerContext } from './handlers';
-import { HttpMethod, HttpRequest, HttpStatus, isResponse, MethodNotAllowed, NoContent, NotFound, NotImplemented, SuccesfulResponse } from './http';
+import {
+    HttpMethod,
+    HttpRequest,
+    HttpStatus,
+    isResponse,
+    MethodNotAllowed,
+    NoContent,
+    NotFound,
+    NotImplemented,
+    SuccesfulResponse,
+} from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
 import { AuthenticationType, Operation, OperationType } from './operations';
 import { Page } from './pagination';
@@ -21,17 +31,18 @@ import { Url, UrlPattern } from './url';
 
 export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;
 
-type Implementables<I, O, R, T extends Record<string, OperationType>> = (
-    {[P in keyof I]: Operation<I[P], any, any, any>} &
-    {[P in keyof O]: Operation<any, O[P], any, any>} &
-    {[P in keyof R]: Operation<any, any, R[P], any>} &
-    {[P in keyof T]: Operation<any, any, any, T[P]>}
-);
+type Implementables<I, O, R, T extends Record<string, OperationType>> = {
+    [P in keyof I]: Operation<I[P], any, any, any>;
+} &
+    { [P in keyof O]: Operation<any, O[P], any, any> } &
+    { [P in keyof R]: Operation<any, any, R[P], any> } &
+    { [P in keyof T]: Operation<any, any, any, T[P]> };
 type OperationImplementors<I, O, R, T> = {
     [P in keyof I & keyof O & keyof R & ExcludedKeys<T, 'retrieve' | 'list'>]: Handler<I[P], O[P], R[P]>;
-} & {
-    [P in keyof I & keyof O & keyof R & FilteredKeys<T, 'retrieve' | 'list'>]?: Handler<I[P], O[P], R[P]>;
-};
+} &
+    {
+        [P in keyof I & keyof O & keyof R & FilteredKeys<T, 'retrieve' | 'list'>]?: Handler<I[P], O[P], R[P]>;
+    };
 
 /**
  * Essentials the server that remain the same
@@ -116,7 +127,6 @@ export interface Controller {
 }
 
 class ImplementedOperation implements Controller {
-
     public readonly methods: HttpMethod[];
     public readonly pattern: UrlPattern;
 
@@ -124,7 +134,7 @@ class ImplementedOperation implements Controller {
         public readonly operation: Operation<any, any, AuthenticationType>,
         private readonly handler: ResponseHandler<any, any>,
     ) {
-        const {methods, route} = operation;
+        const { methods, route } = operation;
         this.methods = methods;
         this.pattern = route.pattern;
     }
@@ -148,57 +158,55 @@ class ImplementedOperation implements Controller {
     }
 }
 
-function implement<I, O, R>(
-    operation: Operation<I, O, R>,
-    implementation: Handler<I, O, R>,
-): Controller {
+function implement<I, O, R>(operation: Operation<I, O, R>, implementation: Handler<I, O, R>): Controller {
     switch (operation.type) {
         case 'list':
-        return new ImplementedOperation(
-            operation,
-            async (input: I, request): Promise<OK<Page<O, any>>> => {
-                // TODO: Avoid force-typecasting of request!
-                const page: Page<any, any> = await implementation(input, request as unknown as R & HandlerContext) as any;
-                if (!page.next) {
-                    return new OK(page);
-                }
-                const url = operation.route.compile(page.next);
-                const next = `${request.serverOrigin}${url}`;
-                const headers = {Link: `${next}; rel="next"`};
-                return new OK(page, headers);
-            },
-        );
+            return new ImplementedOperation(
+                operation,
+                async (input: I, request): Promise<OK<Page<O, any>>> => {
+                    // TODO: Avoid force-typecasting of request!
+                    const page: Page<any, any> = (await implementation(
+                        input,
+                        (request as unknown) as R & HandlerContext,
+                    )) as any;
+                    if (!page.next) {
+                        return new OK(page);
+                    }
+                    const url = operation.route.compile(page.next);
+                    const next = `${request.serverOrigin}${url}`;
+                    const headers = { Link: `${next}; rel="next"` };
+                    return new OK(page, headers);
+                },
+            );
         case 'retrieve':
-        return new ImplementedOperation(
-            operation,
-            async (input: I, request): Promise<OK<O>> => {
-                // TODO: Avoid force-typecasting of request!
-                return new OK(await implementation(input, request as unknown as R & HandlerContext));
-            },
-        );
+            return new ImplementedOperation(
+                operation,
+                async (input: I, request): Promise<OK<O>> => {
+                    // TODO: Avoid force-typecasting of request!
+                    return new OK(await implementation(input, (request as unknown) as R & HandlerContext));
+                },
+            );
         case 'destroy':
-        return new ImplementedOperation(
-            operation,
-            async (input: I, request): Promise<NoContent> => {
-                // TODO: Avoid force-typecasting of request!
-                await implementation(input, request as unknown as R & HandlerContext);
-                return new NoContent();
-            },
-        );
+            return new ImplementedOperation(
+                operation,
+                async (input: I, request): Promise<NoContent> => {
+                    // TODO: Avoid force-typecasting of request!
+                    await implementation(input, (request as unknown) as R & HandlerContext);
+                    return new NoContent();
+                },
+            );
         default:
-        // With other methods, use implementation as-is
-        return new ImplementedOperation(operation, implementation as any);
+            // With other methods, use implementation as-is
+            return new ImplementedOperation(operation, implementation as any);
     }
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export function implementAll<I, O, R, T extends Record<string, OperationType>>(
-    operations: Implementables<I, O, R, T>,
-) {
+export function implementAll<I, O, R, T extends Record<string, OperationType>>(operations: Implementables<I, O, R, T>) {
     function using(
         implementors: OperationImplementors<I, O, R, T>,
     ): Record<keyof I & keyof O & keyof R & keyof T, Controller> {
-        return transform(operations as {[key: string]: Operation<any, any, any>}, (operation, key) => {
+        return transform(operations as { [key: string]: Operation<any, any, any> }, (operation, key) => {
             const implementor = (implementors as any)[key as keyof I & keyof O & keyof R & keyof T];
             if (implementor) {
                 return implement(operation, implementor);
@@ -207,34 +215,25 @@ export function implementAll<I, O, R, T extends Record<string, OperationType>>(
             const { type } = operation;
             const { resource, pattern } = operation.endpoint;
             if (type === 'retrieve') {
-                return implement(
-                    operation,
-                    async (query, {db}) => db.run(retrieve(resource, query)),
-                );
+                return implement(operation, async (query, { db }) => db.run(retrieve(resource, query)));
             }
             if (type === 'list') {
-                return implement(
-                    operation,
-                    async (query, {db}) => db.run(list(resource, query)),
-                );
+                return implement(operation, async (query, { db }) => db.run(list(resource, query)));
             }
             throw new Error(`Missing implementation for ${type} at ${pattern.pattern}`);
         }) as Record<keyof I & keyof O & keyof R & keyof T, Controller>;
     }
-    return {using};
+    return { using };
 }
 
 export class ApiService {
-
     public readonly controllers: Controller[];
     public readonly operations: Operation<any, any, any>[];
 
-    constructor(
-        private readonly controllersByName: Record<string, Controller>,
-    ) {
+    constructor(private readonly controllersByName: Record<string, Controller>) {
         // IMPORTANT: Sort controllers by pattern, because this way static path components
         // take higher priority than placeholders, e.g. `/api/foobar` comes before `/{path+}`
-        this.controllers = sort(Object.values(controllersByName), ({pattern}) => pattern.pattern, 'asc');
+        this.controllers = sort(Object.values(controllersByName), ({ pattern }) => pattern.pattern, 'asc');
         this.operations = this.controllers.map(({ operation }) => operation).filter(isNotNully);
     }
 
@@ -258,7 +257,7 @@ export class ApiService {
             // Respond with the CORS headers
             return {
                 statusCode: 200,
-                headers: {'Access-Control-Allow-Methods': methods.join(', ')},
+                headers: { 'Access-Control-Allow-Methods': methods.join(', ') },
                 body: '',
             } as HttpResponse;
         }
@@ -293,10 +292,10 @@ export class ApiService {
         }
         // This should not be possible with API gateway, but possible with the local server
         return errorResponse;
-    }
+    };
 
     public extend(controllers: Record<string, Controller>): ApiService {
-        return new ApiService({...this.controllersByName, ...controllers});
+        return new ApiService({ ...this.controllersByName, ...controllers });
     }
 
     private *iterateForPath(path: string) {
@@ -311,7 +310,7 @@ export class ApiService {
 }
 
 function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest): I {
-    const {path, queryParameters, method, body, headers} = request;
+    const { path, queryParameters, method, body, headers } = request;
     const url = new Url(path, queryParameters);
     if (!operation.route.pattern.match(url)) {
         // The pattern doesn't match this URL path
@@ -331,13 +330,18 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
         return urlParameters;
     }
     // Deserialize/decode the payload, raising validation error if invalid
-    const { 'Content-Type': contentTypeHeader = 'application/json'} = headers;
+    const { 'Content-Type': contentTypeHeader = 'application/json' } = headers;
     const payload = parsePayload(payloadSerializer, body ? body.toString() : '', contentTypeHeader);
     // TODO: Gather validation errors togeter?
-    return {...urlParameters, ...payload};
+    return { ...urlParameters, ...payload };
 }
 
-function applyEffectHeaders<R extends HttpResponse | ApiResponse>(response: R, auth: UserSession | null, effects: ResourceEffect[], operations: Operation<any, any, any>[]): R {
+function applyEffectHeaders<R extends HttpResponse | ApiResponse>(
+    response: R,
+    auth: UserSession | null,
+    effects: ResourceEffect[],
+    operations: Operation<any, any, any>[],
+): R {
     return {
         ...response,
         headers: {
