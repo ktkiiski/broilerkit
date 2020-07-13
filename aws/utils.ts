@@ -1,6 +1,6 @@
 import * as path from 'path';
 
-export async function* retrievePages<D, E, T extends keyof D>(request: AWS.Request<D, E>, key: T) {
+export async function* retrievePages<D, E, T extends keyof D>(request: AWS.Request<D, E>, key: T): AsyncGenerator<D[T], void> {
     while (true) {
         const response = await request.promise();
         const { $response } = response;
@@ -11,7 +11,7 @@ export async function* retrievePages<D, E, T extends keyof D>(request: AWS.Reque
         if (!$response.hasNextPage()) {
             break;
         }
-        request = $response.nextPage(undefined as any) as AWS.Request<D, E>;
+        request = $response.nextPage(undefined) as AWS.Request<D, E>;
     }
 }
 

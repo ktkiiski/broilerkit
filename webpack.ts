@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
@@ -6,11 +7,11 @@ import { BroilerConfig } from './config';
 import { executeSync } from './exec';
 
 // Webpack plugins
-const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
-const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const HtmlWebpackHarddiskPlugin = require('html-webpack-harddisk-plugin');
 
 export interface WebpackConfigOptions extends BroilerConfig {
@@ -51,13 +52,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             silent: true,
             // Use the tsconfig.json in the project folder (not in this library)
             tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
-            // Use the tslint.json in the project folder (not in this library)
-            tslint: path.resolve(projectRootPath, './tslint.json'),
-        }),
-        // Extract stylesheets to separate files in production
-        new MiniCssExtractPlugin({
-            disable: devServer,
-            filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
         }),
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
@@ -94,16 +88,22 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
          * Prevent all the MomentJS locales to be imported by default.
          */
         new webpack.ContextReplacementPlugin(
-            /\bmoment[\/\\]locale\b/,
+            /\bmoment[/\\]locale\b/,
             // Regular expression to match the files that should be imported
             /\ben.js/,
         ),
     ];
     if (!devServer) {
-        // Generate some stats for the bundles
-        plugins.push(getBundleAnalyzerPlugin(
-            analyze, path.resolve(stageDirPath, `report-frontend.html`),
-        ));
+        plugins.push(
+            // Extract stylesheets to separate files in production
+            new MiniCssExtractPlugin({
+                filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
+            }),
+            // Generate some stats for the bundles
+            getBundleAnalyzerPlugin(
+                analyze, path.resolve(stageDirPath, `report-frontend.html`),
+            ),
+        );
     }
     // Define the entry for the app
     const entries: Record<string, string[]> = {
@@ -202,7 +202,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                 },
                 // Lint JavaScript files using eslint
                 {
-                    test: /\.jsx?$/,
+                    test: /\.(jsx?|tsx?)$/,
                     include: sourceDirPath,
                     loader: 'eslint-loader',
                     enforce: 'pre',
@@ -210,7 +210,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                         cache: true,
                         failOnError: true, // Fail the build if there are linting errors
                         failOnWarning: false, // Do not fail the build on linting warnings
-                        fix: true, // Auto-fix if possible
                     },
                 },
                 // Compile TypeScript files ('.ts' or '.tsx')
@@ -357,7 +356,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
          * Prevent all the MomentJS locales to be imported by default.
          */
         new webpack.ContextReplacementPlugin(
-            /\bmoment[\/\\]locale\b/,
+            /\bmoment[/\\]locale\b/,
             // Regular expression to match the files that should be imported
             /\ben.js/,
         ),
@@ -451,7 +450,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                 },
                 // Lint JavaScript files using eslint
                 {
-                    test: /\.jsx?$/,
+                    test: /\.(jsx?|tsx?)$/,
                     include: sourceDirPath,
                     loader: 'eslint-loader',
                     enforce: 'pre',
@@ -459,7 +458,6 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                         cache: true,
                         failOnError: true, // Fail the build if there are linting errors
                         failOnWarning: false, // Do not fail the build on linting warnings
-                        fix: true, // Auto-fix if possible
                     },
                 },
                 // Compile TypeScript files ('.ts' or '.tsx')

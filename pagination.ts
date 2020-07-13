@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import compare from 'immuton/compare';
 import findLastIndex from 'immuton/findLastIndex';
 import { Key } from 'immuton/types';
@@ -18,7 +20,7 @@ export interface Page<T, C extends OrderedQuery<T, any, any>> {
 /**
  * Query parameters for getting an ordered slice of a collection.
  */
-export type OrderedQuery<T, O extends keyof T, D extends 'asc' | 'desc' = 'asc' | 'desc'> = {
+export type OrderedQuery<T, O extends keyof T, D extends 'asc' | 'desc' = 'asc' | 'desc'> = {
     [P in O]: {
         ordering: P,
         direction: D,

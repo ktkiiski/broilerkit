@@ -84,7 +84,7 @@ export async function serveBackEnd(
     options: BroilerConfig,
     params: {[param: string]: string},
     dbConnectionPool: Pool | null,
-) {
+): Promise<void> {
     const { stackName, auth, serverRoot, stageDir, buildDir, projectRootPath } = options;
     const serverRootUrl = new URL(serverRoot);
     const serverOrigin = serverRootUrl.origin;
@@ -107,21 +107,18 @@ export async function serveBackEnd(
                 server = undefined;
             }
             // Check for compilation errors
-            if (stats.hasErrors()) {
-                // tslint:disable-next-line:no-console
-                console.error(stats.toString({
+            if (stats.hasErrors()) {                console.error(stats.toString({
                     chunks: false, // Makes the build much quieter
                     colors: true, // Shows colors in the console
                 }));
                 continue;
             }
             // Successful compilation -> start the HTTP server
-            // tslint:disable-next-line:no-console
             console.log(stats.toString('minimal'));
 
             const statsJson = stats.toJson();
             // NOTE: Webpack type definition is wrong there! Need to force re-cast!
-            const assetsByChunkName: Record<string, string[]> = statsJson.assetsByChunkName as any;
+            const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
             // Get compiled server-site rendering view
             const serverRequestHandlerFileName: string = assetsByChunkName.server && assetsByChunkName.server[0];
             const serverRequestHandlerFilePath = path.resolve(
@@ -130,7 +127,7 @@ export async function serveBackEnd(
             // Ensure that module will be re-loaded
             delete require.cache[serverRequestHandlerFilePath];
             // Load the module exporting the service getter
-            const serverModule = require(serverRequestHandlerFilePath);
+            const serverModule = await import(serverRequestHandlerFilePath);
             const htmlPagePath$ = readFile(htmlPagePath);
             const service: ApiService = serverModule.getApiService(htmlPagePath$, storageDir);
             const db: Database | null = serverModule.getDatabase();
@@ -196,7 +193,7 @@ export async function openLocalDatabasePsql(name: string, stage: string): Promis
     await spawn('docker', ['exec', '-it', '--user=postgres', containerName, 'psql']);
 }
 
-function createServer<P extends any[]>(handler: (request: http.IncomingMessage, ...args: P) => Promise<HttpResponse>, ...args: P) {
+function createServer<P extends unknown[]>(handler: (request: http.IncomingMessage, ...args: P) => Promise<HttpResponse>, ...args: P) {
     return http.createServer(async (httpRequest, httpResponse) => {
         try {
             const response = await handler(httpRequest, ...args);
@@ -206,14 +203,10 @@ function createServer<P extends any[]>(handler: (request: http.IncomingMessage, 
             const textColor = isHtml ? cyan :
                 httpRequest.method === 'OPTIONS' ? dim :
                 (x: string) => x // no color
-            ;
-            // tslint:disable-next-line:no-console
-            console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
+            ;            console.log(textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode));
             httpResponse.writeHead(response.statusCode, response.headers);
             httpResponse.end(response.body);
-        } catch (error) {
-            // tslint:disable-next-line:no-console
-            console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`);
+        } catch (error) {            console.error(`${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`);
             httpResponse.writeHead(500, {
                 'Content-Type': 'text/plain',
             });

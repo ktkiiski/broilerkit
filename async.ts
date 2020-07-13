@@ -9,11 +9,12 @@ export function wait(ms?: number): Promise<void> {
 
 export function asap<T = void>(callback?: () => void): Promise<void>;
 export function asap<T = void>(callback?: () => T): Promise<T> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const promise = Promise.resolve() as Promise<any>;
     return callback ? promise.then(callback) : promise;
 }
 
-export function timeout<T>(maxDuration: number, task: Promise<T>, message: string = 'Operation timed out'): Promise<T> {
+export function timeout<T>(maxDuration: number, task: Promise<T>, message = 'Operation timed out'): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         const timeoutId = setTimeout(() => reject(new Error(message)), maxDuration);
         task.then(resolve, reject).finally(() => clearTimeout(timeoutId));
@@ -50,7 +51,7 @@ export async function toFlattenArray<T>(iterator: AsyncIterable<T[]>): Promise<T
     return items;
 }
 
-export async function *mapAsync<T, R>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => R) {
+export async function *mapAsync<T, R>(iterable: AsyncIterable<T>, iteratee: (item: T, index: number) => R): AsyncGenerator<R, void> {
     let index = 0;
     for await (const item of iterable) {
         yield iteratee(item, index);
@@ -68,7 +69,7 @@ export async function *filterAsync<T>(iterable: AsyncIterable<T>, iteratee: (ite
     }
 }
 
-export async function *concatAsync<T>(...iterables: AsyncIterable<T>[]) {
+export async function *concatAsync<T>(...iterables: AsyncIterable<T>[]): AsyncGenerator<T, void, undefined> {
     for (const iterator of iterables) {
         yield *iterator;
     }
@@ -144,7 +145,7 @@ export async function reduceAsync<T, R>(iterable: AsyncIterable<T>, callback: (a
     return value as R;
 }
 
-export async function *toAsync<T>(values: T[] | Iterable<T>) {
+export async function *toAsync<T>(values: T[] | Iterable<T>): AsyncGenerator<T, void> {
     for (const value of values) {
         yield value;
     }
@@ -153,16 +154,15 @@ export async function *toAsync<T>(values: T[] | Iterable<T>) {
 export interface ExecutorParams<T> {
     next(value: T): void;
     complete(): void;
-    error(value: any): void;
+    error(value: unknown): void;
 }
 
 export async function *generate<T>(executor: (params: ExecutorParams<T>) => void | (() => void)): AsyncIterableIterator<T> {
     type Token = {done: true} | {done: false, value: T};
     const pendingTokens: Token[] = [];
     let nextResolve!: (value: Token) => void;
-    let nextReject!: (error: any) => void;
-    let nextPromise!: Promise<any>;
-    // tslint:disable-next-line:no-shadowed-variable
+    let nextReject!: (error: unknown) => void;
+    let nextPromise!: Promise<unknown>;
     function iterate() {
         nextPromise = new Promise((resolve, reject) => {
             nextResolve = (token: Token) => {
@@ -177,14 +177,13 @@ export async function *generate<T>(executor: (params: ExecutorParams<T>) => void
     const terminate = executor({
         next: (value: T) => { nextResolve({done: false, value}); },
         complete: () => { nextResolve({done: true}); },
-        error: (error: any) => { nextReject(error); },
+        error: (error) => { nextReject(error); },
     });
     try {
         while (true) {
             await nextPromise;
             let nextToken: Token | undefined;
-
-            // tslint:disable-next-line:no-conditional-assignment
+            // eslint-disable-next-line no-cond-assign
             while (nextToken = pendingTokens.shift()) {
                 if (nextToken.done) {
                     return;
@@ -272,7 +271,7 @@ export async function *flatMapAsyncParallel<T, R>(maxConcurrency: number, iterab
     }
 }
 
-export function mapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => Promise<R>) {
+export function mapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterable<T> | AsyncIterable<T>, callback: (item: T, index: number) => Promise<R>): AsyncIterableIterator<R> {
     return flatMapAsyncParallel(maxConcurrency, iterable, async function*(item, index) {
         yield await callback(item, index);
     });
@@ -283,7 +282,7 @@ export function mapAsyncParallel<T, R>(maxConcurrency: number, iterable: Iterabl
  * errors are still passed through.
  * @param promise promise whose result will be ignored
  */
-export function errorsOnly(promise: Promise<any>): Promise<never> {
+export function errorsOnly(promise: Promise<unknown>): Promise<never> {
     return new Promise((_, reject) => {
         promise.catch((error) => reject(error));
     });
@@ -291,15 +290,15 @@ export function errorsOnly(promise: Promise<any>): Promise<never> {
 
 interface Deferred<T> {
     resolve: (value: T) => void;
-    reject: (error: any) => void;
+    reject: (error: unknown) => void;
     promise: Promise<T>;
 }
 
 export function deferred<T>(): Deferred<T> {
-    const dfr = {} as any;
+    const dfr = {} as Partial<Deferred<T>>;
     dfr.promise = new Promise((resolve, reject) => {
         dfr.resolve = resolve;
         dfr.reject = reject;
     });
-    return dfr;
+    return dfr as Deferred<T>;
 }

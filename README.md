@@ -17,8 +17,7 @@ You deploy your production-ready web app to [Amazon Web Services cloud platform]
 
 ### Other features
 
-- Lint your JavaScript code style with [ESLint](http://eslint.org/)
-- Lint your TypeScript code style with [TSLint](https://palantir.github.io/tslint/)
+- Lint your code style with [ESLint](http://eslint.org/)
 - Polyfill `Promise`, `Symbol` and other ES6 features for browsers that do not support them
 - Automatically bundle any images from your HTML, Pug, or Markdown files.
 - Automatically **optimize images losslessly** for minimal size

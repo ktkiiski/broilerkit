@@ -46,19 +46,19 @@ describe('serializer', () => {
         it('from validate()', () => {
             assert.throws(
                 () => serializer.validate(input),
-                (error: any) => isEqual(error.data, expectedErrorData),
+                (error) => isEqual(error.data, expectedErrorData),
             );
         });
         it('from serialize()', () => {
             assert.throws(
                 () => serializer.serialize(input),
-                (error: any) => isEqual(error.data, expectedErrorData),
+                (error) => isEqual(error.data, expectedErrorData),
             );
         });
         it('from deserialize()', () => {
             assert.throws(
                 () => serializer.serialize(input),
-                (error: any) => isEqual(error.data, expectedErrorData),
+                (error) => isEqual(error.data, expectedErrorData),
             );
         });
     });

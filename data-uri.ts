@@ -7,7 +7,7 @@ export interface DecodedDataUri {
     meta?: Record<string, string>;
 }
 
-export function encodeDataUri({data, contentType, meta = {}}: DecodedDataUri) {
+export function encodeDataUri({data, contentType, meta = {}}: DecodedDataUri): string {
     const chunks = ['data:'];
     // Add media type
     if (contentType) {

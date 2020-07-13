@@ -1,0 +1,7 @@
+# Do not lint installed npm packages
+node_modules
+
+# Do not lint compiled TypeScript declaration files...
+*.d.ts
+# ...expect the ones in `types`folder
+!/types/*.d.ts

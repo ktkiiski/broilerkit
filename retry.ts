@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { wait } from './async';
 import { HttpErrorStatus, HttpStatus, isErrorResponse } from './http';
 
@@ -21,7 +22,7 @@ const retryableStatusCodes: HttpErrorStatus[] = [
 export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, retryCheck?: (error: any, retryCount: number) => boolean): Promise<T> {
     let retryCount = 0;
     const startTime = new Date().getTime();
-    while (true) {
+    for (;;) {
         try {
             return await fn(retryCount);
         } catch (error) {
@@ -53,7 +54,7 @@ export async function retryWithBackoff<T>(maxRetryCount: number, fn: (retryCount
 export async function retryRequestWithBackoff<T>(maxRetryCount: number, fn: (retryCount: number) => Promise<T>, statusCodes = retryableStatusCodes): Promise<T> {
     let retryCount = 0;
     const startTime = new Date().getTime();
-    while (true) {
+    for (;;) {
         try {
             return await fn(retryCount);
         } catch (error) {
@@ -108,7 +109,7 @@ function getRetryDelay(startTime: number, retryAfter?: string): number {
  */
 export async function retry<T>(fn: (retryCount: number) => Promise<T>, shouldRetry: (error: any, retryCount: number) => boolean): Promise<T> {
     let retryCount = 0;
-    while (true) {
+    for (;;) {
         try {
             return await fn(retryCount);
         } catch (error) {
@@ -135,7 +136,7 @@ const conflictStatusCodes = [
 export async function retryOptimistically<T>(fn: (retryCount: number) => Promise<T>, statusCodes = conflictStatusCodes): Promise<T> {
     return retry(fn, (error) => {
         if (isErrorResponse(error)) {
-            const { statusCode } = error;
+            const { statusCode } = error;
             if (statusCodes.indexOf(statusCode) >= 0) {
                 // There was a conflict. Try again.
                 return true;

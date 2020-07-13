@@ -18,7 +18,7 @@ export function useClient(): Client {
 
 export function useUniqueId(): number {
     const client = useClient();
-    return useMemo(() => client.generateUniqueId(), []);
+    return useMemo(() => client.generateUniqueId(), [client]);
 }
 
 export function useUpload(): (file: File, upload: UploadForm) => Promise<void> {
@@ -35,19 +35,21 @@ interface ClientProviderProps {
  * Provides the proper client context for all the nested components
  * that have been bound to the API resources.
  */
-export const ClientProvider = ({client, ...props}: ClientProviderProps) => (
-    <ClientContext.Provider value={client} {...props} />
-);
+export function ClientProvider({client, ...props}: ClientProviderProps): JSX.Element {
+    return (
+        <ClientContext.Provider value={client} {...props} />
+    );
+}
 
 /**
  * Converts a union type, e.g. `A | B | C` to an intersection
  * type, e.g. `A & B & C`
  */
-export type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
+export type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends ((k: infer I) => void) ? I : never;
 
 /**
  * Infers the properties for a component by a return value of `connect`.
  */
-export type ConnectedProps<I> = I extends PropInjector<infer R, any> ? R : never;
+export type ConnectedProps<I> = I extends PropInjector<infer R, unknown> ? R : never;
 
 export type PropInjector<B, X> = <A extends B>(cmp: React.ComponentType<A>) => React.ComponentType<Pick<A, Exclude<keyof A, keyof B>> & X>;

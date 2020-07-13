@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import pick from 'immuton/pick';
 import { Key } from 'immuton/types';
 import { Client } from './client';

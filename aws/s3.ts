@@ -9,9 +9,16 @@ interface PresignPostOptions {
     access: 'private' | 'public-read';
     maxSize: number;
     expiresIn: number;
-    successActionStatus: 200 | 201 | 204;
+    successActionStatus: 200 | 201 | 204;
     meta: {[key: string]: string};
     contentType?: string;
+}
+
+interface GetObjectResult {
+    bucketName: string;
+    key: string;
+    body: Buffer;
+    meta: S3.Metadata;
 }
 
 /**
@@ -32,7 +39,7 @@ export class AmazonS3 {
      * @param bucketName name of the bucket
      * @param key object key
      */
-    public async getObject(bucketName: string, key: string) {
+    public async getObject(bucketName: string, key: string): Promise<GetObjectResult> {
         const object = await this.s3.getObject({ Bucket: bucketName, Key: key }).promise();
         const { Body, Metadata = {} } = object;
         return {
@@ -46,6 +53,7 @@ export class AmazonS3 {
     /**
      * Removes all the items from an Amazon S3 bucket so that it can be deleted.
      */
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public async *emptyBucket(bucketName: string) {
         // Delete regular objects (with null versions)
         for await (const objects of chunkify(this.iterateObjects(bucketName), 100)) {
@@ -85,7 +93,7 @@ export class AmazonS3 {
         }
     }
 
-    public async createPresignedPost(options: PresignPostOptions) {
+    public async createPresignedPost(options: PresignPostOptions): Promise<S3.PresignedPost> {
         const Conditions = [
             ['content-length-range', 0, options.maxSize],
         ];

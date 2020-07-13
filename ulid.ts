@@ -12,7 +12,7 @@ const ulidFactory = ULID.monotonicFactory();
  *
  * @param timestamp Optional time seed, either integer or Date
  */
-export function ulid(timestamp?: number | Date) {
+export function ulid(timestamp?: number | Date): string {
     return ulidFactory(timestamp && +timestamp);
 }
 

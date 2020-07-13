@@ -8,16 +8,14 @@ import * as ulid from './ulid';
  *
  * @param timestamp Optional time seed, either integer or Date
  */
-export function identifier(timestamp?: number | Date) {
+export function identifier(timestamp?: number | Date): string {
     return ulid.ulid(timestamp).slice(1).toLowerCase();
 }
 
-// tslint:disable-next-line:no-shadowed-variable
 export function decodeTime(id: string): number {
     return ulid.decodeTime(`0${id.toUpperCase()}`);
 }
 
-// tslint:disable-next-line:no-shadowed-variable
 export function decodeDate(id: string): Date {
     return new Date(decodeTime(id));
 }

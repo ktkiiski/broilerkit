@@ -73,7 +73,7 @@ function buildJavaScript(buffer: string[], value: unknown, baseIndent: string, i
                 if (indent != null) {
                     buffer.push(' ');
                 }
-                buildJavaScript(buffer, (value as any)[key], nextIndent, indent);
+                buildJavaScript(buffer, value[key as keyof typeof value], nextIndent, indent);
             });
             if (indent != null) {
                 buffer.push(`\n`);

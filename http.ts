@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { forEachKey } from './objects';
 import { UserSession } from './sessions';
 import { capitalize, splitOnce } from './strings';
@@ -142,7 +144,7 @@ export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
 export abstract class ExceptionResponse extends Error implements ApiResponse {
     public readonly abstract statusCode: HttpRedirectStatus | HttpErrorStatus;
     public readonly data: any;
-    constructor(message: string, data?: object, public readonly headers: HttpResponseHeaders = {}) {
+    constructor(message: string, data?: Record<string, unknown>, public readonly headers: HttpResponseHeaders = {}) {
         super(message);
         this.data = {...data, message};
     }

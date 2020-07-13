@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -73,6 +75,7 @@ export function readStream(stream: NodeJS.ReadableStream): Promise<any[]> {
 }
 
 export function writeAsyncIterable(filename: string, iterable: AsyncIterable<string>): Promise<void> {
+    // eslint-disable-next-line no-async-promise-executor
     return new Promise(async (resolve, reject) => {
         const writable = fs.createWriteStream(filename);
         try {

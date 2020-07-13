@@ -1,16 +1,18 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { readFile } from './fs';
 import { forEachKey } from './objects';
 
 import * as path from 'path';
 import * as YAML from 'yamljs';
 
-export async function readTemplate(templateFile: string, placeholders: {[placeholder: string]: string} = {}) {
+export async function readTemplate(templateFile: string, placeholders: {[placeholder: string]: string} = {}): Promise<any> {
     const templateFilePath = path.resolve(__dirname, './res/', templateFile);
     const templateStr = await readFile(templateFilePath);
     return deserializeTemplate(templateStr, placeholders);
 }
 
-export async function readTemplates(templateFiles: string[], placeholders: {[placeholder: string]: string} = {}) {
+export async function readTemplates(templateFiles: string[], placeholders: {[placeholder: string]: string} = {}): Promise<any> {
     const templates = await Promise.all(templateFiles.map(
         (templateFile) => readTemplate(templateFile, placeholders),
     ));

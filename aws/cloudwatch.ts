@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CloudWatchLogs } from 'aws-sdk';
 import { mergeAsync, toArray, wait } from '../async';
 import { cyan, dim, red } from '../palette';
@@ -99,6 +100,7 @@ export class AmazonCloudWatch {
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public async *iterateLogEvents(options: {logGroupName: string, startTime: number, maxCount?: number}) {
         const {logGroupName, startTime} = options;
         let {maxCount = Infinity} = options;
@@ -125,12 +127,12 @@ export class AmazonCloudWatch {
 /**
  * Formats the given log event as a pretty, colorized, printable message string.
  */
-export function formatLogEvent(event: LogEvent, stackName?: string) {
+export function formatLogEvent(event: LogEvent, stackName?: string): string {
     const timestamp = new Date(event.timestamp).toISOString();
     const groupName = event.logGroupName.replace(/^\/aws\/lambda\//, '');
     // TODO: function name no longer available in the group name!
     const functionName = stackName && stripPrefix(groupName, `${stackName}-`) || groupName;
-    const message = event.message.trim().replace(/\t+(\{\"[^\t]+\})$/, (match, encodedJson) => {
+    const message = event.message.trim().replace(/\t+(\{"[^\t]+\})$/, (match, encodedJson) => {
         let obj: any;
         try {
             obj = JSON.parse(encodedJson);

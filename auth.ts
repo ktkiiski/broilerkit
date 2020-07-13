@@ -45,7 +45,7 @@ export class DummyAuthClient implements AuthClient {
     public getAuthentication(): Auth | null {
         return this.auth;
     }
-    public setAuthentication(auth: Auth | null) {
+    public setAuthentication(auth: Auth | null): void {
         this.auth = auth;
     }
     public subscribeAuthentication(): never {
@@ -58,6 +58,7 @@ export class BrowserAuthClient implements AuthClient {
     private readonly signInUri = '/oauth2/sign_in';
     private readonly signOutUri = '/oauth2/sign_out';
     private auth!: Auth | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private authExpirationTimeout?: any;
 
     private authListeners: ((auth: Auth | null) => void)[] = [];
@@ -133,7 +134,7 @@ export class BrowserAuthClient implements AuthClient {
      *      - `email`: email of the user
      *      - `picture`: URL of the profile picture of the user
      */
-    public getAuthentication() {
+    public getAuthentication(): Auth | null {
         return this.auth;
     }
 
@@ -159,7 +160,7 @@ export class BrowserAuthClient implements AuthClient {
         };
     }
 
-    public setAuthentication(auth: Auth | null) {
+    public setAuthentication(auth: Auth | null): void {
         if (this.authExpirationTimeout != null) {
             clearTimeout(this.authExpirationTimeout);
             delete this.authExpirationTimeout;

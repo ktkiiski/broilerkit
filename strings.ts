@@ -1,12 +1,12 @@
-export function upperFirst(str: string) {
+export function upperFirst(str: string): string {
     return str.replace(/^\w/i, (letter) => letter.toLocaleUpperCase());
 }
 
-export function capitalize(str: string) {
+export function capitalize(str: string): string {
     return upperFirst(str.toLocaleLowerCase());
 }
 
-export function padStart(str: string, minLength: number, padChars: string) {
+export function padStart(str: string, minLength: number, padChars: string): string {
     const paddingLength = minLength - str.length;
     if (paddingLength <= 0) {
         return str;
@@ -16,7 +16,7 @@ export function padStart(str: string, minLength: number, padChars: string) {
     return padding + str;
 }
 
-export function padEnd(str: string, minLength: number, padChars: string) {
+export function padEnd(str: string, minLength: number, padChars: string): string {
     const paddingLength = minLength - str.length;
     if (paddingLength <= 0) {
         return str;
@@ -35,7 +35,7 @@ const lowerCaseAsciiLetters = 'abcdefghijklmnopqrstuvwxyz';
 const upperCaseAsciiLetters = lowerCaseAsciiLetters.toUpperCase();
 const asciiAlphanumeric = digits + lowerCaseAsciiLetters + upperCaseAsciiLetters;
 
-export function randomize(length: number, chars: string = asciiAlphanumeric) {
+export function randomize(length: number, chars: string = asciiAlphanumeric): string {
     const comps: string[] = [];
     while (comps.length < length) {
         comps.push(chars[Math.floor(Math.random() * chars.length)]);
@@ -72,7 +72,7 @@ export function countBytes(str: string): number {
     return len;
 }
 
-export function shortenSentences(str: string, maxLength: number, replacement?: string) {
+export function shortenSentences(str: string, maxLength: number, replacement?: string): string {
     if (str.length <= maxLength) {
         return str;
     }
@@ -87,14 +87,14 @@ export function shortenSentences(str: string, maxLength: number, replacement?: s
 export function findAllMatches(str: string, regex: RegExp, group = 0): string[] {
     const results: string[] = [];
     let match: RegExpExecArray | null;
-    // tslint:disable-next-line:no-conditional-assignment
+    // eslint-disable-next-line no-cond-assign
     while (match = regex.exec(str)) {
         results.push(match[group]);
     }
     return results;
 }
 
-export function splitOnce(str: string, separator: string) {
+export function splitOnce(str: string, separator: string): string[] {
     const index = str.indexOf(separator);
     return index < 0 ? [str] : [str.slice(0, index), str.slice(index + separator.length)];
 }

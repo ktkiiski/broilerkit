@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as msgpack from 'msgpack-lite';
 import { JWE, JWK } from 'node-jose';
 
-export async function encryptToken(payload: {[key: string]: any}, secretKey: JWK.Key): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
+export async function encryptToken(payload: any, secretKey: JWK.Key): Promise<string> {
     const packaged = msgpack.encode(payload);
     return JWE.createEncrypt({ format: 'compact' }, secretKey)
         .update(packaged).final();

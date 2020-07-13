@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { dim, green, red } from './palette';
 
 const verboseLogging = !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
-const noFormat = (x: string, ..._: any[]) => x;
+const noFormat: (sql: string, ...params: any[]) => string = (x: string) => x;
 const slowQueryThreshold = 200;
 
 function formatDuration(duration: number) {
@@ -26,15 +27,11 @@ export async function logSql<S>(sql: string, params: any[] | undefined, action: 
         } else if (result.rowCount != null) {
             rowCount = result.rowCount;
         }
-        const rowText = rowCount == null ? '' : rowCount === 1 ? `1 row ` : `${rowCount} rows `;
-        // tslint:disable-next-line:no-console
-        console.debug(`${formattedSql} => ${green('✔︎')} ${dim(`${rowText}`)}${formatDuration(duration)}`);
+        const rowText = rowCount == null ? '' : rowCount === 1 ? `1 row ` : `${rowCount} rows `;        console.debug(`${formattedSql} => ${green('✔︎')} ${dim(`${rowText}`)}${formatDuration(duration)}`);
         return result;
     } catch (error) {
         const duration = new Date().getTime() - startTime;
-        const { code, message } = error;
-        // tslint:disable-next-line:no-console
-        console.debug(`${formattedSql} => ${red(message || '×')} ${dim(`${code ? `#${code} ` : ''}`)}${formatDuration(duration)}`);
+        const { code, message } = error;        console.debug(`${formattedSql} => ${red(message || '×')} ${dim(`${code ? `#${code} ` : ''}`)}${formatDuration(duration)}`);
         throw error;
     }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import difference from 'immuton/difference';
 import filter from 'immuton/filter';
 import findOrderedIndex from 'immuton/findOrderedIndex';
@@ -315,6 +316,7 @@ abstract class BaseClient implements Client {
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private async getToken(_: AuthenticationType): Promise<string | null> {
         // TODO: Remove this, as the authentication happens with a cookie
         return null;
@@ -322,7 +324,7 @@ abstract class BaseClient implements Client {
 
     private setResourceState(resourceName: string, url: string, state: ResourceState): boolean {
         const resourcesByUrl = this.resourceCache[resourceName] || {};
-        if (resourcesByUrl[url] === state) {
+        if (resourcesByUrl[url] === state) {
             return false;
         }
         resourcesByUrl[url] = state;
@@ -333,7 +335,7 @@ abstract class BaseClient implements Client {
 
     private setCollectionState(resourceName: string, url: string, state: CollectionState): boolean {
         const collectionsByUrl = this.collectionCache[resourceName] || {};
-        if (collectionsByUrl[url] === state) {
+        if (collectionsByUrl[url] === state) {
             return false;
         }
         collectionsByUrl[url] = state;
@@ -541,9 +543,7 @@ abstract class BaseClient implements Client {
         const resourceName = op.endpoint.resource.name;
         const resourceUrl = url.toString();
         const currentState = this.getRealResourceState(resourceName, resourceUrl);
-        if (currentState && currentState.isLoading) {
-            // tslint:disable-next-line:no-console
-            console.warn(`Started loading resource while previous load was still in progress: ${url}`);
+        if (currentState && currentState.isLoading) {            console.warn(`Started loading resource while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
         let state: ResourceState<S> = {
@@ -583,9 +583,7 @@ abstract class BaseClient implements Client {
         const resourceName = resource.name;
         const collectionUrl = url.toString();
         const currentState = this.getRealCollectionState(resourceName, collectionUrl);
-        if (currentState && currentState.isLoading) {
-            // tslint:disable-next-line:no-console
-            console.warn(`Started loading collection while previous load was still in progress: ${url}`);
+        if (currentState && currentState.isLoading) {            console.warn(`Started loading collection while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
         let loadedResources: S[] = [];
@@ -659,7 +657,7 @@ export class BrowserClient extends BaseClient implements Client {
         super(resourceCache, collectionCache);
     }
 
-    public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null) {
+    public async request(url: Url, method: HttpMethod, payload: any | null, token: string | null): Promise<ApiResponse> {
         const headers: Record<string, string> = token ? {Authorization: `Bearer ${token}`} : {};
         let response;
         try {
@@ -739,7 +737,7 @@ export class DummyClient extends BaseClient implements Client {
         throw new NotImplemented(`No client defined`);
     }
 
-    public inquiryResource<S, U extends Key<S>>(operation: RetrieveOperation<S, U, any, any>, input: Pick<S, U>) {
+    public inquiryResource<S, U extends Key<S>>(operation: RetrieveOperation<S, U, any, any>, input: Pick<S, U>): ResourceState<S> {
         const result = super.inquiryResource(operation, input);
         if (this.retrievals) {
             this.retrievals.push({operation, input});
@@ -747,7 +745,7 @@ export class DummyClient extends BaseClient implements Client {
         return result;
     }
 
-    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(operation: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>) {
+    public inquiryCollection<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(operation: ListOperation<S, U, O, F, any, any>, input: Cursor<S, U, O, F>): CollectionState<S> {
         const result = super.inquiryCollection(operation, input);
         if (this.listings) {
             this.listings.push({operation, input});
@@ -926,9 +924,7 @@ function convertEffectToResourceChanges(
                     });
                 }
             }
-        } catch (error) {
-            // tslint:disable-next-line:no-console
-            console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
+        } catch (error) {            console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
         }
     }
     // Try to apply the effect to joined resources
@@ -944,9 +940,7 @@ function convertEffectToResourceChanges(
                     defaults: {},
                 });
                 joinResourceProperties = joinResourceSerializer.decode(encodedResource);
-            } catch {
-                // tslint:disable-next-line:no-console
-                console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
+            } catch {                console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
                 continue;
             }
             const resourceIdentity: any = {};

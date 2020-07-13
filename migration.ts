@@ -1,4 +1,4 @@
-// tslint:disable:no-console
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { SecretsManager } from 'aws-sdk';
 import * as https from 'https';
 import { Client } from 'pg';
@@ -56,7 +56,7 @@ function getIndexName(index: TableIndex, tableName: string): string {
     return `idx_${tableName}_${index.keys.join('_')}`;
 }
 
-export async function createTable(client: Client, state: TableState) {
+export async function createTable(client: Client, state: TableState): Promise<void> {
     const pkColumns = state.primaryKeys;
     const tableName = state.name;
     const pkKeys = pkColumns.map((col) => escapeRef(col.name)).join(', ');
@@ -66,12 +66,12 @@ export async function createTable(client: Client, state: TableState) {
     // Need to create the other columns of the table
     return updateTable(client, state, undefined);
 }
-export async function deleteTable(client: Client, state: TableState) {
+export async function deleteTable(client: Client, state: TableState): Promise<void> {
     const tableName = state.name;
     const sql = `DROP TABLE IF EXISTS ${escapeRef(tableName)};`;
     await logSql(sql, [], () => client.query(sql));
 }
-export async function updateTable(client: Client, state: TableState, oldState: TableState | undefined) {
+export async function updateTable(client: Client, state: TableState, oldState: TableState | undefined): Promise<void> {
     const tableName = state.name;
     const oldTableName = oldState && oldState.name;
     const columns = state.columns;
@@ -132,7 +132,7 @@ function respond(ev: MigrationCFRRequest, status: 'SUCCESS' | 'FAILED', reason: 
 }
 
 async function getCredentials(parameters: MigrationCRFProperties): Promise<{ username: string, password: string }> {
-    const { SecretId, Region } = parameters;
+    const { SecretId, Region } = parameters;
     const sdk = new SecretsManager({
         apiVersion: '2017-10-17',
         region: Region,
@@ -150,10 +150,10 @@ async function getCredentials(parameters: MigrationCRFProperties): Promise<{ use
     return { username, password };
 }
 
-export async function migrate(ev: MigrationCFRRequest) {
+export async function migrate(ev: MigrationCFRRequest): Promise<void> {
     const operation: RequestType = ev.RequestType;
     const parameters = ev.ResourceProperties;
-    const { username, password } = await getCredentials(parameters);
+    const { username, password } = await getCredentials(parameters);
     console.log(`Performing ${operation} to table ${parameters.Table} at postregsql://${username}@${parameters.Host}:${parameters.Port}/${parameters.Database}`);
     const oldParameters = ev.OldResourceProperties;
     const table = parameters && parameters.Table;
@@ -190,7 +190,7 @@ export async function migrate(ev: MigrationCFRRequest) {
     }
 }
 
-export async function handler(ev: MigrationCFRRequest, ctx: { done: () => void }) {
+export async function handler(ev: MigrationCFRRequest, ctx: { done: () => void }): Promise<void> {
     try {
         console.log('Performing database migration with properties:', ev.ResourceProperties);
         if (ev.OldResourceProperties) {

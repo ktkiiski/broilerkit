@@ -1,4 +1,3 @@
-// tslint:disable:no-console
 import { CognitoIdentityServiceProvider } from 'aws-sdk';
 
 interface PreSignupTriggerEvent {
@@ -10,7 +9,7 @@ interface PreSignupTriggerEvent {
     };
 }
 
-export const handler = async (event: PreSignupTriggerEvent) => {
+export const handler = async (event: PreSignupTriggerEvent): Promise<PreSignupTriggerEvent> => {
   const userPoolId = process.env.USER_POOL_ID;
   if (!userPoolId) {
       throw new Error('Missing USER_POOL_ID environment variable');

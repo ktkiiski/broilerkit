@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import objectDifference from 'immuton/objectDifference';
 import pick from 'immuton/pick';
 import { Key } from 'immuton/types';
@@ -20,7 +21,7 @@ export interface EffectContext {
 }
 
 export function addEffect<T, PK extends Key<T>>(context: EffectContext, resource: Resource<T, PK, any>, newState: T | null, oldState: T | null): void {
-    const state = newState || oldState;
+    const state = newState || oldState;
     if (!state) {
         return;
     }
@@ -78,9 +79,7 @@ function encodeResourceState<T>(resourceName: string, item: T | null, operations
         const nonRelationResource = resource.omit(keys(resource.nestings));
         try {
             newState = { ...newState || {}, ...nonRelationResource.encode(item) };
-        } catch (error) {
-            // tslint:disable-next-line:no-console
-            console.error(`Failed to validate effect state for resource ${resourceName}`, error);
+        } catch (error) {            console.error(`Failed to validate effect state for resource ${resourceName}`, error);
             continue;
         }
     }

@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Unauthorized } from './http';
 import { Operation } from './operations';
 import { UserSession } from './sessions';
 
-export function authorize(operation: Operation<any, any, any>, auth: UserSession | null, input: any): void {
+export function authorize(operation: Operation<any, any, any>, auth: UserSession | null, input: any): void {
     const { authType, userIdAttribute } = operation;
     const isAdmin = !!auth && auth.groups.indexOf('Administrators') < 0;
     if (authType !== 'none') {

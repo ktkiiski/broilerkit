@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import hasProperties from 'immuton/hasProperties';
 import isEqual from 'immuton/isEqual';
 import isNotNully from 'immuton/isNotNully';
@@ -37,11 +38,12 @@ export function useResource<S, U extends Key<S>>(
     useEffect(() => {
         if (input && isValid) {
             return client.subscribeResourceChanges(op, input, (newState) => {
-                if (!isEqual(state, newState, 2)) {
-                    setState(newState);
-                }
+                setState((oldState) => (
+                    isEqual(oldState, newState, 2) ? oldState : newState
+                ));
             });
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, op, getFingerprint(input), isValid]);
     return [state.resource, state.error, state.isLoading];
 }
@@ -72,12 +74,13 @@ function useCollectionIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>
                 op, input, minCount,
                 (newState) => {
                     const filteredState = applyCollectionFilters(newState, filters);
-                    if (!isEqual(state, filteredState, 2)) {
-                        setState(filteredState);
-                    }
+                    setState((oldState) => (
+                        isEqual(oldState, filteredState, 2) ? oldState : filteredState
+                    ));
                 },
             );
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, op, getFingerprint(input), getFingerprint(filters), minCount]);
     return state;
 }
@@ -125,6 +128,7 @@ function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
                 },
             );
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, op, getFingerprint(input), getFingerprint(filters)]);
     return [resources, error, isLoading];
 }
@@ -157,9 +161,8 @@ export function useCollections<S, U extends Key<S>, O extends Key<S>, F extends 
         return () => {
             subscriptions.forEach((unsubscribe) => unsubscribe());
         };
-    }, [
-        client, op, getFingerprint(inputs), getFingerprint(filters),
-    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [client, op, getFingerprint(inputs), getFingerprint(filters)]);
     return states as {[P in keyof I]: Collection<S>};
 }
 

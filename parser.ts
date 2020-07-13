@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import build from 'immuton/build';
 import { encodeDataUri } from './data-uri';
 import { BadRequest, parseHeaderDirectives, UnsupportedMediaType } from './http';
@@ -15,7 +16,6 @@ export function parsePayload<I>(serializer: Serializer<I, any>, body: string, co
     } else if (contentType === 'multipart/form-data') {
         // Decode multipart/form-data
         const formData = parseFormData(body, meta.boundary);
-        // tslint:disable-next-line:no-shadowed-variable
         const encodedPayload = build(formData, ({name, headers, filename, body}) => {
             if (!name) {
                 return undefined;

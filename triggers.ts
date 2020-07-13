@@ -5,9 +5,9 @@ import { ServerContext } from './server';
 
 export type Trigger = BucketFileCreateTrigger;
 
-export type TriggerHandler<I, O = void> = Handler<I, O, {}>;
+export type TriggerHandler<I, O = void> = Handler<I, O, Record<never, never>>;
 
-export async function triggerEvent(triggers: Trigger[], { Records }: LambdaEvent, serverContext: ServerContext) {
+export async function triggerEvent(triggers: Trigger[], { Records }: LambdaEvent, serverContext: ServerContext): Promise<void> {
     for (const event of Records) {
         for (const trigger of triggers) {
             if (trigger.sourceType === 'storage' && trigger.eventName === 'create') {
@@ -20,9 +20,7 @@ export async function triggerEvent(triggers: Trigger[], { Records }: LambdaEvent
                             await executeHandler(
                                 trigger.handler, object, { ...serverContext, effects: [] }, {},
                             );
-                        } catch (error) {
-                            // tslint:disable-next-line:no-console
-                            console.error(`Failed to process event ${trigger.eventName} for bucket ${bucket.name}:`, error);
+                        } catch (error) {                            console.error(`Failed to process event ${trigger.eventName} for bucket ${bucket.name}:`, error);
                         }
                     }
                 }

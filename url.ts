@@ -1,4 +1,3 @@
-// tslint:disable:no-shadowed-variable
 import omit from 'immuton/omit';
 import { keys } from './objects';
 import { splitOnce } from './strings';
@@ -125,7 +124,7 @@ export function parseQuery(query: string): {[key: string]: string} {
 }
 
 function escapeRegExp(str: string) {
-    return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+    return str.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
 }
 
 function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {

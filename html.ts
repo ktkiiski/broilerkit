@@ -1,4 +1,4 @@
-export function escapeHtml(unsafe: string) {
+export function escapeHtml(unsafe: string): string {
     return unsafe
          .replace(/&/g, '&amp;')
          .replace(/</g, '&lt;')
@@ -8,6 +8,6 @@ export function escapeHtml(unsafe: string) {
     ;
 }
 
-export function encodeSafeJSON(...params: Parameters<typeof JSON.stringify>) {
+export function encodeSafeJSON(...params: Parameters<typeof JSON.stringify>): string {
     return JSON.stringify(...params).replace(/</g, '\x3C').replace(/>/g, '\x3E');
 }

@@ -1,6 +1,6 @@
 import isEqual from 'immuton/isEqual';
 import { AmazonCognitoIdentity } from './aws/cognito';
-import { batchRetrieve, destroy, retrieve, scan, update } from './db';
+import { batchRetrieve, destroy, retrieve, scan, update, Query } from './db';
 import { HttpStatus, isResponse, NotFound } from './http';
 import { DatabaseClient } from './postgres';
 import { Serializer } from './serializers';
@@ -63,7 +63,7 @@ export class CognitoUserPool implements UserPool {
         return cognitoUser;
     }
 
-    public async destroy(identity: UserIdentity) {
+    public async destroy(identity: UserIdentity): Promise<void> {
         const {identitySerializer} = this;
         const serializedIdentity = identitySerializer.serialize(identity);
         const serializedId = serializedIdentity.id;
@@ -76,7 +76,7 @@ export class CognitoUserPool implements UserPool {
         return cognito.listUsers();
     }
 
-    public batchRetrieve(identities: UserIdentity[]) {
+    public batchRetrieve(identities: UserIdentity[]): Promise<(User | null)[]> {
         const promises = mapCached(identities, (identity) => (
             this.retrieve(identity).catch((error) => {
                 if (isResponse(error, HttpStatus.NotFound)) {
@@ -108,19 +108,19 @@ export class LocalUserPool implements UserPool {
         );
     }
 
-    public destroy(identity: UserIdentity) {
+    public destroy(identity: UserIdentity): Promise<void> {
         return this.db.run(
             destroy(users, identity as Pick<User, 'id'>),
         );
     }
 
-    public scan(query?: {}): AsyncIterableIterator<User[]> {
+    public scan(query?: Record<never, never>): AsyncIterableIterator<User[]> {
         return this.db.scan(
-            scan(users, query as any),
+            scan(users, query as Query<User>),
         );
     }
 
-    public batchRetrieve(identities: UserIdentity[]) {
+    public batchRetrieve(identities: UserIdentity[]): Promise<(User | null)[]> {
         return this.db.run(
             batchRetrieve(users, identities as Pick<User, 'id'>[]),
         );
@@ -134,7 +134,7 @@ export class LocalUserPool implements UserPool {
  * @param items Items to map
  * @param callback Function to be called for each distinct value
  */
-export function mapCached<T, R>(items: T[], callback: (item: T) => R): R[] {
+export function mapCached<T, R>(items: T[], callback: (item: T) => R): R[] {
     const results: R[] = [];
     for (let i = 0; i < items.length; i++) {
         const item = items[i];

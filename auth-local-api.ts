@@ -1,4 +1,3 @@
-// tslint:disable:variable-name
 import { endpoint } from './endpoints';
 import { creatable, listable } from './operations';
 import { pattern } from './url';

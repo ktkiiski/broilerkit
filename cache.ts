@@ -1,5 +1,5 @@
 export interface Cache {
-    [key: string]: any;
+    [key: string]: unknown;
 }
 export function cached<T>(cache: Cache, key: string, fn: () => Promise<T>): Promise<T> {
     let promise = cache[key] as Promise<T> | undefined;

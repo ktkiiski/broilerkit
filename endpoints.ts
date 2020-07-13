@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Key } from 'immuton/types';
 import { Resource } from './resources';
 import { Route } from './routes';
@@ -18,6 +19,6 @@ export class Endpoint<S, PK extends Key<S>, U extends Key<S>> {
 export function endpoint<S, PK extends Key<S>, U extends Key<S>>(
     resource: Resource<S, PK, any>,
     pattern: UrlPattern<U>,
-) {
+): Endpoint<S, PK, U> {
     return new Endpoint<S, PK, U>(resource, pattern);
 }

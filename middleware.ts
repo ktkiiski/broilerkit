@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createHash } from 'crypto';
 import { encodeSafeJSON, escapeHtml } from './html';
 import { acceptsContentType, ApiResponse, BadRequest, HttpRequest, HttpResponse, HttpStatus, isReadHttpMethod, isResponse, isWriteHttpMethod, normalizeHeaders } from './http';
@@ -23,7 +24,7 @@ export function middleware<P extends any[]>(
 
 export function requestMiddleware<I, O>(handleRequest: (request: I) => Promise<O>) {
     return <P extends any[], R>(handler: (request: O, ...params: P) => Promise<R>) => (
-        async (request: I, ...params: P) => {
+        async (request: I, ...params: P): Promise<R> => {
             const newRequest = await handleRequest(request);
             return await handler(newRequest, ...params);
         }
@@ -32,7 +33,7 @@ export function requestMiddleware<I, O>(handleRequest: (request: I) => Promise<O
 
 export function responseMiddleware<I, O, R>(handleResponse: (response: I, request: R) => Promise<O>) {
     return <P extends any[]>(handler: (request: R, ...params: P) => Promise<I>) => (
-        async (request: R, ...params: P) => {
+        async (request: R, ...params: P): Promise<O> => {
             const response = await handler(request, ...params);
             return await handleResponse(response, request);
         }

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import isNotNully from 'immuton/isNotNully';
 import isNully from 'immuton/isNully';
 import { Key } from 'immuton/types';
@@ -41,7 +43,7 @@ export function selectQuery<S, PK extends Key<S>, W extends Key<S>>(
     const params: any[] = [];
     const { name } = resource;
     const sql = `${getSelectSql(name, '', params, resource, defaultsByTable, [filters], limit, ordering, direction, since)};`;
-    return makeQuery(sql, params, ({ rows }) => (
+    return makeQuery(sql, params, ({ rows }) => (
         rows.map((row) => parseRow(resource, row)).filter(isNotNully)
     ));
 }
@@ -54,7 +56,7 @@ export function batchSelectQuery<S>(
     const { name } = resource;
     const params: any[] = [];
     const sql = getSelectSql(name, '', params, resource, defaultsByTable, filtersList);
-    return makeQuery(sql, params, ({ rows }) => (
+    return makeQuery(sql, params, ({ rows }) => (
         rows.map((row) => parseRow(resource, row)).filter(isNotNully)
     ));
 }
@@ -94,7 +96,7 @@ export function updateQuery<S, W extends Key<S>>(
     const selectColSql = getSelectColumnsSql(updateAlias, name, resource, params, defaultsByTable);
     const selectSql = `SELECT ${selectColSql}, ${prevAlias}.* FROM ${prevRef}, ${updateRef}${selectJoinSql}`;
     const sql = `WITH ${prevRef} AS (${prevSelectSql}), ${updateRef} AS (${updateSql}) ${selectSql};`;
-    return makeQuery(sql, params, ({ rows }) => (
+    return makeQuery(sql, params, ({ rows }) => (
         rows.map((row) => {
             const newItem = parseRow(resource, row, name);
             const oldItem = parseRow(resource, row, prevAlias);
@@ -150,7 +152,7 @@ export function insertQuery<S, PK extends Key<S>, W extends Key<S>>(
     } else {
         sql = `${insertionSql};`;
     }
-    return makeQuery(sql, params, ({ rows }) => {
+    return makeQuery(sql, params, ({ rows }) => {
         for (const row of rows) {
             const item = parseRow(resource, row);
             if (item) {
@@ -214,7 +216,7 @@ export function countQuery(
         sql += ` WHERE ${filtersSql}`;
     }
     sql += ';';
-    return makeQuery(sql, params, ({ rows }) => rows[0]?.count ?? 0);
+    return makeQuery(sql, params, ({ rows }) => rows[0]?.count ?? 0);
 }
 
 export class Increment {
@@ -557,14 +559,12 @@ function parseRow<S>(
     try {
         return resource.validate(result as S);
     } catch (error) {
-        // The database entry is not valid!
-        // tslint:disable-next-line:no-console
-        console.error(`Failed to load invalid ${namespace || ''} item from the database:`, error);
+        // The database entry is not valid!        console.error(`Failed to load invalid ${namespace || ''} item from the database:`, error);
         return null;
     }
 }
 
-const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|[;,\(\)\[\]])/g;
+const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|[;,()[\]])/g;
 
 function tokenize(sql: string): string[] {
     return sql.split(sqlTokenizerRegexp).filter((token) => !!token);

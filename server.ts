@@ -1,4 +1,4 @@
-// tslint:disable:member-ordering
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import isNotNully from 'immuton/isNotNully';
 import sort from 'immuton/sort';
 import transform from 'immuton/transform';
@@ -191,6 +191,7 @@ function implement<I, O, R>(
     }
 }
 
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export function implementAll<I, O, R, T extends Record<string, OperationType>>(
     operations: Implementables<I, O, R, T>,
 ) {
@@ -237,7 +238,7 @@ export class ApiService {
         this.operations = this.controllers.map(({ operation }) => operation).filter(isNotNully);
     }
 
-    public execute = async (request: HttpRequest, context: ServerContext) => {
+    public execute = async (request: HttpRequest, context: ServerContext): Promise<ApiResponse<any> | HttpResponse> => {
         const { operations } = this;
         let errorResponse: ApiResponse | HttpResponse = new NotFound(`API endpoint not found.`);
         // TODO: Configure TypeScript to allow using iterables on server side
@@ -294,7 +295,7 @@ export class ApiService {
         return errorResponse;
     }
 
-    public extend(controllers: Record<string, Controller>) {
+    public extend(controllers: Record<string, Controller>): ApiService {
         return new ApiService({...this.controllersByName, ...controllers});
     }
 

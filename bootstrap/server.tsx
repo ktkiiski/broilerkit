@@ -3,10 +3,10 @@
  * This is used as an endpoint file for a webpack bundle!
  */
 import { SecretsManager } from 'aws-sdk';
-import { JWK } from 'node-jose';
+import { JWK } from 'node-jose';
 import { Pool } from 'pg';
 import { readFile } from '../fs';
-import { LambdaEvent, LambdaHttpRequest, lambdaMiddleware } from '../lambda';
+import { LambdaEvent, LambdaHttpRequest, lambdaMiddleware, LambdaHttpResponse } from '../lambda';
 import { middleware } from '../middleware';
 import { authenticationMiddleware } from '../oauth';
 import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
@@ -25,7 +25,8 @@ const apiService = getApiService();
 // Database
 const db = getDatabase();
 // Load the module exporting the rendered React component
-const view: React.ComponentType<{}> = require('_site').default;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const view: React.ComponentType = require('_site').default;
 const service = apiService.extend({
     [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, pageHtml$),
     [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),
@@ -114,14 +115,14 @@ const handleEvent = async (event: LambdaEvent, context: ServerContext) => {
  * with the bundler. Therefore, this function can only be called from
  * the actual bundled script.
  */
-export const request = async (event: LambdaHttpRequest | LambdaEvent) => {
+export async function request(event: LambdaHttpRequest | LambdaEvent): Promise<void | LambdaHttpResponse> {
     const context = await serverContext$;
     if ('path' in event && 'headers' in event) {
         return handleRequest(event, context);
     } else {
         return handleEvent(event, context);
     }
-};
+}
 
 function getApiService() {
     let apiModule;

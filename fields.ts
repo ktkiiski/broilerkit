@@ -375,7 +375,7 @@ class DecimalField extends RegexpField {
 class EmailField extends RegexpField {
     constructor() {
         super(
-            /^(([^<>()\[\]\.,;:\s@\"]+(\.[^<>()\[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i,
+            /^(([^<>()[\].,;:\s@"]+(\.[^<>()[\].,;:\s@"]+)*)|(".+"))@(([^<>()[\].,;:\s@"]+\.)+[^<>()[\].,;:\s@"]{2,})$/i,
             `Value is not a valid email`,
         );
     }
@@ -384,7 +384,7 @@ class EmailField extends RegexpField {
 class URLField extends RegexpField {
     constructor() {
         super(
-            /^https?:\/\/[\w.-]+(?:\.[\w\.-]+)*[\w\-\._~:%/?#[\]@!\$&'\(\)\*\+,;=.]+$/i,
+            /^https?:\/\/[\w.-]+(?:\.[\w.-]+)*[\w\-._~:%/?#[\]@!$&'()*+,;=.]+$/i,
             `Value is not a valid URL`,
         );
     }
@@ -516,7 +516,7 @@ class ListField<I, O> implements Field<I[], O[]> {
         const results = items.map((item, key) => {
             try {
                 return iteratee(item, key);
-            } catch (error) {
+            } catch (error) {
                 // Collect nested validation errors
                 if (isApiResponse(error)) {
                     errors.push({...error.data, key});
@@ -561,7 +561,7 @@ export function number(options: NumberFieldOptions = {}): Field<number> {
     return new NumberField(options);
 }
 
-export function decimal(decimals: number = 2): Field<string> {
+export function decimal(decimals = 2): Field<string> {
     return new DecimalField(decimals);
 }
 

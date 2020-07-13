@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CognitoIdentityServiceProvider } from 'aws-sdk';
 import mapObject from 'immuton/mapObject';
 import { NotFound } from '../http';
@@ -13,7 +14,7 @@ export interface CognitoUser {
     picture: string | null;
 }
 
-export class AmazonCognitoIdentity<S = {}> {
+export class AmazonCognitoIdentity<S = Record<never, never>> {
     private cognito = new CognitoIdentityServiceProvider({
         region: this.region,
         maxRetries: 20,

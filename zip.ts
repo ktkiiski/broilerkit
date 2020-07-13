@@ -8,7 +8,7 @@ import * as JSZip from 'jszip';
  * @param filename for the file included in the archive
  * @returns a promise for the ZIP archive as a Buffer
  */
-export function zip(data: any, filename: string): Promise<Buffer> {
+export function zip(data: string | Buffer | NodeJS.ReadableStream, filename: string): Promise<Buffer> {
     return zipAll([{data, filename}]);
 }
 
@@ -19,7 +19,7 @@ export function zip(data: any, filename: string): Promise<Buffer> {
  * @param files to compress
  * @returns a promise for the ZIP archive as a Buffer
  */
-export function zipAll(files: {data: any, filename: string}[]): Promise<Buffer> {
+export function zipAll(files: {data: string | Buffer | NodeJS.ReadableStream, filename: string}[]): Promise<Buffer> {
     const jszip = new JSZip();
     for (const {data, filename} of files) {
         jszip.file(filename, data);

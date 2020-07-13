@@ -31,9 +31,7 @@ export class AmazonRoute53 {
         let change = creationResult.ChangeInfo;
         while (change.Status !== 'INSYNC') {
             // Wait for a while
-            await wait(1000);
-            // tslint:disable-next-line:no-shadowed-variable
-            const changeResult = await this.route53.getChange({Id: change.Id}).promise();
+            await wait(1000);            const changeResult = await this.route53.getChange({Id: change.Id}).promise();
             change = changeResult.ChangeInfo;
         }
         // Return all the information about the hosted zone

@@ -1,11 +1,10 @@
 // Place your settings in this file to overwrite default and user settings.
 {
-    "eslint.autoFixOnSave": true,
     "files.associations": {
         "*.tmpl": "html"
     },
     "files.exclude": {
-        "**/*.js": { "when": "$(basename).ts"},
+        "**/*.js": { "when": "$(basename).ts" },
         "**/*.js.map": true,
         "**/.git": true,
         "**/.svn": true,
@@ -14,8 +13,6 @@
         "**/.DS_Store": true
     },
     "html.format.endWithNewline": true,
-    "tslint.autoFixOnSave": true,
-    "tslint.jsEnable": false,
     "typescript.tsdk": "./node_modules/typescript/lib",
     "editor.codeActionsOnSave": {
         "source.fixAll.eslint": true

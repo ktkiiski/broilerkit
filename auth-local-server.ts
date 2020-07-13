@@ -1,4 +1,3 @@
-// tslint:disable:no-shadowed-variable
 import flatten from 'immuton/flatten';
 import order from 'immuton/order';
 import { toArray } from './async';

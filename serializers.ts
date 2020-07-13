@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import difference from 'immuton/difference';
 import omit from 'immuton/omit';
 import pick from 'immuton/pick';
-import { Key, Require } from 'immuton/types';
+import { Key, Require } from 'immuton/types';
 import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
 import { isApiResponse } from './http';
@@ -210,9 +212,7 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<Pic
 }
 
 class NestedSerializerField<I> implements Field<I, Serialization> {
-    public readonly type: string = 'jsonb';
-    // tslint:disable-next-line:no-shadowed-variable
-    constructor(private serializer: Serializer<I, any>) {}
+    public readonly type: string = 'jsonb';    constructor(private serializer: Serializer<I, any>) {}
     public validate(value: I): I {
         return this.serializer.validate(value);
     }
@@ -222,16 +222,16 @@ class NestedSerializerField<I> implements Field<I, Serialization> {
     public deserialize(value: unknown): I {
         return this.serializer.deserialize(value);
     }
-    public encode(_: I): never {
+    public encode(): never {
         throw new Error('Nested resource field does not support encoding.');
     }
-    public encodeSortable(_: I): never {
+    public encodeSortable(): never {
         throw new Error('Nested resource field does not support sortable encoding.');
     }
-    public decode(_: any): never {
+    public decode(): never {
         throw new Error('Nested resource field does not support decoding.');
     }
-    public decodeSortable(_: any): never {
+    public decodeSortable(): never {
         throw new Error('Nested resource field does not support sortable decoding.');
     }
 }

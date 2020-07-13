@@ -13,7 +13,7 @@ interface PreTokenGenerationTriggerEvent {
   };
 }
 
-export const handler = async (event: PreTokenGenerationTriggerEvent) => {
+export const handler = async (event: PreTokenGenerationTriggerEvent): Promise<PreTokenGenerationTriggerEvent> => {
   let picture: string | null = event.request.userAttributes.picture;
   try {
     picture = JSON.parse(picture).data.url;

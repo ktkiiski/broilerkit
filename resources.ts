@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import isDefined from 'immuton/isDefined';
 import pick from 'immuton/pick';
 import select from 'immuton/select';
-import { FilteredKeys, Key } from 'immuton/types';
+import { FilteredKeys, Key } from 'immuton/types';
 import union from 'immuton/union';
 import { Field, nullable } from './fields';
 import { Fields, FieldSerializer, nested, Serializer } from './serializers';
@@ -174,6 +175,7 @@ export type Deserialization<T extends Serializer<any, any>> = T extends Serializ
 
 type ResourceFields<I, O> = {[P in keyof I]: Field<I[P], any>} & {[P in keyof O]: Field<any, O[P]>};
 
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export function resource(name: string) {
     function fields<T, X>(columns: ResourceFields<T, X>) {
         function identifyBy<PK extends Key<T>>(...idKeys: PK[]): Resource<T, PK, Key<T>> {

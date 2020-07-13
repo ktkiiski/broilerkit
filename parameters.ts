@@ -1,6 +1,7 @@
 import { ParameterConfig } from './index';
 import { bold } from './palette';
 import { readAnswer } from './readline';
+import hasOwnProperty from 'immuton/hasOwnProperty';
 
 interface ParameterConfigs {
     [param: string]: ParameterConfig;
@@ -13,7 +14,7 @@ export async function askParameters<T = never>(parameters: ParameterConfigs | un
     const customParameters: {[param: string]: string | T} = {};
     if (parameters) {
         for (const key in parameters) {
-            if (parameters.hasOwnProperty(key)) {
+            if (hasOwnProperty(parameters, key)) {
                 const paramName = `${prefix}${key}`;
                 const {description} = parameters[key];
                 let value = prevParams && prevParams[paramName];

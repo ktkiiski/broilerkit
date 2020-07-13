@@ -166,6 +166,6 @@ export class App {
  * Configures a web app.
  * @param config Configuration for the web app
  */
-export function app(config: AppConfig) {
+export function app(config: AppConfig): App {
     return new App(config);
 }

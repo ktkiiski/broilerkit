@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
 import { ApiResponse, BadRequest, HttpMethod, HttpRequest, HttpResponse, HttpStatus, NotImplemented, parseCookies } from './http';
@@ -93,9 +94,7 @@ export class OAuth2SignedInController implements Controller {
         let statePayload: any;
         try {
             statePayload = await decryptToken(state, sessionEncryptionKey.keystore);
-        } catch (error) {
-            // tslint:disable-next-line:no-console
-            console.error(`Invalid "state" returned from the authentication provider:`, error);
+        } catch (error) {            console.error(`Invalid "state" returned from the authentication provider:`, error);
             throw new BadRequest(`Invalid "state" URL parameter`);
         }
         if (statePayload.aud !== callbackUri) {
@@ -161,9 +160,7 @@ export class OAuth2SignedInController implements Controller {
                     redirect_uri: callbackUri,
                     code,
                 });
-            } catch (error) {
-                // tslint:disable-next-line:no-console
-                console.error('Failed to retrieve authentication tokens:', error);
+            } catch (error) {                console.error('Failed to retrieve authentication tokens:', error);
                 throw new BadRequest('Authentication failed due to invalid "code" URL parameter');
             }
         }
@@ -239,9 +236,7 @@ export class OAuth2SignedOutController implements Controller {
                 if (statePayload.aud === requiredAud && statePayload.redirect_uri) {
                     redirectUri = statePayload.redirect_uri;
                 }
-            } catch (error) {
-                // tslint:disable-next-line:no-console
-                console.error(`Invalid state cookie when signing out`, error);
+            } catch (error) {                console.error(`Invalid state cookie when signing out`, error);
             }
         }
         const signOutCookieHeader = getSetCookieHeader('signout', '', null, region, '/oauth2');
@@ -250,6 +245,7 @@ export class OAuth2SignedOutController implements Controller {
     }
 }
 
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export function authenticationMiddleware<P extends any[], R extends HttpResponse | ApiResponse>(handler: (request: HttpRequest, context: ServerContext, ...params: P) => Promise<R>) {
     async function handleAuthentication(req: HttpRequest, context: ServerContext, ...params: P): Promise<R> {
         const { sessionEncryptionKey } = context;
@@ -265,9 +261,7 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
             try {
                 cookieSession = await decryptSession(sessionToken, keyStore);
             } catch (error) {
-                // Invalid session token
-                // tslint:disable-next-line:no-console
-                console.warn(`Invalid session token: ${sessionToken}`, error);
+                // Invalid session token                console.warn(`Invalid session token: ${sessionToken}`, error);
             }
         }
         let session: UserSession | null = cookieSession;
@@ -300,9 +294,7 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
                     });
                     tokens.refresh_token = session.refreshToken;
                     session = parseUserSession(tokens, session.session, sessionDuration);
-                } catch (error) {
-                    // tslint:disable-next-line:no-console
-                    console.error('Failed to renew authentication tokens:', error);
+                } catch (error) {                    console.error('Failed to renew authentication tokens:', error);
                     // Could not renew the information, so assume not authenticated!
                     session = null;
                 }

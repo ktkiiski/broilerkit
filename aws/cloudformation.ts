@@ -151,6 +151,7 @@ export class AmazonCloudFormation {
      * Deletes the existing CloudFormation stack.
      * This will fail if the stack does not exist.
      */
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public async *deleteStack(pollInterval = 2000) {
         await this.cloudFormation.deleteStack({ StackName: this.stackName }).promise();
         yield *this.waitForDeletion(pollInterval);
@@ -258,7 +259,7 @@ export class AmazonCloudFormation {
      * Fails if the creation fails.
      */
     private async waitForChangeSetCreateComplete(request: CloudFormation.DescribeChangeSetInput, pollInterval: number): Promise<CloudFormation.DescribeChangeSetOutput> {
-        while (true) {
+        for (;;) {
             const changeSet = await this.cloudFormation.describeChangeSet(request).promise();
             const changeSetReq = this.cloudFormation.describeChangeSet(request);
             // Get all the changes in the change set
@@ -289,6 +290,7 @@ export class AmazonCloudFormation {
  * @param parameters An object of parameter key-values
  * @returns Array of parameter objects.
  */
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export function convertStackParameters(parameters: {[key: string]: StackParameterValue}) {
     return mapObject(parameters, (ParameterValue, ParameterKey) => {
         if (ParameterValue === null) {

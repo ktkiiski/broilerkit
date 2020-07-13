@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { RDSDataService } from 'aws-sdk';
 import isNotNully from 'immuton/isNotNully';
 import { Client, ClientBase, PoolClient } from 'pg';
 import { Table } from './db';
 import { EffectContext, ResourceEffect } from './effects';
 import { HttpStatus } from './http';
-import { scanCursor } from './postgres-cursor';
+import { scanCursor } from './postgres-cursor';
 import { Resource } from './resources';
 import { retry } from './retry';
 import { Row, SqlQuery, SqlResult, TableDefaults } from './sql';
@@ -24,7 +25,7 @@ export interface SqlConnection extends EffectContext {
     query(sql: string, params?: any[]): Promise<SqlResult>;
     queryAll(queries: {sql: string, params?: any[]}[]): Promise<SqlResult[]>;
     scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk>;
-    disconnect(error?: any): Promise<void>;
+    disconnect(error?: Error): Promise<void>;
     transaction<R>(callback: () => Promise<R>): Promise<R>;
 }
 
@@ -125,7 +126,7 @@ export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClien
     constructor(protected client: PoolClient, effects: ResourceEffect[]) {
         super(effects);
     }
-    public async disconnect(error?: any): Promise<void> {
+    public async disconnect(error?: Error): Promise<void> {
         this.client.release(error);
     }
 }
@@ -213,7 +214,7 @@ export class DatabaseClient {
      * returning its result as a promise.
      * @param query database operation or query
      */
-    public async run<T>(query: SqlOperation<T>) {
+    public async run<T>(query: SqlOperation<T>): Promise<T> {
         const db = this.getDatabase();
         return this.withConnection((connection) => query(connection, db));
     }

@@ -1,7 +1,7 @@
 import * as Styles from 'ansi-styles';
 import * as Support from 'supports-color';
 
-const noFormat = (str: string) => str;
+const noFormat = (str: string): string => str;
 
 let blue = noFormat;
 let bold = noFormat;
@@ -18,7 +18,9 @@ function stylize(modifier: { open: string, close: string }) {
 }
 
 try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const styles: typeof Styles = require('ansi-styles');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { stdout, stderr }: typeof Support = require('supports-color');
     const isSupported = stdout && stdout.has256 && stderr && stderr.has256
         && !process.env.AWS_LAMBDA_LOG_GROUP_NAME;

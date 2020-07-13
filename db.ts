@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import flatMap from 'immuton/flatMap';
 import hasProperties from 'immuton/hasProperties';
 import isEqual from 'immuton/isEqual';
@@ -522,9 +523,7 @@ export function getResourceState(name: string, resource: Resource<any, any, any>
             .map((key) => ({
                 name: key,
                 type: fields[key].type,
-            })),
-        // tslint:disable-next-line:no-shadowed-variable
-        indexes: indexes.map((keys) => ({ keys })),
+            })),        indexes: indexes.map((keys) => ({ keys })),
     };
 }
 

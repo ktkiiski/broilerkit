@@ -174,7 +174,7 @@ describe('parseFormData()', () => {
                 ),
                 `----ekke`,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Invalid multipart/form-data payload: boundary not found`,
             }),
@@ -194,7 +194,7 @@ describe('parseFormData()', () => {
                 ),
                 `----7dd322351017c`,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Invalid multipart/form-data part: no content`,
             }),
@@ -212,7 +212,7 @@ describe('parseFormData()', () => {
                 ),
                 `----7dd322351017c`,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Invalid multipart/form-data part: invalid Content-Disposition header`,
             }),
@@ -230,7 +230,7 @@ describe('parseFormData()', () => {
                 ),
                 `----7dd322351017c`,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Invalid multipart/form-data part: invalid Content-Disposition header`,
             }),
@@ -248,7 +248,7 @@ describe('parseFormData()', () => {
                 ),
                 `----7dd322351017c`,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Invalid multipart/form-data part: missing Content-Disposition header`,
             }),
@@ -266,7 +266,7 @@ describe('parseFormData()', () => {
                 ),
                 `----7dd322351017c`,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Invalid multipart/form-data part: missing Content-Disposition header`,
             }),
@@ -284,7 +284,7 @@ describe('parseFormData()', () => {
                 ),
                 ``,
             ),
-            (error: any) => hasProperties(error, {
+            (error) => hasProperties(error, {
                 statusCode: 400,
                 message: `Missing the multipart/form-data boundary`,
             }),

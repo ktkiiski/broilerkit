@@ -9,9 +9,9 @@ export function useAuth(): Auth | null {
     const [auth, setAuth] = useState<Auth | null>(authClient.getAuthentication());
     useEffect(() => {
         return authClient.subscribeAuthentication((newAuth) => {
-            if (!isEqual(newAuth, auth, 1)) {
-                setAuth(newAuth);
-            }
+            setAuth((prevAuth) => (
+                isEqual(newAuth, prevAuth, 1) ? prevAuth : newAuth
+            ));
         });
     }, [authClient]);
     return auth;
@@ -25,9 +25,7 @@ export function useUserId(): string | null {
     useEffect(() => {
         return authClient.subscribeAuthentication((auth) => {
             const newUserId = auth && auth.id;
-            if (!isEqual(newUserId, userId, 1)) {
-                setUserId(newUserId);
-            }
+            setUserId(newUserId);
         });
     }, [authClient]);
     return userId;

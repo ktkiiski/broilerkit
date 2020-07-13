@@ -1,4 +1,5 @@
 #! /usr/bin/env node
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as childProcess from 'child_process';
 import * as path from 'path';
 import * as yargs from 'yargs';
@@ -11,9 +12,7 @@ import { red } from './palette';
 import * as tsNode from 'ts-node';
 
 const onError = (error: Error) => {
-    process.exitCode = 1;
-    // tslint:disable-next-line:no-console
-    console.error(red(String(error.stack || error)));
+    process.exitCode = 1;    console.error(red(String(error.stack || error)));
 };
 
 interface CommandOptions {
@@ -33,13 +32,11 @@ function getBroiler(argv: CommandOptions) {
     const cwd = process.cwd();
     const appPath = path.resolve(cwd, appConfigPath);
     const projectRootPath = path.dirname(appPath);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const appModule = require(appPath);
     const app: App = appModule.default; // App should be the default export
     return new Broiler(app.configure({...options, projectRootPath}));
-}
-
-// tslint:disable-next-line:no-unused-expression
-yargs
+}yargs
     // Read the app configuration
     .describe('appConfigPath', 'Path to the app configuration')
     .default('appConfigPath', 'app.ts')

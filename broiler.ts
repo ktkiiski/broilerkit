@@ -1,4 +1,4 @@
-// tslint:disable:no-shadowed-variable
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CloudFormation, S3 } from 'aws-sdk';
 import difference from 'immuton/difference';
 import differenceBy from 'immuton/differenceBy';
@@ -119,7 +119,7 @@ export class Broiler {
      * - An (initial) CloudFormation stack, probably containing just the deployment AWS S3 bucket.
      * - Required hosted zones (which may be shared with other deployments)
      */
-    public async initialize() {
+    public async initialize(): Promise<void> {
         await Promise.all([
             this.initializeHostedZones(),
             this.initializeStack(),
@@ -193,7 +193,7 @@ export class Broiler {
     /**
      * Preview the changes that would be deployed.
      */
-    public async preview() {
+    public async preview(): Promise<void> {
         await this.compile(false);
         const templateUrl = await this.prepareStackTemplate();
         const parameters = await this.getStackParameters();
@@ -205,7 +205,7 @@ export class Broiler {
     /**
      * Prints the CloudFormation stack template.
      */
-    public async printTemplate() {
+    public async printTemplate(): Promise<void> {
         await this.compile(false);
         const template = await this.generateTemplate();
         this.log(dumpTemplate(template));
@@ -214,7 +214,7 @@ export class Broiler {
     /**
      * Runs the local development server.
      */
-    public async serve() {
+    public async serve(): Promise<void> {
         this.log(`Starting the local development server...`);
         const opts = this.config;
         const paramFile = path.resolve(opts.stageDir, './params.json');
@@ -292,7 +292,7 @@ export class Broiler {
     /**
      * Outputs the logs
      */
-    public async printLogs(options: {follow?: boolean, since?: string, maxCount?: number} = {}) {
+    public async printLogs(options: {follow?: boolean, since?: string, maxCount?: number} = {}): Promise<void> {
         const {follow = false, since = '5min', maxCount} = options;
         const startDate = new Date();
         const minutesMatch = /(\d+)min/.exec(since);
@@ -320,7 +320,7 @@ export class Broiler {
         }
     }
 
-    public async printTables() {
+    public async printTables(): Promise<void> {
         const tables = this.getTables();
         // TODO: List database tables that have actually been created, and probably their schemas!
         if (!tables.length) {
@@ -332,7 +332,7 @@ export class Broiler {
         }
     }
 
-    public async printTableRows(tableName: string, pretty: boolean) {
+    public async printTableRows(tableName: string, pretty: boolean): Promise<void> {
         const table = this.getTable(tableName);
         const dbClient = await this.getDatabaseClient();
         for await (const items of dbClient.scan(scan(table.resource))) {
@@ -343,7 +343,7 @@ export class Broiler {
         }
     }
 
-    public async uploadTableRows(tableName: string, filePath: string) {
+    public async uploadTableRows(tableName: string, filePath: string): Promise<void> {
         const table = this.getTable(tableName);
         const dbClient = await this.getDatabaseClient();
         let index = 0;
@@ -361,7 +361,7 @@ export class Broiler {
         }
     }
 
-    public async backupDatabase(dirPath?: string | null) {
+    public async backupDatabase(dirPath?: string | null): Promise<void> {
         const basePath = dirPath || generateBackupDirPath(this.config.stageDir);
         const dbClient = await this.getDatabaseClient();
         const tables = this.getTables();
@@ -394,7 +394,7 @@ export class Broiler {
         this.log(`Successfully backed up ${tables.length} database tables to:\n${basePath}`);
     }
 
-    public async executeSql(sql: string, params: any[]) {
+    public async executeSql(sql: string, params: any[]): Promise<void> {
         const connect = await this.getDatabaseConnector();
         const sqlConnection = await connect();
         try {
@@ -407,7 +407,7 @@ export class Broiler {
         }
     }
 
-    public async restoreDatabase(dirPath: string, overwrite: boolean = false) {
+    public async restoreDatabase(dirPath: string, overwrite = false): Promise<void> {
         const dbClient = await this.getDatabaseClient();
         const tables = this.getTables();
         this.log(`Restoring ${tables.length} database tables…`);
@@ -485,7 +485,7 @@ export class Broiler {
     /**
      * Ensures that the required hosted zone(s) exist, creating them if not.
      */
-    public async initializeHostedZones() {
+    public async initializeHostedZones(): Promise<void> {
         const {serverRoot, assetsRoot} = this.config;
         const siteRootUrl = new URL(serverRoot);
         const siteHostedZone = getHostedZone(siteRootUrl.hostname);
@@ -581,6 +581,7 @@ export class Broiler {
     /**
      * Returns the parameters that are given to the CloudFormation template.
      */
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public async getStackParameters() {
         const {serverRoot, assetsRoot, auth, parameters, vpc} = this.config;
         const serverRootUrl = new URL(serverRoot);
@@ -651,7 +652,7 @@ export class Broiler {
      * @param file$ Observable of vinyl files
      * @param cacheDuration How long the files should be cached
      */
-    public async *uploadFilesToS3Bucket(bucketName: string, file$: Promise<File[]>, cacheDuration: number, overwrite: boolean) {
+    public async *uploadFilesToS3Bucket(bucketName: string, file$: Promise<File[]>, cacheDuration: number, overwrite: boolean): AsyncGenerator<IFileUpload, void> {
         const files = [...await file$];
         const uploads$: Promise<IFileUpload>[] = [];
         const startNext = () => {
@@ -712,8 +713,8 @@ export class Broiler {
             this.getCompiledHtmlFile(),
         ]);
         const zipFileData$ = zipAll([
-            {filename: 'server.js', data: serverFile.contents},
-            {filename: 'index.html', data: htmlFile.contents},
+            {filename: 'server.js', data: serverFile.contents as Buffer | NodeJS.ReadableStream},
+            {filename: 'index.html', data: htmlFile.contents as Buffer | NodeJS.ReadableStream},
         ]);
         const output$ = this.cloudFormation.getStackOutput();
         const [output, zipFileData, key] = await Promise.all([
@@ -1024,11 +1025,9 @@ export class Broiler {
     }
 
     private log(message: any, ...params: any[]) {
-        // tslint:disable-next-line:no-console
         console.log(message, ...params);
     }
     private logError(message: any, ...params: any[]) {
-        // tslint:disable-next-line:no-console
         console.error(red(message), ...params);
     }
 
@@ -1081,6 +1080,7 @@ export class Broiler {
         return newStack;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private importModule(dir: string): any {
         const { projectRootPath, sourceDir } = this.config;
         const modulePath = path.resolve(projectRootPath, sourceDir, dir);

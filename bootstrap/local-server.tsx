@@ -14,7 +14,7 @@ import { ApiService } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 import { LOCAL_UPLOAD_ENDPOINT_NAME, LocalUploadController } from '../storage';
 
-export const getApiService = (pageHtml$: Promise<string>, uploadDirPath: string) => {
+export function getApiService(pageHtml$: Promise<string>, uploadDirPath: string): ApiService {
     let module;
     try {
         module = require('_service');
@@ -24,8 +24,9 @@ export const getApiService = (pageHtml$: Promise<string>, uploadDirPath: string)
     }
     const apiService = new ApiService(module.default).extend(authLocalServer);
     // Load the module exporting the rendered React component
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const siteModule = require('_site');
-    const view: React.ComponentType<{}> = siteModule.default;
+    const view: React.ComponentType = siteModule.default;
     return apiService.extend({
         [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(
             apiService,
@@ -38,12 +39,13 @@ export const getApiService = (pageHtml$: Promise<string>, uploadDirPath: string)
         [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
         [LOCAL_UPLOAD_ENDPOINT_NAME]: new LocalUploadController(uploadDirPath),
     });
-};
+}
 
-export const getDatabase = (): Database | null => {
+export function getDatabase(): Database | null {
     try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         return require('_db').default;
     } catch {
         return null;
     }
-};
+}

@@ -28,7 +28,7 @@ function LocalSignInView({location}: RouteComponentProps) {
     const query = parseQuery(location.search);
 
     async function signInAs(user: User) {
-        const idTokenPayload: {[key: string]: any} = {
+        const idTokenPayload: {[key: string]: unknown} = {
             'sub': user.id,
             'exp': Math.floor(new Date().getTime() / 1000) + 60 * 60,
             'cognito:groups': isAdmin ? ['Administrators'] : [],

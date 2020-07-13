@@ -1,3 +1,5 @@
+/* eslint-disable react/prop-types */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as React from 'react';
 import { Route as ReactRoute, RouteComponentProps } from 'react-router';
 import { HttpStatus, isErrorResponse } from '../http';
@@ -18,10 +20,10 @@ export function renderRoute<S>(
     component: React.ComponentType<S>,
     errorComponent?: React.ComponentType<any> | null,
     statusCode = HttpStatus.OK,
-) {
+): JSX.Element {
     const { pattern } = route.pattern;
     const pathPattern = pattern.replace(/\{(\w+)\}/g, (_, urlKeyword: string) => `:${urlKeyword}`);
-    const routedComponent = (props: RouteComponentProps<any>) => {
+    const routedComponent = (props: RouteComponentProps<{ url: string }>) => {
         const { match } = props;
         try {
             const routeMatch = route.match(match.url);
@@ -50,7 +52,7 @@ export function renderRoute<S>(
     />;
 }
 
-export function renderStaticRoute(component: React.ComponentType<{}>, statusCode = HttpStatus.OK) {
+export function renderStaticRoute(component: React.ComponentType, statusCode = HttpStatus.OK): JSX.Element {
     const routedComponent = (props: RouteComponentProps<any>) => {
         setStatusCode(props, statusCode);
         return React.createElement(component);

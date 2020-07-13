@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import build from 'immuton/build';
 import { Key } from 'immuton/types';
 import { CreateApi, DestroyApi, UpdateApi, UploadApi } from './api';
@@ -79,7 +80,7 @@ implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A],
     ) {
         super(endpoint, authType, userIdAttribute);
     }
-    public getPayloadSerializer() {
+    public getPayloadSerializer(): null {
         return null;
     }
     public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'> {
@@ -97,7 +98,7 @@ implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
         this.endpoint.resource.pick(this.endpoint.pattern.pathKeywords),
     );
     public readonly responseSerializer = this.endpoint.resource;
-    public getPayloadSerializer() {
+    public getPayloadSerializer(): null {
         return null;
     }
     public asImplementable(): Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
@@ -124,6 +125,7 @@ implements Bindable<CreateApi<S, U, R, O, D, B>>, Operation<OptionalOutput<S, R 
     public bind(client: Client): CreateApi<S, U, R, O, D, B> {
         return new CreateApi(this, client);
     }
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public getPayloadSerializer() {
         return this.payloadSerializer;
     }
@@ -173,7 +175,7 @@ implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthReques
     public bind(client: Client): DestroyApi<S, U, B> {
         return new DestroyApi(this, client);
     }
-    public getPayloadSerializer() {
+    public getPayloadSerializer(): null {
         return null;
     }
     public asImplementable(): Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'> {
@@ -209,6 +211,7 @@ implements Bindable<UploadApi<S, F, U, R, O, D, B>>, Operation<OptionalOutput<S,
     public bind(client: Client): UploadApi<S, F, U, R, O, D, B> {
         return new UploadApi(this, client);
     }
+    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
     public getPayloadSerializer() {
         return this.payloadSerializer;
     }

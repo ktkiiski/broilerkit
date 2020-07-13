@@ -52,7 +52,7 @@ export class AWSFileStorage implements FileStorage {
             ...presignedPost.fields,
             'action': presignedPost.url,
             'method': 'POST',
-        } as any;
+        } as UploadForm;
     }
     public async retrieve(bucket: Bucket, key: string): Promise<BucketObject> {
         const bucketName = this.getBucketName(bucket);
@@ -174,6 +174,7 @@ export class LocalUploadController implements Controller {
     }
     private async triggerEvent(context: HandlerServerContext, bucketName: string, key: string, size: number) {
         const fakeBucketName = `${context.stackName}-storage-${bucketName}`;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const triggers: Trigger[] = Object.values(require('_triggers'));
         await triggerEvent(
             triggers, {

@@ -10,12 +10,12 @@ export class Route<S, K extends Key<S> | never> {
         return urlMatch && this.serializer.decode(urlMatch);
     }
 
-    public compile(state: S) {
+    public compile(state: S): Url {
         return this.pattern.compile(this.serializer.encode(state));
     }
 }
 
-export function route<S = {}, K extends Key<S> = Key<S>>(pattern: UrlPattern<K>, serializer?: Serializer<S>): Route<S, K>;
-export function route<S = {}, K extends Key<S> | never = Key<S>>(pattern: UrlPattern<K>, serializer: Serializer<S> = new FieldSerializer({} as Fields<S>)) {
+export function route<S = Record<never, never>, K extends Key<S> = Key<S>>(pattern: UrlPattern<K>, serializer?: Serializer<S>): Route<S, K>;
+export function route<S = Record<never, never>, K extends Key<S> | never = Key<S>>(pattern: UrlPattern<K>, serializer: Serializer<S> = new FieldSerializer({} as Fields<S>)): Route<S, K> {
     return new Route<S, K>(serializer, pattern);
 }

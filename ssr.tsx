@@ -1,7 +1,7 @@
 import build from 'immuton/build';
 import mapObject from 'immuton/mapObject';
 import * as React from 'react';
-import { renderToString } from 'react-dom/server';
+import { renderToString } from 'react-dom/server';
 import { StaticRouter, StaticRouterContext } from 'react-router';
 import { Auth, authSerializer, DummyAuthClient } from './auth';
 import { Client, CollectionCache, CollectionState, DummyClient, Listing, ResourceCache, ResourceState, Retrieval } from './client';
@@ -14,6 +14,7 @@ import { MetaContextProvider } from './react/meta';
 import { Serializer } from './serializers';
 import { ApiService, Controller, ServerContext } from './server';
 import { buildQuery, Url, UrlPattern } from './url';
+import { Location } from 'history';
 
 export const RENDER_WEBSITE_ENDPOINT_NAME = 'renderWebsite' as const;
 
@@ -23,11 +24,11 @@ export class SsrController implements Controller {
 
     constructor(
         private readonly apiService: ApiService,
-        private readonly view: React.ComponentType<{}>,
+        private readonly view: React.ComponentType,
         private readonly templateHtml$: Promise<string>,
     ) {}
 
-    public async execute(request: HttpRequest, context: ServerContext) {
+    public async execute(request: HttpRequest, context: ServerContext): Promise<HttpResponse> {
         // TODO: Could be awaited inside renderView for a tiny performance boost?
         const templateHtml = await this.templateHtml$;
         return renderView(request, templateHtml, this.view, (apiRequest) => (
@@ -39,15 +40,17 @@ export class SsrController implements Controller {
 async function renderView(
     request: HttpRequest,
     templateHtml: string,
-    view: React.ComponentType<{}>,
+    view: React.ComponentType,
     executeApiRequest: RequestHandler,
 ): Promise<HttpResponse> {
     const { serverOrigin, auth } = request;
     const clientAuth: Auth | null = auth && authSerializer.validate(auth);
     const requestQuery = buildQuery(request.queryParameters);
-    const location = {
+    const location: Location = {
         pathname: request.path,
         search: requestQuery ? `?${requestQuery}` : '',
+        state: null,
+        hash: '',
     };
     const retrievals: Retrieval[] = [];
     const listings: Listing[] = [];
@@ -97,7 +100,7 @@ async function renderView(
         // Inject the bootstrap script just before enclosing </body>
         .replace(/<\/body>/i, (end) => `${startupScript}\n${end}`)
         // Inject the view HTML to the div with the ID "app"
-        .replace(/(\<div\s+id="app"\>)[\s\S]*?(<\/div>)/i, (_, start, end) => `${start}${viewHtml}${end}`)
+        .replace(/(<div\s+id="app">)[\s\S]*?(<\/div>)/i, (_, start, end) => `${start}${viewHtml}${end}`)
         // Replace the title
         .replace(/(<title>)([\s\S]*?)(<\/title>)/i, (match, start, _, end) => (
             title ? `${start}${escapeHtml(title)}${end}` : match
@@ -117,7 +120,7 @@ async function renderView(
 
 type RequestHandler = (request: HttpRequest) => Promise<HttpResponse | ApiResponse>;
 
-function render(View: React.ComponentType<{}>, client: Client, location: object) {
+function render(View: React.ComponentType, client: Client, location: Location) {
     const routerContext: StaticRouterContext = {};
     const meta = {
         title: undefined as string | undefined,
@@ -193,6 +196,7 @@ async function executeListings(execute: RequestHandler, listings: Listing[], req
 function getActionUrls<T extends Retrieval | Listing>(actions: T[]): Record<string, [Url, T]> {
     return build(actions, (action) => {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const url = action.operation.route.compile(action.input as any);
             return [url.toString(), [url, action] as [Url, T]];
         } catch {

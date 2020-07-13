@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ClientBase } from 'pg';
 import { logSql } from './sql-log';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Cursor = require('pg-cursor');
 
-export async function *scanCursor<S>(client: ClientBase, chunkSize: number, sql: string, values?: any[]) {
+export async function *scanCursor<S>(client: ClientBase, chunkSize: number, sql: string, values?: any[]): AsyncGenerator<S[], void> {
     const cursor = client.query(new Cursor(sql, values));
     try {
         while (true) {
