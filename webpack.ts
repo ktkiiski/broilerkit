@@ -175,6 +175,8 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         mode: devServer || debug ? 'development' : 'production',
         // The main entry points for source files.
         entry: entries,
+        // Supposed to run in a browser
+        target: 'web',
 
         output: {
             // Output files are placed to this folder
