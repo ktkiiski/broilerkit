@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "npm run compile",
-    "clean": "rm -f res/cloudformation-migration-lambda.zip && find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.js.map' \\) -exec rm {} \\;",
+    "clean": "rm -f res/cloudformation-migration-lambda.zip && find . -type d \\( -path ./node_modules -o -path ./types \\) -prune -o -type f \\( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' \\) -exec rm {} \\;",
     "clean-build": "npm run clean && npm run lint && npm run compile",
     "compile": "tsc -p .",
     "zip-cf-migration-lambda": "zip res/cloudformation-migration-lambda.zip -r migration.js palette.js sql-log.js node_modules/pg node_modules/buffer-writer node_modules/packet-reader node_modules/pg-connection-string node_modules/pg-pool node_modules/pg-types node_modules/pg-int8 node_modules/postgres-array node_modules/postgres-bytea node_modules/postgres-date node_modules/postgres-interval node_modules/xtend node_modules/pgpass node_modules/split node_modules/through node_modules/semver",
