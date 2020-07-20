@@ -31,7 +31,7 @@ export interface Serializer<I = any, O = I> {
     decodeSortable(input: Encoding): O;
 }
 
-interface ExtendableSerializer<I, O = I> extends Serializer<I, O> {
+export interface ExtendableSerializer<I, O = I> extends Serializer<I, O> {
     extend<E>(fields: Fields<E>): ExtendableSerializer<I & E, O & E>;
 }
 

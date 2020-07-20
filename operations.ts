@@ -10,7 +10,16 @@ import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, SuccesfulResponse } 
 import { keys } from './objects';
 import { Cursor, CursorSerializer, Page, PageResponse } from './pagination';
 import { Route, route } from './routes';
-import { FieldSerializer, nested, nestedList, OptionalOptions, OptionalOutput, Serializer } from './serializers';
+import {
+    ExtendableSerializer,
+    FieldSerializer,
+    nested,
+    nestedList,
+    OptionalOptions,
+    OptionalOutput,
+    OptionalInput,
+    Serializer,
+} from './serializers';
 
 export type OperationType = 'retrieve' | 'update' | 'destroy' | 'list' | 'create' | 'upload';
 
@@ -140,8 +149,7 @@ export class CreateOperation<
     public bind(client: Client): CreateApi<S, U, R, O, D, B> {
         return new CreateApi(this, client);
     }
-    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public getPayloadSerializer() {
+    public getPayloadSerializer(): ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
         return this.payloadSerializer;
     }
     public asImplementable(): Operation<
@@ -257,8 +265,7 @@ export class UploadOperation<
     public bind(client: Client): UploadApi<S, F, U, R, O, D, B> {
         return new UploadApi(this, client);
     }
-    // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-    public getPayloadSerializer() {
+    public getPayloadSerializer(): ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
         return this.payloadSerializer;
     }
     public asImplementable(): Operation<
