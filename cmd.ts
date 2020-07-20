@@ -23,7 +23,12 @@ interface CommandOptions {
 }
 
 function getBroiler(argv: CommandOptions) {
-    tsNode.register({ transpileOnly: true });
+    tsNode.register({
+        transpileOnly: true,
+        compilerOptions: {
+            module: 'CommonJS',
+        },
+    });
     const { appConfigPath, ...options } = argv;
     const cwd = process.cwd();
     const appPath = path.resolve(cwd, appConfigPath);
