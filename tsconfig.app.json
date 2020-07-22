@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "allowJs": true,
         "forceConsistentCasingInFileNames": true,
         "importHelpers": true,
         "lib": [
@@ -8,21 +9,15 @@
             "es2015",
             "esnext.asynciterable",
         ],
-        "module": "commonjs",
+        "module": "ESNext",
         "moduleResolution": "node",
         "noUnusedLocals": true,
         "noUnusedParameters": true,
-        "sourceMap": false,
+        "sourceMap": true,
         "jsx": "react",
         "strict": true,
-        "target": "ES2017"
-    },
-    "include": [
-        "./**/*.tsx",
-        "./**/*.ts"
-    ],
-    "exclude": [
-        "./node_modules/**",
-        "./**/*.d.ts"
-    ]
+        "downlevelIteration": true,
+        "target": "ES2017",
+        "types": ["node"]
+    }
 }

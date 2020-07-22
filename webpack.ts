@@ -44,6 +44,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const buildDirPath = path.resolve(projectRootPath, buildDir);
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
+    const tsConfigPath = path.resolve(projectRootPath, './tsconfig.json');
     // Determine the directory for the assets and the site
     const assetsRootUrl = url.parse(assetsRoot);
     const assetsPath = assetsRootUrl.pathname || '/';
@@ -57,12 +58,13 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
         new ForkTsCheckerWebpackPlugin({
-            // Synchronize with the main Webpack compilation, causing it to fail if there are type errors
-            async: false,
-            // Do not log anything. Any failure will become visible anyway
-            silent: true,
-            // Use the tsconfig.json in the project folder (not in this library)
-            tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
+            typescript: {
+                // Use the tsconfig.json in the project folder (not in this library)
+                configFile: tsConfigPath,
+            },
+            eslint: {
+                files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
+            },
         }),
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
@@ -209,35 +211,15 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                     loader: 'source-map-loader',
                     enforce: 'pre',
                 },
-                // Lint JavaScript files using eslint
-                {
-                    test: /\.(jsx?|tsx?)$/,
-                    include: sourceDirPath,
-                    loader: 'eslint-loader',
-                    enforce: 'pre',
-                    options: {
-                        cache: true,
-                        failOnError: true, // Fail the build if there are linting errors
-                        failOnWarning: false, // Do not fail the build on linting warnings
-                    },
-                },
                 // Compile TypeScript files ('.ts' or '.tsx')
                 {
                     test: /\.tsx?$/,
                     loader: 'ts-loader',
                     options: {
                         // Explicitly expect the tsconfig.json to be located at the project root
-                        configFile: path.resolve(projectRootPath, './tsconfig.json'),
+                        configFile: tsConfigPath,
                         // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                         transpileOnly: true,
-                        compilerOptions: {
-                            // Let the Webpack do the bundling with tree-shaking
-                            module: 'ES6',
-                            // When not running in local development server with debugging we
-                            // build for web so compile for ES5 for maximum compatibility
-                            target: devServer && debug ? 'ES2018' : 'ES5',
-                            downlevelIteration: !(devServer && debug),
-                        },
                     },
                 },
                 // Extract CSS stylesheets from the main bundle
@@ -345,21 +327,24 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     const modulesDirPath = path.resolve(projectRootPath, 'node_modules');
     const ownModulesDirPath = path.resolve(__dirname, 'node_modules');
     const stageDirPath = path.resolve(projectRootPath, stageDir);
+    // Use the tsconfig.json in the project folder (not in this library)
+    const tsConfigPath = path.resolve(projectRootPath, './tsconfig.json');
+    // Target backend always to ES2018
+    const compilerOptions = { target: 'ES2017' } as const;
 
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
         new ForkTsCheckerWebpackPlugin({
-            // Synchronize with the main Webpack compilation, causing it to fail if there are type errors
-            async: false,
-            // Do not log anything. Any failure will become visible anyway
-            silent: true,
-            // Use faster incemental API
-            useTypescriptIncrementalApi: true,
-            // Use the tsconfig.json in the project folder (not in this library)
-            tsconfig: path.resolve(projectRootPath, './tsconfig.json'),
-            // Use the tslint.json in the project folder (not in this library)
-            tslint: path.resolve(projectRootPath, './tslint.json'),
+            typescript: {
+                configFile: tsConfigPath,
+                configOverwrite: {
+                    compilerOptions,
+                },
+            },
+            eslint: {
+                files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
+            },
         }),
         /**
          * Prevent all the MomentJS locales to be imported by default.
@@ -455,33 +440,16 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
                     loader: 'source-map-loader',
                     enforce: 'pre',
                 },
-                // Lint JavaScript files using eslint
-                {
-                    test: /\.(jsx?|tsx?)$/,
-                    include: sourceDirPath,
-                    loader: 'eslint-loader',
-                    enforce: 'pre',
-                    options: {
-                        cache: true,
-                        failOnError: true, // Fail the build if there are linting errors
-                        failOnWarning: false, // Do not fail the build on linting warnings
-                    },
-                },
                 // Compile TypeScript files ('.ts' or '.tsx')
                 {
                     test: /\.tsx?$/,
                     loader: 'ts-loader',
                     options: {
                         // Explicitly expect the tsconfig.json to be located at the project root
-                        configFile: path.resolve(projectRootPath, './tsconfig.json'),
+                        configFile: tsConfigPath,
                         // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                         transpileOnly: true,
-                        compilerOptions: {
-                            // Let the Webpack do the bundling with tree-shaking
-                            module: 'ES6',
-                            // The target NodeJS environment supports ES2018, so override the target for it
-                            target: 'ES2018',
-                        },
+                        compilerOptions,
                     },
                 },
             ],

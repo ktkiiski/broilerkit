@@ -8,6 +8,9 @@
 /.eslintrc.json
 /.eslintignore
 
+# Do not include the tsconfig.json used to compile BroilerKit itself
+/tsconfig.json
+
 # Exclude specs
 /spec/
 
