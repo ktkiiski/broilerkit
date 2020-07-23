@@ -1,8 +1,11 @@
 import * as React from 'react';
-import { Redirect, withRouter } from 'react-router';
+import { Redirect, useLocation } from 'react-router';
 import { parseQuery } from '../../url';
 
-export default withRouter(({ location }) => {
+function LocalSignOutView(): JSX.Element {
+    const location = useLocation();
     const query = parseQuery(location.search);
     return <Redirect to={query.logout_uri} />;
-});
+}
+
+export default LocalSignOutView;
