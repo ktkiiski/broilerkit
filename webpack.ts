@@ -182,6 +182,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     // Add support for `alwaysWriteToDisk` option
     plugins.push(new HtmlWebpackHarddiskPlugin());
     return {
+        context: projectRootPath,
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
         // The main entry points for source files.
@@ -406,6 +407,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     }
 
     return {
+        context: projectRootPath,
         // Development or production build?
         mode: devServer || debug ? 'development' : 'production',
 
