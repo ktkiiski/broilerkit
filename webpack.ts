@@ -242,11 +242,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                         },
                     ],
                 },
-                // Compile SASS files ('.scss')
-                {
-                    test: /\.scss($|\?)/,
-                    loader: 'fast-sass-loader',
-                },
                 // Optimize image files and bundle them as files or data URIs
                 {
                     test: /\.(gif|png|jpe?g|svg)$/,

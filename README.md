@@ -12,7 +12,6 @@ You deploy your production-ready web app to [Amazon Web Services cloud platform]
 - Easily create a full-featured REST API as your backend and database models
 - Your React-based front-end is rendered on server-side by default
 - Easily add the user log in to your app with **Facebook and Google authentication**
-- Write your stylesheets in [SASS](http://sass-lang.com/)
 - No server maintenance: everything will run on [AWS platform](https://aws.amazon.com/) serverless solutions
 
 ### Other features
