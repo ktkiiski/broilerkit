@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ClientBase } from 'pg';
+import type { ClientBase } from 'pg';
 import { logSql } from './sql-log';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Cursor = require('pg-cursor');

@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import pick from 'immuton/pick';
-import { Key } from 'immuton/types';
-import { Client } from './client';
-import { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
+import type { Key } from 'immuton/types';
+import type { Client } from './client';
+import type { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { ValidationError } from './errors';
-import { HttpMethod } from './http';
-import {
+import type { HttpMethod } from './http';
+import type {
     CreateOperation,
     DestroyOperation,
     Operation,
@@ -13,8 +13,8 @@ import {
     UpdateOperation,
     UploadOperation,
 } from './operations';
-import { OptionalInput, OptionalOutput } from './serializers';
-import { Url } from './url';
+import type { OptionalInput, OptionalOutput } from './serializers';
+import type { Url } from './url';
 
 export interface IntermediateCollection<O> {
     isComplete: boolean;

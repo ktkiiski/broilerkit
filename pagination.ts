@@ -2,10 +2,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import compare from 'immuton/compare';
 import findLastIndex from 'immuton/findLastIndex';
-import { Key } from 'immuton/types';
+import type { Key } from 'immuton/types';
 import { choice, Field } from './fields';
-import { Resource } from './resources';
-import { Encoding, Serialization, Serializer } from './serializers';
+import type { Resource } from './resources';
+import type { Encoding, Serialization, Serializer } from './serializers';
 
 type PageCursor<C extends OrderedQuery<any, any, any>> = C & { since: Exclude<C['since'], undefined> };
 

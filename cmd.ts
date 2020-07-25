@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as yargs from 'yargs';
 import { Broiler } from './broiler';
 import { escapeForShell } from './exec';
-import { App } from './index';
+import type { App } from './index';
 import { red } from './palette';
 
 // Allow executing TypeScript (.ts) files

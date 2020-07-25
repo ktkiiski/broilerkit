@@ -1,11 +1,11 @@
 import * as path from 'path';
 import { AmazonS3 } from './aws/s3';
-import { ACL, Bucket } from './buckets';
+import type { ACL, Bucket } from './buckets';
 import { ensureDirectoryExists, readFile, readFileBuffer, writeFile } from './fs';
-import { HandlerServerContext } from './handlers';
+import type { HandlerServerContext } from './handlers';
 import { BadRequest, HttpMethod, HttpRequest, HttpResponse, NotFound } from './http';
 import { parsePayload } from './parser';
-import { Controller } from './server';
+import type { Controller } from './server';
 import { Trigger, triggerEvent } from './triggers';
 import { UploadForm, uploadFormSerializer, uploadSerializer } from './uploads';
 import { pattern, Url } from './url';

@@ -20,10 +20,10 @@ import { toJavaScript } from './javascript';
 import { errorMiddleware } from './middleware';
 import { ClientProvider } from './react/client';
 import { MetaContextProvider } from './react/meta';
-import { Serializer } from './serializers';
-import { ApiService, Controller, ServerContext } from './server';
+import type { Serializer } from './serializers';
+import type { ApiService, Controller, ServerContext } from './server';
 import { buildQuery, Url, UrlPattern } from './url';
-import { Location } from 'history';
+import type { Location } from 'history';
 
 export const RENDER_WEBSITE_ENDPOINT_NAME = 'renderWebsite' as const;
 

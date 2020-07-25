@@ -1,5 +1,5 @@
 import { choice, data, nullable, string, url } from './fields';
-import { Deserialization } from './resources';
+import type { Deserialization } from './resources';
 import { serializer } from './serializers';
 
 export const uploadFormSerializer = serializer({

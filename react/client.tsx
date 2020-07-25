@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useContext, useMemo } from 'react';
 import { DummyAuthClient } from '../auth';
 import { Client, DummyClient } from '../client';
-import { UploadForm } from '../uploads';
+import type { UploadForm } from '../uploads';
 
 /**
  * Context for a API client that is used when binding to

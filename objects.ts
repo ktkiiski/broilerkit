@@ -1,5 +1,5 @@
 import hasOwnProperty from 'immuton/hasOwnProperty';
-import { Key } from 'immuton/types';
+import type { Key } from 'immuton/types';
 
 /**
  * Iterates through each own enumerable property of the given

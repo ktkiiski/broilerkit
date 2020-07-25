@@ -1,5 +1,5 @@
-import * as Styles from 'ansi-styles';
-import * as Support from 'supports-color';
+import type * as Styles from 'ansi-styles';
+import type * as Support from 'supports-color';
 
 const noFormat = (str: string): string => str;
 

@@ -1,4 +1,4 @@
-import { RegionCode } from './regions';
+import type { RegionCode } from './regions';
 
 export type DeploymentRegionCode = RegionCode | 'local';
 

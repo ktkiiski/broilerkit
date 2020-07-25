@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Key } from 'immuton/types';
-import { Resource } from './resources';
+import type { Key } from 'immuton/types';
+import type { Resource } from './resources';
 import { Route } from './routes';
-import { UrlPattern } from './url';
+import type { UrlPattern } from './url';
 
 export class Endpoint<S, PK extends Key<S>, U extends Key<S>> {
     constructor(public readonly resource: Resource<S, PK, any>, public readonly pattern: UrlPattern<U>) {}

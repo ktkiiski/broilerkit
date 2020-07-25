@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import objectDifference from 'immuton/objectDifference';
 import pick from 'immuton/pick';
-import { Key } from 'immuton/types';
+import type { Key } from 'immuton/types';
 import { keys } from './objects';
-import { Operation } from './operations';
+import type { Operation } from './operations';
 import { authorize } from './permissions';
-import { Resource } from './resources';
-import { UserSession } from './sessions';
+import type { Resource } from './resources';
+import type { UserSession } from './sessions';
 import { buildQuery } from './url';
 
 export interface ResourceEffect<T = any, PK extends Key<T> = any> {

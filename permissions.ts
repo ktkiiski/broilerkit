@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Unauthorized } from './http';
-import { Operation } from './operations';
-import { UserSession } from './sessions';
+import type { Operation } from './operations';
+import type { UserSession } from './sessions';
 
 export function authorize(operation: Operation<any, any, any>, auth: UserSession | null, input: any): void {
     const { authType, userIdAttribute } = operation;

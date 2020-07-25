@@ -5,13 +5,13 @@ import isEqual from 'immuton/isEqual';
 import select from 'immuton/select';
 import sort from 'immuton/sort';
 import transform from 'immuton/transform';
-import { FilteredKeys, Key } from 'immuton/types';
+import type { FilteredKeys, Key } from 'immuton/types';
 import { addEffect } from './effects';
 import { Conflict, NotFound, PreconditionFailed } from './http';
-import { TableState } from './migration';
+import type { TableState } from './migration';
 import { OrderedQuery, PageResponse, prepareForCursor } from './pagination';
 import { Database, executeQuery, SqlConnection, SqlOperation, SqlScanOperation } from './postgres';
-import { Resource } from './resources';
+import type { Resource } from './resources';
 import { nestedList } from './serializers';
 import {
     batchSelectQuery,

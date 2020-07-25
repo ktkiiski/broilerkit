@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import transform from 'immuton/transform';
-import { HttpMethod, HttpRequest, HttpRequestHeaders, HttpResponse, HttpStatus } from './http';
+import type { HttpMethod, HttpRequest, HttpRequestHeaders, HttpResponse, HttpStatus } from './http';
 
 export interface LambdaCallback {
     (error: null | undefined, result: LambdaHttpResponse): void;

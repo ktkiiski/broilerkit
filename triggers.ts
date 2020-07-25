@@ -1,7 +1,7 @@
-import { BucketFileCreateTrigger } from './buckets';
+import type { BucketFileCreateTrigger } from './buckets';
 import { executeHandler, Handler } from './handlers';
-import { LambdaEvent } from './lambda';
-import { ServerContext } from './server';
+import type { LambdaEvent } from './lambda';
+import type { ServerContext } from './server';
 
 export type Trigger = BucketFileCreateTrigger;
 

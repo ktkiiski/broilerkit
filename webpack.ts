@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
 
-import { BroilerConfig } from './config';
+import type { BroilerConfig } from './config';
 import { executeSync } from './exec';
 
 // Webpack plugins

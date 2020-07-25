@@ -12,7 +12,7 @@ import {
     parseCookies,
 } from './http';
 import { request } from './request';
-import { Controller, ServerContext } from './server';
+import type { Controller, ServerContext } from './server';
 import { decryptSession, encryptSession, UserSession } from './sessions';
 import { decryptToken, encryptToken } from './tokens';
 import { buildQuery, parseQuery, parseUrl, Url, UrlPattern } from './url';

@@ -1,4 +1,4 @@
-import { ParameterConfig } from './index';
+import type { ParameterConfig } from './index';
 import { bold } from './palette';
 import { readAnswer } from './readline';
 import hasOwnProperty from 'immuton/hasOwnProperty';

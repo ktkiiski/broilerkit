@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Route as ReactRoute, RouteComponentProps } from 'react-router';
 import { HttpStatus, isErrorResponse } from '../http';
-import { Route } from '../routes';
+import type { Route } from '../routes';
 
 /**
  * Returns a Route component from 'react-router-dom' that will render the given component

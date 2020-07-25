@@ -1,6 +1,6 @@
 import isEqual from 'immuton/isEqual';
 import { useEffect, useState } from 'react';
-import { Auth, AuthClient } from '../auth';
+import type { Auth, AuthClient } from '../auth';
 import { useClient } from './client';
 
 export function useAuth(): Auth | null {

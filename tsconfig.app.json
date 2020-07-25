@@ -1,8 +1,11 @@
 {
     "compilerOptions": {
         "allowJs": true,
+        "downlevelIteration": true,
         "forceConsistentCasingInFileNames": true,
         "importHelpers": true,
+        "importsNotUsedAsValues": "error",
+        "jsx": "react",
         "lib": [
             "dom",
             "dom.iterable",
@@ -14,9 +17,7 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "sourceMap": true,
-        "jsx": "react",
         "strict": true,
-        "downlevelIteration": true,
         "target": "ES2017",
         "types": ["node"]
     }

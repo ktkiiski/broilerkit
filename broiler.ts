@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { CloudFormation, S3 } from 'aws-sdk';
+import type { CloudFormation, S3 } from 'aws-sdk';
 import difference from 'immuton/difference';
 import differenceBy from 'immuton/differenceBy';
 import mapObject from 'immuton/mapObject';
@@ -10,8 +10,8 @@ import * as mime from 'mime';
 import * as path from 'path';
 import { Client, Pool } from 'pg';
 import { URL } from 'url';
-import * as File from 'vinyl';
-import { Stats as WebpackStats } from 'webpack';
+import type * as File from 'vinyl';
+import type { Stats as WebpackStats } from 'webpack';
 import { mapAsync, mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
@@ -19,10 +19,10 @@ import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError } from './aws/utils';
 import { formatS3KeyName } from './aws/utils';
-import { Bucket } from './buckets';
+import type { Bucket } from './buckets';
 import { clean } from './clean';
 import { compile } from './compile';
-import { BroilerConfig } from './config';
+import type { BroilerConfig } from './config';
 import { create, DatabaseTable, scan, Table, write } from './db';
 import {
     ensureDirectoryExists,
@@ -34,7 +34,7 @@ import {
     writeJSONFile,
 } from './fs';
 import { HttpStatus, isResponse } from './http';
-import { AppStageConfig } from './index';
+import type { AppStageConfig } from './index';
 import { launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
 import { createTable } from './migration';
 import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
@@ -51,7 +51,7 @@ import { ApiService } from './server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { upperFirst } from './strings';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
-import { Trigger } from './triggers';
+import type { Trigger } from './triggers';
 import { users } from './users';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';

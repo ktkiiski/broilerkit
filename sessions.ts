@@ -1,5 +1,5 @@
 import base64url from 'base64url';
-import { JWK } from 'node-jose';
+import type { JWK } from 'node-jose';
 import { datetime, email, list, nullable, string, url, uuid } from './fields';
 import { serializer } from './serializers';
 import { decryptToken, encryptToken } from './tokens';

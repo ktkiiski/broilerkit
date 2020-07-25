@@ -1,4 +1,4 @@
-import { Key } from 'immuton/types';
+import type { Key } from 'immuton/types';
 import { datetime, email, nullable, string, url, uuid } from './fields';
 import { resource, Resource } from './resources';
 

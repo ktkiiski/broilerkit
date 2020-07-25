@@ -3,7 +3,7 @@ import build from 'immuton/build';
 import { encodeDataUri } from './data-uri';
 import { BadRequest, parseHeaderDirectives, UnsupportedMediaType } from './http';
 import { parseFormData } from './multipart';
-import { Serializer } from './serializers';
+import type { Serializer } from './serializers';
 
 export function parsePayload<I>(serializer: Serializer<I, any>, body: string, contentTypeHeader: string): I {
     const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);

@@ -2,11 +2,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import isNotNully from 'immuton/isNotNully';
 import isNully from 'immuton/isNully';
-import { Key } from 'immuton/types';
+import type { Key } from 'immuton/types';
 import { keys } from './objects';
 import { cyan, dim, magenta, red } from './palette';
-import { Resource } from './resources';
-import { Fields, Serializer } from './serializers';
+import type { Resource } from './resources';
+import type { Fields, Serializer } from './serializers';
 
 export interface SqlQuery<R> {
     sql: string;

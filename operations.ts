@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import build from 'immuton/build';
-import { Key } from 'immuton/types';
+import type { Key } from 'immuton/types';
 import { CreateApi, DestroyApi, UpdateApi, UploadApi } from './api';
-import { Bindable, Client } from './client';
-import { DecodedDataUri } from './data-uri';
-import { Endpoint } from './endpoints';
+import type { Bindable, Client } from './client';
+import type { DecodedDataUri } from './data-uri';
+import type { Endpoint } from './endpoints';
 import { data, nullable } from './fields';
-import { AuthenticatedHttpRequest, HttpMethod, HttpRequest, SuccesfulResponse } from './http';
+import type { AuthenticatedHttpRequest, HttpMethod, HttpRequest, SuccesfulResponse } from './http';
 import { keys } from './objects';
 import { Cursor, CursorSerializer, Page, PageResponse } from './pagination';
 import { Route, route } from './routes';

@@ -2,7 +2,7 @@
 import isDefined from 'immuton/isDefined';
 import pick from 'immuton/pick';
 import select from 'immuton/select';
-import { FilteredKeys, Key } from 'immuton/types';
+import type { FilteredKeys, Key } from 'immuton/types';
 import union from 'immuton/union';
 import { Field, nullable } from './fields';
 import { Fields, FieldSerializer, nested, Serializer } from './serializers';

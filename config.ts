@@ -1,4 +1,4 @@
-import { AppStageConfig } from './index';
+import type { AppStageConfig } from './index';
 
 export interface BroilerConfig extends AppStageConfig {
     /**

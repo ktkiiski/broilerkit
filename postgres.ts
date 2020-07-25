@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { RDSDataService } from 'aws-sdk';
 import isNotNully from 'immuton/isNotNully';
-import { Client, ClientBase, PoolClient } from 'pg';
-import { Table } from './db';
-import { EffectContext, ResourceEffect } from './effects';
+import type { Client, ClientBase, PoolClient } from 'pg';
+import type { Table } from './db';
+import type { EffectContext, ResourceEffect } from './effects';
 import { HttpStatus } from './http';
 import { scanCursor } from './postgres-cursor';
-import { Resource } from './resources';
+import type { Resource } from './resources';
 import { retry } from './retry';
-import { Row, SqlQuery, SqlResult, TableDefaults } from './sql';
+import type { Row, SqlQuery, SqlResult, TableDefaults } from './sql';
 import { logSql } from './sql-log';
 
 interface SqlScanChunk extends SqlResult {

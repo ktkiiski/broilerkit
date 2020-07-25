@@ -2,8 +2,8 @@ import isEqual from 'immuton/isEqual';
 import { AmazonCognitoIdentity } from './aws/cognito';
 import { batchRetrieve, destroy, retrieve, scan, update, Query } from './db';
 import { HttpStatus, isResponse, NotFound } from './http';
-import { DatabaseClient } from './postgres';
-import { Serializer } from './serializers';
+import type { DatabaseClient } from './postgres';
+import type { Serializer } from './serializers';
 import { User, users } from './users';
 
 interface UserIdentity {

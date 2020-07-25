@@ -3,7 +3,7 @@
 import difference from 'immuton/difference';
 import omit from 'immuton/omit';
 import pick from 'immuton/pick';
-import { Key, Require } from 'immuton/types';
+import type { Key, Require } from 'immuton/types';
 import { KeyErrorData, ValidationError } from './errors';
 import { Field, list } from './fields';
 import { isApiResponse } from './http';

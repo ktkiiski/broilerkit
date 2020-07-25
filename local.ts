@@ -1,17 +1,17 @@
 import transform from 'immuton/transform';
 import { JWK } from 'node-jose';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 import { URL } from 'url';
 import { watch } from './compile';
-import { BroilerConfig } from './config';
+import type { BroilerConfig } from './config';
 import { escapeForShell, execute, spawn } from './exec';
 import { readFile, readStream } from './fs';
-import { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
+import type { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
 import { middleware, requestMiddleware } from './middleware';
 import { authenticationMiddleware } from './oauth';
 import { cyan, dim, green, red, yellow } from './palette';
-import { Database } from './postgres';
-import { ApiService, ServerContext } from './server';
+import type { Database } from './postgres';
+import type { ApiService, ServerContext } from './server';
 import { LocalFileStorage } from './storage';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 

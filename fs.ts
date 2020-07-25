@@ -3,7 +3,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
-import * as File from 'vinyl';
+import type * as File from 'vinyl';
 import { src as _src, SrcOptions } from 'vinyl-fs';
 import { generate } from './async';
 

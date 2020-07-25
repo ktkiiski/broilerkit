@@ -5,7 +5,7 @@ import { useLocation } from 'react-router';
 import * as api from '../../auth-local-api';
 import { randomize } from '../../strings';
 import { buildQuery, parseQuery } from '../../url';
-import { User } from '../../users';
+import type { User } from '../../users';
 import { useList, useOperation } from '../api';
 
 function LocalSignInView(): JSX.Element {

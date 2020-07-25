@@ -2,9 +2,9 @@
 import isNotNully from 'immuton/isNotNully';
 import sort from 'immuton/sort';
 import transform from 'immuton/transform';
-import { ExcludedKeys, FilteredKeys } from 'immuton/types';
-import { JWK } from 'node-jose';
-import { Pool } from 'pg';
+import type { ExcludedKeys, FilteredKeys } from 'immuton/types';
+import type { JWK } from 'node-jose';
+import type { Pool } from 'pg';
 import { list, retrieve } from './db';
 import { getEffectHeaders, ResourceEffect } from './effects';
 import { executeHandler, Handler, HandlerContext, HandlerServerContext } from './handlers';
@@ -20,13 +20,13 @@ import {
     SuccesfulResponse,
 } from './http';
 import { ApiResponse, HttpResponse, OK } from './http';
-import { AuthenticationType, Operation, OperationType } from './operations';
-import { Page } from './pagination';
+import type { AuthenticationType, Operation, OperationType } from './operations';
+import type { Page } from './pagination';
 import { parsePayload } from './parser';
 import { authorize } from './permissions';
-import { Database } from './postgres';
-import { UserSession } from './sessions';
-import { FileStorage } from './storage';
+import type { Database } from './postgres';
+import type { UserSession } from './sessions';
+import type { FileStorage } from './storage';
 import { Url, UrlPattern } from './url';
 
 export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulResponse<O>, R>;

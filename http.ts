@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { forEachKey } from './objects';
-import { UserSession } from './sessions';
+import type { UserSession } from './sessions';
 import { capitalize, splitOnce } from './strings';
 
 /**

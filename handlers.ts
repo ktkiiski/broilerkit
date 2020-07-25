@@ -1,8 +1,8 @@
 import { CognitoUserPool, DummyUserPool, LocalUserPool, UserPool } from './cognito';
-import { EffectContext } from './effects';
+import type { EffectContext } from './effects';
 import { DatabaseClient, PostgreSqlPoolConnection } from './postgres';
-import { ServerContext } from './server';
-import { FileStorage } from './storage';
+import type { ServerContext } from './server';
+import type { FileStorage } from './storage';
 
 export interface HandlerServerContext extends ServerContext, EffectContext {}
 

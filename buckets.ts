@@ -1,4 +1,4 @@
-import { TriggerHandler } from './triggers';
+import type { TriggerHandler } from './triggers';
 
 export type ACL = 'private' | 'public-read';
 
