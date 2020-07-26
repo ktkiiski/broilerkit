@@ -12,7 +12,6 @@ import * as path from 'path';
 import { Client, Pool } from 'pg';
 import { URL } from 'url';
 import type * as File from 'vinyl';
-import type { Stats as WebpackStats } from 'webpack';
 import { mapAsync, mergeAsync, toArray } from './async';
 import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation';
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
@@ -118,11 +117,9 @@ export class Broiler {
      * and uploading all the files to S3 buckets.
      */
     public async deploy(): Promise<void> {
-        await this.clean();
         await Promise.all([
             this.initialize().then(() => this.uploadDatabaseTableResource()),
-            this.compileFrontend(false),
-            this.compileBackend(false),
+            this.compile(false),
             this.deployVpc(),
         ]);
         await this.uploadBackend();
@@ -178,44 +175,17 @@ export class Broiler {
         return oldStack;
     }
 
-    public async compile(analyze = true): Promise<WebpackStats[]> {
+    /**
+     * Compiles the JavaScripts with Webpack to the build directory.
+     */
+    public async compile(analyze = true): Promise<void> {
         await this.clean();
-        const [backend, frontend] = await Promise.all([this.compileBackend(analyze), this.compileFrontend(analyze)]);
-        return backend ? [backend, frontend] : [frontend];
-    }
-
-    /**
-     * Compiles the assets with Webpack to the build directory.
-     */
-    public async compileFrontend(analyze: boolean): Promise<WebpackStats> {
-        this.log(
-            `Compiling the ${
-                this.config.debug ? yellow('debugging') : cyan('release')
-            } version of the app frontend for the stage ${bold(this.config.stage)}...`,
-        );
-        const stats = await compile(
-            getFrontendWebpackConfig({
-                ...this.config,
-                devServer: false,
-                analyze,
-            }),
-        );
+        const versionText = this.config.debug ? yellow('debugging') : cyan('release');
+        const stageText = bold(this.config.stage);
+        this.log(`Compiling the ${versionText} version of the app for the stage ${stageText}...`);
+        const options = { ...this.config, devServer: false, analyze };
+        const stats = await compile([getFrontendWebpackConfig(options), getBackendWebpackConfig(options)]);
         this.log(stats.toString({ colors: true }));
-        return stats;
-    }
-
-    /**
-     * Compiles the backend code with Webpack to the build directory.
-     */
-    public async compileBackend(analyze: boolean): Promise<WebpackStats> {
-        this.log(
-            `Compiling the ${
-                this.config.debug ? yellow('debugging') : cyan('release')
-            } version of the app backend for the stage ${bold(this.config.stage)}...`,
-        );
-        const stats = await compile(getBackendWebpackConfig({ ...this.config, devServer: false, analyze }));
-        this.log(stats.toString({ colors: true }));
-        return stats;
     }
 
     /**

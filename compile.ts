@@ -1,8 +1,8 @@
 import * as webpack from 'webpack';
 import { generate } from './async';
 
-export function compile(config: webpack.Configuration): Promise<webpack.Stats> {
-    const compiler = webpack(config);
+export function compile(configs: webpack.Configuration[]): Promise<webpack.compilation.MultiStats> {
+    const compiler = webpack(configs);
     return new Promise((resolve, reject) => {
         compiler.run((error, stats) => {
             if (error || !stats) {
