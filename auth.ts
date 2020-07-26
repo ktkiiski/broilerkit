@@ -33,21 +33,27 @@ export interface AuthClient {
 
 export class DummyAuthClient implements AuthClient {
     constructor(private auth: Auth | null) {}
+
     public signIn(): never {
         throw new Error('Signing in not supported');
     }
+
     public signOut(): never {
         throw new Error('Signing in not supported');
     }
+
     public demandAuthentication(): never {
         throw new Error('Demanding authentication not supported');
     }
+
     public getAuthentication(): Auth | null {
         return this.auth;
     }
+
     public setAuthentication(auth: Auth | null): void {
         this.auth = auth;
     }
+
     public subscribeAuthentication(): never {
         throw new Error('Authentication cannot be subscribed');
     }
@@ -55,8 +61,11 @@ export class DummyAuthClient implements AuthClient {
 
 export class BrowserAuthClient implements AuthClient {
     private readonly signInUri = '/oauth2/sign_in';
+
     private readonly signOutUri = '/oauth2/sign_out';
+
     private auth!: Auth | null;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private authExpirationTimeout?: any;
 

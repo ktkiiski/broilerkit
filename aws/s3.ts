@@ -73,7 +73,7 @@ export class AmazonS3 {
      * @param params Attributes for the uploaded object
      */
     public async putObject(params: S3.PutObjectRequest): Promise<S3.PutObjectOutput> {
-        return await this.s3.putObject(params).promise();
+        return this.s3.putObject(params).promise();
     }
 
     /**

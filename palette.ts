@@ -1,3 +1,4 @@
+/* eslint-disable import/no-mutable-exports */
 import type * as Styles from 'ansi-styles';
 import type * as Support from 'supports-color';
 

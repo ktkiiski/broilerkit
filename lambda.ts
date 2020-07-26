@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import transform from 'immuton/transform';
 import type { HttpMethod, HttpRequest, HttpRequestHeaders, HttpResponse, HttpStatus } from './http';
@@ -30,18 +31,18 @@ export interface LambdaHttpRequestContext {
     apiId: string;
     authorizer?: {
         claims?: {
-            aud: string;
+            'aud': string;
             'cognito:groups': string;
             'cognito:username': string;
-            email: string;
-            exp: string;
-            iat: string;
-            identities: string;
-            iss: string;
-            name: string;
-            sub: string;
-            picture: string | null;
-            token_use: string;
+            'email': string;
+            'exp': string;
+            'iat': string;
+            'identities': string;
+            'iss': string;
+            'name': string;
+            'sub': string;
+            'picture': string | null;
+            'token_use': string;
         };
     };
 }

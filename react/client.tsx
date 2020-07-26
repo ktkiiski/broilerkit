@@ -35,8 +35,8 @@ interface ClientProviderProps {
  * Provides the proper client context for all the nested components
  * that have been bound to the API resources.
  */
-export function ClientProvider({ client, ...props }: ClientProviderProps): JSX.Element {
-    return <ClientContext.Provider value={client} {...props} />;
+export function ClientProvider({ client, children }: ClientProviderProps): JSX.Element {
+    return <ClientContext.Provider value={client}>{children}</ClientContext.Provider>;
 }
 
 /**

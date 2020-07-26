@@ -33,11 +33,12 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(
     ordering: S,
     direction: 'asc' | 'desc',
 ): AsyncIterable<T> {
-    const resourceIdentity = change.resourceIdentity;
+    const { resourceIdentity } = change;
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
         return shareIterator(filterAsync(collection, (item) => !hasProperties(item, resourceIdentity)));
-    } else if (change.type === 'addition') {
+    }
+    if (change.type === 'addition') {
         // Add a new resource to the corresponding position, according to the ordering
         return shareIterator(
             mergeSortedAsync(
@@ -50,18 +51,17 @@ export function applyCollectionChange<T, K extends keyof T, S extends keyof T>(
                 direction,
             ),
         );
-    } else {
-        // Apply the changes to an item whose ID matches
-        return shareIterator(
-            mapAsync(
-                collection,
-                (item): T => {
-                    if (hasProperties(item, resourceIdentity)) {
-                        return { ...item, ...change.resource };
-                    }
-                    return item;
-                },
-            ),
-        );
     }
+    // Apply the changes to an item whose ID matches
+    return shareIterator(
+        mapAsync(
+            collection,
+            (item): T => {
+                if (hasProperties(item, resourceIdentity)) {
+                    return { ...item, ...change.resource };
+                }
+                return item;
+            },
+        ),
+    );
 }

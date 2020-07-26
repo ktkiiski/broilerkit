@@ -2,6 +2,11 @@ import transform from 'immuton/transform';
 import { JWK } from 'node-jose';
 import type { Pool } from 'pg';
 import { URL } from 'url';
+import * as http from 'http';
+import * as path from 'path';
+import * as url from 'url';
+import * as webpack from 'webpack';
+import * as WebpackDevServer from 'webpack-dev-server';
 import { watch } from './compile';
 import type { BroilerConfig } from './config';
 import { escapeForShell, execute, spawn } from './exec';
@@ -14,12 +19,6 @@ import type { Database } from './postgres';
 import type { ApiService, ServerContext } from './server';
 import { LocalFileStorage } from './storage';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
-
-import * as http from 'http';
-import * as path from 'path';
-import * as url from 'url';
-import * as webpack from 'webpack';
-import * as WebpackDevServer from 'webpack-dev-server';
 
 const rawSessionEncryptionKey = {
     kty: 'oct',
@@ -114,15 +113,18 @@ export async function serveBackEnd(
             }
             // Check for compilation errors
             if (stats.hasErrors()) {
+                // eslint-disable-next-line no-console
                 console.error(
                     stats.toString({
                         chunks: false, // Makes the build much quieter
                         colors: true, // Shows colors in the console
                     }),
                 );
+                // eslint-disable-next-line no-continue
                 continue;
             }
             // Successful compilation -> start the HTTP server
+            // eslint-disable-next-line no-console
             console.log(stats.toString('minimal'));
 
             const statsJson = stats.toJson();
@@ -139,9 +141,8 @@ export async function serveBackEnd(
             const service: ApiService = serverModule.getApiService(htmlPagePath$, storageDir);
             const db: Database | null = serverModule.getDatabase();
             // Get handler for the API requests (if defined)
-            const nodeMiddleware = requestMiddleware(
-                async (httpRequest: http.IncomingMessage) =>
-                    await convertNodeRequest(httpRequest, serverOrigin, serverRoot),
+            const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) =>
+                convertNodeRequest(httpRequest, serverOrigin, serverRoot),
             );
             // Set up the server
             const executeServerRequest = middleware(authenticationMiddleware(service.execute));
@@ -209,13 +210,16 @@ function createServer<P extends unknown[]>(
             const contentTypes = response.headers['Content-Type'];
             const contentType = Array.isArray(contentTypes) ? contentTypes[0] : contentTypes;
             const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
+            // eslint-disable-next-line no-nested-ternary
             const textColor = isHtml ? cyan : httpRequest.method === 'OPTIONS' ? dim : (x: string) => x; // no color
+            // eslint-disable-next-line no-console
             console.log(
                 textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode),
             );
             httpResponse.writeHead(response.statusCode, response.headers);
             httpResponse.end(response.body);
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error(
                 `${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`,
             );
@@ -257,11 +261,14 @@ function colorizeStatusCode(statusCode: HttpStatus): string {
     const codeStr = String(statusCode);
     if (statusCode >= 200 && statusCode < 300) {
         return green(codeStr);
-    } else if (statusCode >= 300 && statusCode < 400) {
+    }
+    if (statusCode >= 300 && statusCode < 400) {
         return cyan(codeStr);
-    } else if (statusCode >= 400 && statusCode < 500) {
+    }
+    if (statusCode >= 400 && statusCode < 500) {
         return yellow(codeStr);
-    } else if (statusCode >= 500 && statusCode < 600) {
+    }
+    if (statusCode >= 500 && statusCode < 600) {
         return red(codeStr);
     }
     return codeStr;

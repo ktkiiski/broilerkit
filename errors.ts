@@ -13,8 +13,11 @@ export interface KeyErrorData<T> extends ErrorData {
 
 export class ValidationError extends Error implements ApiResponse<ErrorData> {
     public readonly headers = {};
+
     public readonly statusCode = HttpStatus.BadRequest;
+
     public readonly data: ErrorData;
+
     constructor(message: string, public readonly errors?: ErrorList) {
         super(message);
         this.data = { message };

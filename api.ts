@@ -63,6 +63,7 @@ export class CreateApi<
         });
         return item;
     }
+
     public async postOptimistically(input: OptionalInput<S, U | R, O, D> & S): Promise<S> {
         const { client, operation } = this;
         const { route } = operation;
@@ -94,6 +95,7 @@ export class CreateApi<
             unregisterOptimisticAddition();
         }
     }
+
     public validatePost(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
         const { route } = this.operation;
         const payloadSerializer = this.operation.getPayloadSerializer();
@@ -115,6 +117,7 @@ export class UpdateApi<
     public put(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         return this.update('PUT', input);
     }
+
     public validatePut(input: OptionalInput<S, U | R, O, D>): OptionalOutput<S, U | R, O, D> {
         const { operation } = this;
         // TODO: Combine validation errors
@@ -123,9 +126,11 @@ export class UpdateApi<
             ...operation.replaceSerializer.validate(input),
         } as OptionalOutput<S, U | R, O, D>;
     }
+
     public patch(input: OptionalInput<S, U, R | O, D>): Promise<S> {
         return this.update('PATCH', input);
     }
+
     public validatePatch(input: OptionalInput<S, U, R | O, D>): OptionalInput<S, U, R | O, D> {
         const { operation } = this;
         // TODO: Combine validation errors
@@ -134,6 +139,7 @@ export class UpdateApi<
             ...operation.updateSerializer.validate(input),
         } as OptionalInput<S, U, R | O, D>;
     }
+
     private async update(method: 'PUT' | 'PATCH', input: any): Promise<S> {
         const { client, operation } = this;
         const { resource } = operation.endpoint;
@@ -238,6 +244,7 @@ export class UploadApi<
         });
         return item;
     }
+
     public validatePost(
         input: OptionalInput<S, U | R, O, D> & Record<F, File>,
     ): OptionalOutput<S, U | R, O, D> & Record<F, File> {

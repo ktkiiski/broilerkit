@@ -15,7 +15,7 @@ export const handler = async (event: PreSignupTriggerEvent): Promise<PreSignupTr
         throw new Error('Missing USER_POOL_ID environment variable');
     }
     const idp = new CognitoIdentityServiceProvider({ apiVersion: '2016-04-18' });
-    const email = event.request.userAttributes.email;
+    const { email } = event.request.userAttributes;
     // TODO: Ensure that the email is verified?
     if (!email) {
         return event;
@@ -33,11 +33,14 @@ export const handler = async (event: PreSignupTriggerEvent): Promise<PreSignupTr
     for (const user of usersResponse.Users as CognitoIdentityServiceProvider.UserType[]) {
         const username = user.Username;
         if (!username) {
+            // eslint-disable-next-line no-continue
             continue;
         }
+        // eslint-disable-next-line no-console
         console.log(`Found an existing user ${username} with the same email address`);
         const [providerName, userId] = username.split('_');
         if (userId && (providerName === 'Google' || providerName === 'Facebook') && providerName !== srcProviderName) {
+            // eslint-disable-next-line no-console
             console.log(
                 `Linking an existing ${providerName} user ${userId} with the ${srcProviderName} user ${srcProviderUserId}`,
             );

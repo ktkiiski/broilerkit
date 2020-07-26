@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as React from 'react';
-import { Route as ReactRoute, RouteComponentProps } from 'react-router';
+import { Route as ReactRoute, RouteComponentProps } from 'react-router-dom';
 import { HttpStatus, isErrorResponse } from '../http';
 import type { Route } from '../routes';
 
@@ -44,7 +44,7 @@ export function renderRoute<S>(
         }
         return React.createElement(errorComponent, props);
     };
-    return <ReactRoute exact={true} sensitive={true} path={pathPattern} component={routedComponent} />;
+    return <ReactRoute exact sensitive path={pathPattern} component={routedComponent} />;
 }
 
 export function renderStaticRoute(component: React.ComponentType, statusCode = HttpStatus.OK): JSX.Element {

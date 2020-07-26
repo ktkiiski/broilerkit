@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 class SharedAsyncIterable<T> implements AsyncIterable<T> {
     private buffer: Promise<IteratorResult<T>>[] = [];
+
     constructor(private iterator: AsyncIterator<T>) {}
 
     public [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -10,15 +11,17 @@ class SharedAsyncIterable<T> implements AsyncIterable<T> {
 
 class SharedIterator<T, R, N> implements AsyncIterator<T, R, N> {
     private index = 0;
+
     constructor(private buffer: Promise<IteratorResult<T, R>>[], private iterator: AsyncIterator<T, R, N>) {}
 
     public next(value?: any): Promise<IteratorResult<T, R>> {
         // TODO: Do not cache anything called after completion
-        const index = this.index++;
-        const { buffer } = this;
+        this.index += 1;
+        const { index, buffer } = this;
         let promise = buffer[index];
         if (promise == null) {
-            promise = buffer[index] = this.iterator.next(value);
+            promise = this.iterator.next(value);
+            buffer[index] = promise;
             // TODO: Forget the reference to the original iterator when complete!
         }
         return promise;

@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 import base64url from 'base64url';
 import type { JWK } from 'node-jose';
 import { datetime, email, list, nullable, string, url, uuid } from './fields';

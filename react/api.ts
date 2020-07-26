@@ -39,6 +39,7 @@ export function useResource<S, U extends Key<S>>(
                 setState((oldState) => (isEqual(oldState, newState, 2) ? oldState : newState));
             });
         }
+        return undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, op, getFingerprint(input), isValid]);
     return [state.resource, state.error, state.isLoading];
@@ -69,6 +70,7 @@ function useCollectionIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>
                 setState((oldState) => (isEqual(oldState, filteredState, 2) ? oldState : filteredState));
             });
         }
+        return undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, op, getFingerprint(input), getFingerprint(filters), minCount]);
     return state;
@@ -114,6 +116,7 @@ function useListIf<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
                 }
             });
         }
+        return undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, op, getFingerprint(input), getFingerprint(filters)]);
     return [resources, error, isLoading];

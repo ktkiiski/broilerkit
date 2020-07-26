@@ -148,7 +148,7 @@ export async function reduceAsync<T, R>(
     let value!: R | T;
 
     if (initialValues.length > 0) {
-        value = initialValues[0];
+        [value] = initialValues;
         h = true;
     }
     for await (const item of iterable) {
@@ -185,17 +185,17 @@ export async function* generate<T>(
     let nextResolve!: (value: Token) => void;
     let nextReject!: (error: unknown) => void;
     let nextPromise!: Promise<unknown>;
-    function iterate() {
+    function iterateNext() {
         nextPromise = new Promise((resolve, reject) => {
             nextResolve = (token: Token) => {
                 pendingTokens.push(token);
-                iterate();
+                iterateNext();
                 resolve();
             };
             nextReject = reject;
         });
     }
-    iterate();
+    iterateNext();
     const terminate = executor({
         next: (value: T) => {
             nextResolve({ done: false, value });
@@ -215,9 +215,8 @@ export async function* generate<T>(
             while ((nextToken = pendingTokens.shift())) {
                 if (nextToken.done) {
                     return;
-                } else {
-                    yield nextToken.value;
                 }
+                yield nextToken.value;
             }
         }
     } finally {
@@ -286,7 +285,7 @@ export async function* flatMapAsyncParallel<T, R>(
             pendingTasks.map(async (task, taskIndex) => {
                 if (taskIndex > 0) {
                     // Not next in line, but still catch errors
-                    return await errorsOnly(task);
+                    return errorsOnly(task);
                 }
                 // Otherwise await normally
                 return task;
@@ -310,6 +309,7 @@ export function mapAsyncParallel<T, R>(
     iterable: Iterable<T> | AsyncIterable<T>,
     callback: (item: T, index: number) => Promise<R>,
 ): AsyncIterableIterator<R> {
+    // eslint-disable-next-line func-names
     return flatMapAsyncParallel(maxConcurrency, iterable, async function* (item, index) {
         yield await callback(item, index);
     });

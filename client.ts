@@ -1,3 +1,4 @@
+/* eslint-disable no-continue */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import difference from 'immuton/difference';
 import filter from 'immuton/filter';
@@ -110,10 +111,15 @@ const doNothing = () => {
 
 abstract class BaseClient implements Client {
     protected resourceListeners: ListMapping<ResourceListener> = {};
+
     protected collectionListeners: ListMapping<CollectionListener> = {};
+
     private pendingLoads = new Set<string>();
+
     private runningLoads = new Map<string, Promise<any>>();
+
     private optimisticChanges: ResourceChange<any, any>[] = [];
+
     private uniqueIdCounter = 0;
 
     constructor(public resourceCache: ResourceCache = {}, public collectionCache: CollectionCache = {}) {}
@@ -261,7 +267,8 @@ abstract class BaseClient implements Client {
     }
 
     public generateUniqueId(): number {
-        return (this.uniqueIdCounter += 1);
+        this.uniqueIdCounter += 1;
+        return this.uniqueIdCounter;
     }
 
     public async refreshAll(): Promise<void> {
@@ -286,6 +293,7 @@ abstract class BaseClient implements Client {
         payload: any | null,
         token: string | null,
     ): Promise<ApiResponse>;
+
     public abstract upload(file: File, upload: UploadForm): Promise<void>;
 
     protected applyStateEffects(effects: StateEffect[]) {
@@ -465,6 +473,7 @@ abstract class BaseClient implements Client {
             ];
         }
     }
+
     private initCollectionState<S, U extends Key<S>, O extends Key<S>, F extends Key<S>>(
         op: ListOperation<S, U, O, F, any, any>,
         input: Cursor<S, U, O, F>,
@@ -508,10 +517,12 @@ abstract class BaseClient implements Client {
             ];
         }
     }
+
     private getRealResourceState(resourceName: string, url: string): ResourceState | null {
         const resourcesByUrl = this.resourceCache[resourceName];
         return (resourcesByUrl && resourcesByUrl[url]) || null;
     }
+
     private getResourceState(resourceName: string, url: string): ResourceState | null {
         const state = this.getRealResourceState(resourceName, url);
         if (!state) {
@@ -522,10 +533,12 @@ abstract class BaseClient implements Client {
             .filter((change) => change.resourceName === resourceName)
             .reduce((result, change) => applyChangeToResource(result, change), state);
     }
+
     private getRealCollectionState(resourceName: string, url: string): CollectionState | null {
         const collectionsByUrl = this.collectionCache[resourceName];
         return (collectionsByUrl && collectionsByUrl[url]) || null;
     }
+
     private getCollectionState(resourceName: string, url: string): CollectionState | null {
         const state = this.getRealCollectionState(resourceName, url);
         if (!state) {
@@ -597,6 +610,7 @@ abstract class BaseClient implements Client {
         const resourceUrl = url.toString();
         const currentState = this.getRealResourceState(resourceName, resourceUrl);
         if (currentState && currentState.isLoading) {
+            // eslint-disable-next-line no-console
             console.warn(`Started loading resource while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
@@ -642,6 +656,7 @@ abstract class BaseClient implements Client {
         const collectionUrl = url.toString();
         const currentState = this.getRealCollectionState(resourceName, collectionUrl);
         if (currentState && currentState.isLoading) {
+            // eslint-disable-next-line no-console
             console.warn(`Started loading collection while previous load was still in progress: ${url}`);
         }
         // Set the collection to the loading state
@@ -670,6 +685,7 @@ abstract class BaseClient implements Client {
             while (nextUrl) {
                 // Ensure that there are listeners
                 const listeners = this.collectionListeners[collectionUrl];
+                // eslint-disable-next-line no-loop-func
                 if (!listeners || listeners.every(({ minCount }) => minCount <= state.count)) {
                     // No one is interested (any more)
                     break;
@@ -795,6 +811,7 @@ export class DummyClient extends BaseClient implements Client {
     ) {
         super(resourceCache, collectionCache);
     }
+
     public request(): never {
         throw new NotImplemented(`No client defined`);
     }
@@ -873,7 +890,8 @@ function applyChangeToCollection<T>(
         // Filter out any matching resource from the collection
         const resources = filter(state.resources, isNotChangedResource);
         return set(state, 'resources', resources);
-    } else if (change.type === 'addition') {
+    }
+    if (change.type === 'addition') {
         // If the item does not match the filters, then do not alter the collection
         if (!hasProperties(change.resource, state.filters)) {
             // Resource does not belong to this collection
@@ -898,11 +916,11 @@ function applyChangeToCollection<T>(
                     return updatedState;
                 }
                 // Resource no more matches the filters!
-                // Return nothing -> filter out.
-            } else {
-                // Unmodified resource
-                return resource;
+                // Return undefined -> filter out.
+                return undefined;
             }
+            // Unmodified resource
+            return resource;
         });
         if (state.resources !== resources) {
             return { ...state, resources };
@@ -1001,10 +1019,12 @@ function convertEffectToResourceChanges(
                 }
             }
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
         }
     }
     // Try to apply the effect to joined resources
+    // eslint-disable-next-line no-labels,no-restricted-syntax
     joinLoop: for (const join of resource.joins) {
         if (join.resource.name === resourceName) {
             let joinResourceProperties: any;
@@ -1017,6 +1037,7 @@ function convertEffectToResourceChanges(
                 });
                 joinResourceProperties = joinResourceSerializer.decode(encodedResource);
             } catch {
+                // eslint-disable-next-line no-console
                 console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
                 continue;
             }
@@ -1026,6 +1047,7 @@ function convertEffectToResourceChanges(
                 const value = joinResourceProperties[sourceKey];
                 const oldValue = typeof resKey === 'string' ? resourceIdentity[resKey] : resKey.value;
                 if (typeof oldValue !== 'undefined' && oldValue !== value) {
+                    // eslint-disable-next-line no-labels
                     continue joinLoop;
                 }
                 if (typeof resKey === 'string') {
@@ -1086,6 +1108,7 @@ type ListMapping<T> = Record<string, T[]>;
 function addToMapping<T>(mapping: ListMapping<T>, key: string, value: T): () => void {
     const list = mapping[key] || [];
     list.push(value);
+    // eslint-disable-next-line no-param-reassign
     mapping[key] = list;
     return () => {
         removeFromMapping(mapping, key, value);
@@ -1099,6 +1122,7 @@ function removeFromMapping<T>(mapping: ListMapping<T>, key: string, value: T): b
         if (index >= 0) {
             list.splice(index, 1);
             if (!list.length) {
+                // eslint-disable-next-line no-param-reassign
                 delete mapping[key];
             }
             return true;

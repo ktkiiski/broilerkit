@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import base64url from 'base64url';
 import * as jwt from 'jsonwebtoken';
@@ -37,7 +38,9 @@ const sessionDuration = 60 * 60 * 3; // TODO: Make configurable!
  */
 export class OAuth2SignInController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
+
     public readonly pattern = new UrlPattern('/oauth2/sign_in');
+
     public readonly tables = [];
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
@@ -84,7 +87,9 @@ export class OAuth2SignInController implements Controller {
 
 export class OAuth2SignedInController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
+
     public readonly pattern = new UrlPattern('/oauth2/signed_in');
+
     public readonly tables = [];
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
@@ -93,7 +98,7 @@ export class OAuth2SignedInController implements Controller {
             throw new NotImplemented(`Authentication is not enabled`);
         }
         const { region, queryParameters, headers } = req;
-        const { code, state, error, error_description } = queryParameters;
+        const { code, state, error, error_description: errorDescription } = queryParameters;
         const callbackUri = `${req.serverOrigin}/oauth2/signed_in`;
         const cookies = parseCookies(headers.Cookie || '');
         if (!state) {
@@ -103,8 +108,9 @@ export class OAuth2SignedInController implements Controller {
         let statePayload: any;
         try {
             statePayload = await decryptToken(state, sessionEncryptionKey.keystore);
-        } catch (error) {
-            console.error(`Invalid "state" returned from the authentication provider:`, error);
+        } catch (decryptError) {
+            // eslint-disable-next-line no-console
+            console.error(`Invalid "state" returned from the authentication provider:`, decryptError);
             throw new BadRequest(`Invalid "state" URL parameter`);
         }
         if (statePayload.aud !== callbackUri) {
@@ -127,7 +133,7 @@ export class OAuth2SignedInController implements Controller {
         }
         if (error) {
             const linkErrorMatch = /^already found an entry for username (Google|Facebook)_\w+/i.exec(
-                error_description || '',
+                errorDescription || '',
             );
             if (linkErrorMatch) {
                 // The failure is due to a bug/fuckup in AWS Cognito,
@@ -143,7 +149,10 @@ export class OAuth2SignedInController implements Controller {
                 return redirect(retryUri.toString(), [setCookieHeader]);
             }
             // Other kind of authentication error
-            const errorRedirectUri = parseUrl(redirectUri).withParameters({ error, error_description });
+            const errorRedirectUri = parseUrl(redirectUri).withParameters({
+                error,
+                error_description: errorDescription,
+            });
             return redirect(errorRedirectUri.toString());
         }
         if (!code) {
@@ -172,8 +181,9 @@ export class OAuth2SignedInController implements Controller {
                     redirect_uri: callbackUri,
                     code,
                 });
-            } catch (error) {
-                console.error('Failed to retrieve authentication tokens:', error);
+            } catch (tokenError) {
+                // eslint-disable-next-line no-console
+                console.error('Failed to retrieve authentication tokens:', tokenError);
                 throw new BadRequest('Authentication failed due to invalid "code" URL parameter');
             }
         }
@@ -195,7 +205,9 @@ export class OAuth2SignedInController implements Controller {
  */
 export class OAuth2SignOutController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
+
     public readonly pattern = new UrlPattern('/oauth2/sign_out');
+
     public readonly tables = [];
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
@@ -230,7 +242,9 @@ export class OAuth2SignOutController implements Controller {
 
 export class OAuth2SignedOutController implements Controller {
     public readonly methods: HttpMethod[] = ['GET', 'POST'];
+
     public readonly pattern = new UrlPattern('/oauth2/signed_out');
+
     public readonly tables = [];
 
     public async execute(req: HttpRequest, context: ServerContext): Promise<HttpResponse> {
@@ -250,6 +264,7 @@ export class OAuth2SignedOutController implements Controller {
                     redirectUri = statePayload.redirect_uri;
                 }
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error(`Invalid state cookie when signing out`, error);
             }
         }
@@ -311,6 +326,7 @@ export function authenticationMiddleware<P extends any[], R extends HttpResponse
                     tokens.refresh_token = session.refreshToken;
                     session = parseUserSession(tokens, session.session, sessionDuration);
                 } catch (error) {
+                    // eslint-disable-next-line no-console
                     console.error('Failed to renew authentication tokens:', error);
                     // Could not renew the information, so assume not authenticated!
                     session = null;
@@ -361,7 +377,7 @@ async function requestTokens(
         method: 'POST',
         url: tokenUrl,
         headers: {
-            Authorization: `Basic ${credentials}`,
+            'Authorization': `Basic ${credentials}`,
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: buildQuery(query),

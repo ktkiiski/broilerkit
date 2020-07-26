@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Redirect, useLocation } from 'react-router';
+import { Redirect, useLocation } from 'react-router-dom';
 import { parseQuery } from '../../url';
 
 function LocalSignOutView(): JSX.Element {

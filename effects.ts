@@ -1,3 +1,4 @@
+/* eslint-disable no-continue */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import objectDifference from 'immuton/objectDifference';
 import pick from 'immuton/pick';
@@ -94,6 +95,7 @@ function encodeResourceState<T>(
         try {
             newState = { ...(newState || {}), ...nonRelationResource.encode(item) };
         } catch (error) {
+            // eslint-disable-next-line no-console
             console.error(`Failed to validate effect state for resource ${resourceName}`, error);
             continue;
         }

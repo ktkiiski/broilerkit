@@ -15,10 +15,12 @@ export function parseFormData(body: string, boundary: string): MultipartData[] {
         throw new ValidationError('Missing the multipart/form-data boundary');
     }
     // \r\n is part of the boundary.
-    boundary = '\r\n--' + boundary;
+    // eslint-disable-next-line no-param-reassign
+    boundary = `\r\n--${boundary}`;
 
     // Prepend what has been stripped by the body parsing mechanism.
-    body = '\r\n' + body;
+    // eslint-disable-next-line no-param-reassign
+    body = `\r\n${body}`;
 
     const parts = body.split(boundary);
     // There must be at least one match (= two parts)

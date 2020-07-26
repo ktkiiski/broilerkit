@@ -95,6 +95,7 @@ export function list<S>(resource: Resource<S, any, any>, query: Query<S>): SqlOp
  */
 export function scan<S>(resource: Resource<S, any, any>, query?: Query<S>): SqlScanOperation<S> {
     const chunkSize = 100;
+    // eslint-disable-next-line func-names
     return async function* (connection, db) {
         let qr;
         if (query) {
@@ -124,7 +125,7 @@ export class DatabaseTable<S, PK extends Key<S>> implements Table<S, PK> {
         return getResourceState(name, this.resource, indexes);
     }
 }
-/***** DATABASE OPERATIONS *******/
+/** *** DATABASE OPERATIONS ****** */
 
 /**
  * Returns a database operation that inserts an item with the given ID
@@ -442,7 +443,9 @@ interface Aggregation<S> {
 
 class DatabaseDefinition implements Database {
     public readonly tables: DatabaseTable<any, any>[] = [];
+
     public defaultsByTable: TableDefaults = {};
+
     private aggregationsBySource: { [name: string]: Aggregation<any>[] } = {};
 
     public getAggregationQueries<S>(resource: Resource<S, any, any>, newValues: S | null, oldValues: S | null) {

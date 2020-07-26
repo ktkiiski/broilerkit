@@ -1,5 +1,7 @@
 export function waitForClose(win: Window, pollInterval = 1000): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+        const interval = setInterval(checkWindow, pollInterval);
+
         function checkWindow() {
             try {
                 if (win.closed) {
@@ -11,7 +13,6 @@ export function waitForClose(win: Window, pollInterval = 1000): Promise<void> {
                 reject(err);
             }
         }
-        const interval = setInterval(checkWindow, pollInterval);
         checkWindow();
     });
 }

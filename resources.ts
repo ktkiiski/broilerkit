@@ -78,6 +78,7 @@ type PrimaryKey<R> = R extends Resource<any, infer PK, any> ? PK : never;
 
 class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSerializer<T> implements Resource<T, PK, W> {
     public readonly identifier: Serializer<Pick<T, PK>>;
+
     public readonly writer: FieldSerializer<Pick<T, W>>;
 
     /**
@@ -96,6 +97,7 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
         this.identifier = this.pick(this.identifyBy);
         this.writer = new FieldSerializer(columns as any);
     }
+
     public subset<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldResource<Pick<T, K>, PK & K, W & K> {
         const { identifyBy } = this;
         if (!identifyBy.every((key) => (attrs as string[]).includes(key))) {
@@ -139,6 +141,7 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
         const identifyBy = union([this.identifyBy, newPkKeys]);
         return new FieldResource(this.name, this.columns, identifyBy, this.nestings, joins);
     }
+
     public leftJoin<S2, PK2 extends Key<S2>>(
         other: Resource<S2, PK2 & Key<S2>, any>,
         on: { [P in PK2 & Key<S2>]?: (string & FilteredKeys<T, S2[P]>) | { value: S2[P] } },
@@ -156,6 +159,7 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
         ]);
         return new FieldResource(this.name, this.columns, this.identifyBy, this.nestings, joins);
     }
+
     public nest<K extends string, S2>(
         propertyName: K,
         other: Resource<S2, any, any>,

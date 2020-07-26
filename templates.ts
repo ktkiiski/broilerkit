@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { readFile } from './fs';
-import { forEachKey } from './objects';
-
 import * as path from 'path';
 import * as YAML from 'yamljs';
+import { readFile } from './fs';
+import { forEachKey } from './objects';
 
 export async function readTemplate(
     templateFile: string,
@@ -59,7 +58,7 @@ async function evaluateTemplateIncludes(template: string): Promise<string> {
         const includedFileName = parts[i];
         const includedFilePath = path.resolve(__dirname, './res/', includedFileName);
         const includedContents = await readFile(includedFilePath);
-        parts[i] = ' ' + JSON.stringify(includedContents);
+        parts[i] = ` ${JSON.stringify(includedContents)}`;
     }
     return parts.join('');
 }

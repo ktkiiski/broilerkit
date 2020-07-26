@@ -12,7 +12,8 @@ const StaticContextContext = createContext<MetaContext>({
 });
 
 export function MetaContextProvider(props: { context: MetaContext; children?: React.ReactNode }): JSX.Element {
-    return <StaticContextContext.Provider value={props.context}>{props.children}</StaticContextContext.Provider>;
+    const { context, children } = props;
+    return <StaticContextContext.Provider value={context}>{children}</StaticContextContext.Provider>;
 }
 
 export function useTitle(title: string): void {
@@ -27,10 +28,11 @@ export function useTitle(title: string): void {
 
 export function useCss(renderCss: () => string | null, deps?: unknown[]): void {
     const metaContext = useContext(StaticContextContext);
-    const id = useMemo(() => `style-${metaContext.idCounter++}`, [metaContext]);
+    metaContext.idCounter += 1;
+    const id = useMemo(() => `style-${metaContext.idCounter}`, [metaContext]);
     useEffect(() => {
         if (!id) {
-            return;
+            return undefined;
         }
         const css = renderCss();
         let styleTag: HTMLStyleElement | null = null;

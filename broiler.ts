@@ -1,3 +1,4 @@
+/* eslint-disable no-nested-ternary */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { CloudFormation, S3 } from 'aws-sdk';
 import difference from 'immuton/difference';
@@ -17,8 +18,8 @@ import { AmazonCloudFormation, IStackWithResources } from './aws/cloudformation'
 import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
-import { isDoesNotExistsError } from './aws/utils';
-import { formatS3KeyName } from './aws/utils';
+import { isDoesNotExistsError, formatS3KeyName } from './aws/utils';
+
 import type { Bucket } from './buckets';
 import { clean } from './clean';
 import { compile } from './compile';
@@ -37,10 +38,17 @@ import { HttpStatus, isResponse } from './http';
 import type { AppStageConfig } from './index';
 import { launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
 import { createTable } from './migration';
-import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from './oauth';
-import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from './oauth';
-import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from './oauth';
-import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from './oauth';
+import {
+    OAUTH2_SIGNOUT_ENDPOINT_NAME,
+    OAuth2SignOutController,
+    OAUTH2_SIGNIN_ENDPOINT_NAME,
+    OAuth2SignInController,
+    OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME,
+    OAuth2SignedInController,
+    OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME,
+    OAuth2SignedOutController,
+} from './oauth';
+
 import { forEachKey } from './objects';
 import { bold, cyan, dim, green, red, underline, yellow } from './palette';
 import { askParameters } from './parameters';
@@ -70,14 +78,19 @@ const localDbPortNumber = 54320;
 
 export class Broiler {
     private readonly config: BroilerConfig;
+
     // The name of the stack to be deployed
     private readonly stackName: string;
+
     // The full path to the build directory inside the stage directory
     private readonly buildDir: string;
 
     private readonly cloudFormation: AmazonCloudFormation;
+
     private readonly cloudWatch: AmazonCloudWatch;
+
     private readonly route53: AmazonRoute53;
+
     private readonly s3: AmazonS3;
 
     /**
@@ -86,9 +99,11 @@ export class Broiler {
      */
     constructor(config: AppStageConfig) {
         const { name, stage, projectRootPath, region } = config;
-        const stackName = (this.stackName = `${name}-${stage}`);
+        const stackName = `${name}-${stage}`;
+        this.stackName = stackName;
         const stageDir = path.join(projectRootPath, '.broiler', stage);
-        const buildDir = (this.buildDir = path.join(stageDir, 'build'));
+        const buildDir = path.join(stageDir, 'build');
+        this.buildDir = buildDir;
 
         this.cloudFormation = new AmazonCloudFormation(region, stackName);
         this.cloudWatch = new AmazonCloudWatch(region);
@@ -151,7 +166,7 @@ export class Broiler {
             } else {
                 this.log(`Deleted ${bold(item.Key)} from bucket ${item.Bucket}`);
             }
-            count++;
+            count += 1;
         }
         this.log(`Deleted total of ${count} items`);
         let oldStack = await this.cloudFormation.describeStackWithResources();
@@ -246,9 +261,9 @@ export class Broiler {
             await launchLocalDatabase({ ...opts, port: localDbPortNumber });
             const client = await retryWithBackoff(10, async () => {
                 process.stdout.write(`.`);
-                const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
-                await client.connect();
-                return client;
+                const newClient = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
+                await newClient.connect();
+                return newClient;
             });
             process.stdout.write(` ${green('✔︎')}\n`);
             // Run migrations for each table
@@ -365,7 +380,7 @@ export class Broiler {
         const dbClient = await this.getDatabaseClient();
         let index = 0;
         for await (const line of readLines(filePath)) {
-            index++;
+            index += 1;
             try {
                 const serializedItem = JSON.parse(line);
                 const item = table.resource.deserialize(serializedItem);
@@ -396,7 +411,7 @@ export class Broiler {
                         mapAsync(dbClient.scan(scan(resource)), (rows) => {
                             const jsonRows = rows.map((record) => {
                                 const serializedItem = resource.serialize(record);
-                                return JSON.stringify(serializedItem) + '\n';
+                                return `${JSON.stringify(serializedItem)}\n`;
                             });
                             return jsonRows.join('');
                         }),
@@ -409,7 +424,7 @@ export class Broiler {
                 }
             }),
         );
-        const error = results.find((error) => error != null);
+        const error = results.find((err) => err != null);
         if (error) {
             throw error;
         }
@@ -442,7 +457,7 @@ export class Broiler {
                     const filePath = path.resolve(dirPath, `${name}.jsonl`);
                     let index = 0;
                     for await (const line of readLines(filePath)) {
-                        index++;
+                        index += 1;
                         try {
                             const serializedItem = JSON.parse(line);
                             const item = resource.deserialize(serializedItem);
@@ -467,7 +482,7 @@ export class Broiler {
                 }
             }),
         );
-        const error = results.find((error) => error != null);
+        const error = results.find((err) => err != null);
         if (error) {
             throw error;
         }
@@ -597,9 +612,7 @@ export class Broiler {
     public async uploadFrontend(): Promise<IFileUpload[]> {
         const asset$ = searchFiles(this.buildDir, ['!index.*.html', '!server*.js']);
         const output = await this.cloudFormation.getStackOutput();
-        return await toArray(
-            this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false),
-        );
+        return toArray(this.uploadFilesToS3Bucket(output.AssetsS3BucketName, asset$, staticAssetsCacheDuration, false));
     }
 
     /**
@@ -628,7 +641,7 @@ export class Broiler {
             facebookClientSecret = await readAnswer(
                 `Check your Facebook client app secret at ${underline(
                     `https://developers.facebook.com/apps/${facebookClientId}/settings/basic/`,
-                )}\n` + `Please enter the client secret:`,
+                )}\nPlease enter the client secret:`,
             );
             if (!facebookClientSecret) {
                 throw new Error(`Facebook client app secret is required!`);
@@ -641,7 +654,7 @@ export class Broiler {
             googleClientSecret = await readAnswer(
                 `Check your Google client app secret at ${underline(
                     `https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`,
-                )}\n` + `Please enter the client secret:`,
+                )}\nPlease enter the client secret:`,
             );
             if (!googleClientSecret) {
                 throw new Error(`Google client app secret is required!`);
@@ -839,7 +852,7 @@ export class Broiler {
             ServerDeploymentId: siteHash.toUpperCase(),
         });
         if (!server) {
-            return await template$;
+            return template$;
         }
         const templates = await Promise.all([
             template$,
@@ -966,15 +979,17 @@ export class Broiler {
     }
 
     private async createS3File$(params: S3.PutObjectRequest, overwrite: true): Promise<S3.PutObjectOutput>;
+
     private async createS3File$(params: S3.PutObjectRequest, overwrite: boolean): Promise<S3.PutObjectOutput | void>;
+
     private async createS3File$(params: S3.PutObjectRequest, overwrite: boolean): Promise<S3.PutObjectOutput | void> {
         if (!overwrite && (await this.s3.objectExists(params))) {
             this.log('File', bold(params.Key), 'already exists in bucket', params.Bucket, green('✔︎'));
-        } else {
-            const result = await this.s3.putObject(params);
-            this.log('Uploaded', bold(params.Key), 'to bucket', params.Bucket, green('✔︎'));
-            return result;
+            return undefined;
         }
+        const result = await this.s3.putObject(params);
+        this.log('Uploaded', bold(params.Key), 'to bucket', params.Bucket, green('✔︎'));
+        return result;
     }
 
     /**
@@ -1042,26 +1057,26 @@ export class Broiler {
         }
         const oauthRedirectUri = `${authRoot}/oauth2/idpresponse`;
         // Facebook client settings
-        const facebookClientId = auth.facebookClientId;
+        const { facebookClientId } = auth;
         if (facebookClientId) {
             const conifigureUrl = `https://developers.facebook.com/apps/${facebookClientId}/fb-login/settings/`;
             this.log(
-                `\n` +
-                    yellow(`${bold(`Remember to configure your Facebook client`)} with ID ${facebookClientId}`) +
-                    `\n1. Navigate to the app's ${bold(`Facebook Login`)} settings at:` +
+                `\n${yellow(
+                    `${bold(`Remember to configure your Facebook client`)} with ID ${facebookClientId}`,
+                )}\n1. Navigate to the app's ${bold(`Facebook Login`)} settings at:` +
                     `\n   ${underline(conifigureUrl)}` +
                     `\n2. Add the following URL to the ${bold(`"Valid OAuth Redirect URIs"`)}:` +
                     `\n   ${underline(oauthRedirectUri)}`,
             );
         }
         // Google client settings
-        const googleClientId = auth.googleClientId;
+        const { googleClientId } = auth;
         if (googleClientId) {
             const conifigureUrl = `https://console.developers.google.com/apis/credentials/oauthclient/${googleClientId}`;
             this.log(
-                `\n` +
-                    yellow(`${bold(`Remember to configure your Google client`)} with ID ${googleClientId}`) +
-                    `\n1. Navigate to the app's ${bold(`Client ID settings`)} at` +
+                `\n${yellow(
+                    `${bold(`Remember to configure your Google client`)} with ID ${googleClientId}`,
+                )}\n1. Navigate to the app's ${bold(`Client ID settings`)} at` +
                     `\n   ${underline(conifigureUrl)}` +
                     `\n2. Add the following URL to the ${bold(`"Authorized redirect URIs"`)}:` +
                     `\n   ${underline(oauthRedirectUri)}`,
@@ -1070,9 +1085,12 @@ export class Broiler {
     }
 
     private log(message: any, ...params: any[]) {
+        // eslint-disable-next-line no-console
         console.log(message, ...params);
     }
+
     private logError(message: any, ...params: any[]) {
+        // eslint-disable-next-line no-console
         console.error(red(message), ...params);
     }
 
@@ -1127,6 +1145,7 @@ export class Broiler {
     private importModule(dir: string): any {
         const { projectRootPath, sourceDir } = this.config;
         const modulePath = path.resolve(projectRootPath, sourceDir, dir);
+        // eslint-disable-next-line import/no-dynamic-require
         return require(modulePath);
     }
 
@@ -1252,11 +1271,11 @@ function formatResourceDelete(resource: CloudFormation.StackResource): string {
 function formatStatus(status: string): string {
     if (status.endsWith('_FAILED')) {
         return red(status);
-    } else if (status.endsWith('_COMPLETE')) {
-        return green(status);
-    } else {
-        return cyan(status);
     }
+    if (status.endsWith('_COMPLETE')) {
+        return green(status);
+    }
+    return cyan(status);
 }
 
 function generateBackupDirPath(stageDir: string): string {

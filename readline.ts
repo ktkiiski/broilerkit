@@ -13,7 +13,7 @@ export function readAnswer(question: string, trim = true): Promise<string> {
             input: process.stdin,
             output: process.stdout,
         });
-        rl.question(question + ' ', (answer) => {
+        rl.question(`${question} `, (answer) => {
             try {
                 rl.close();
                 resolve(trim ? answer.trim() : answer);

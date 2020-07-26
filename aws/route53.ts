@@ -35,7 +35,7 @@ export class AmazonRoute53 {
             change = changeResult.ChangeInfo;
         }
         // Return all the information about the hosted zone
-        return await this.route53.getHostedZone({ Id: creationResult.HostedZone.Id }).promise();
+        return this.route53.getHostedZone({ Id: creationResult.HostedZone.Id }).promise();
     }
 
     /**
@@ -52,6 +52,6 @@ export class AmazonRoute53 {
             throw new Error(`Hosted zone does not exist`);
         }
         // Return all the information about the hosted zone
-        return await this.route53.getHostedZone({ Id: zone.Id }).promise();
+        return this.route53.getHostedZone({ Id: zone.Id }).promise();
     }
 }

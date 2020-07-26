@@ -1,3 +1,4 @@
+/* eslint-disable func-names */
 import * as assert from 'assert';
 import { asap, deferred, flatMapAsyncParallel, toArray, toAsync, wait } from '../async';
 

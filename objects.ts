@@ -8,6 +8,7 @@ import type { Key } from 'immuton/types';
  * @param iterator Function to be called for each key
  */
 export function forEachKey<T>(obj: T, iterator: (key: Key<T>, value: T[Key<T>]) => void): void {
+    // eslint-disable-next-line no-restricted-syntax
     for (const key in obj) {
         if (hasOwnProperty(obj, key) && typeof key === 'string') {
             iterator(key, obj[key]);

@@ -78,6 +78,7 @@ export class AmazonCloudFormation {
             if (OutputKey && OutputValue) {
                 return [OutputKey, OutputValue];
             }
+            return undefined;
         });
     }
 
@@ -90,10 +91,12 @@ export class AmazonCloudFormation {
             if (ParameterKey) {
                 if (UsePreviousValue) {
                     return [ParameterKey, null];
-                } else if (ParameterValue != null) {
+                }
+                if (ParameterValue != null) {
                     return [ParameterKey, ParameterValue];
                 }
             }
+            return undefined;
         });
     }
 
@@ -186,7 +189,7 @@ export class AmazonCloudFormation {
         await this.cloudFormation.createChangeSet(request).promise();
         await this.cloudFormation.describeChangeSet(describeChangeSetInput).promise();
         // Wait until the change set is created
-        return await this.waitForChangeSetCreateComplete(describeChangeSetInput, pollInterval);
+        return this.waitForChangeSetCreateComplete(describeChangeSetInput, pollInterval);
     }
 
     /**
@@ -308,8 +311,7 @@ export function convertStackParameters(parameters: { [key: string]: StackParamet
     return mapObject(parameters, (ParameterValue, ParameterKey) => {
         if (ParameterValue === null) {
             return { ParameterKey, UsePreviousValue: true };
-        } else {
-            return { ParameterKey, ParameterValue };
         }
+        return { ParameterKey, ParameterValue };
     }).filter(({ UsePreviousValue, ParameterValue }) => UsePreviousValue || ParameterValue !== undefined);
 }

@@ -10,10 +10,10 @@ const urlPlaceholderRegexp = /^\{(.+?)(\+)?\}$/;
  * check if a URL path matches the pattern. The match object
  * will contain each placeholder as a capturing group.
  *
- * @param pattern URL pattern with {xxx} placeholders
+ * @param urlPattern URL pattern with {xxx} placeholders
  */
-export function makeUrlRegexp(pattern: string): RegExp {
-    const regexpComponents = pattern.split('/').map((component) =>
+export function makeUrlRegexp(urlPattern: string): RegExp {
+    const regexpComponents = urlPattern.split('/').map((component) =>
         urlPlaceholderRegexp.test(component)
             ? '([^/]+)' // capturing group
             : escapeRegExp(component),
@@ -30,7 +30,7 @@ export class Url {
     public toString(): string {
         const { queryParams } = this;
         const query = buildQuery(queryParams);
-        return this.path + (query && '?' + query);
+        return this.path + (query && `?${query}`);
     }
 
     public withParameters(params: { [param: string]: string }): Url {
@@ -40,7 +40,10 @@ export class Url {
 
 export class UrlPattern<T extends string = string> {
     public readonly pathKeywords: T[];
+
     private readonly regexp: RegExp;
+
+    // eslint-disable-next-line no-shadow
     constructor(public readonly pattern: string) {
         const pathKeywords: T[] = [];
         const regexpComponents = pattern.split('/').map((component) => {
@@ -62,6 +65,7 @@ export class UrlPattern<T extends string = string> {
     public match(url: string | Url, defaults?: { [param: string]: string }): { [param: string]: string } | null {
         if (typeof url === 'string') {
             try {
+                // eslint-disable-next-line no-param-reassign
                 url = parseUrl(url);
             } catch {
                 // Invalid URL -> do not match
@@ -75,7 +79,7 @@ export class UrlPattern<T extends string = string> {
         const { pathKeywords } = this;
         const { length } = pathKeywords;
         const pathParameters: { [param: string]: string } = {};
-        for (let i = 0; i < length; i++) {
+        for (let i = 0; i < length; i += 1) {
             const pathKey = pathKeywords[i];
             try {
                 pathParameters[pathKey] = decodeURIComponent(pathMatch[i + 1]);
@@ -112,6 +116,7 @@ export function parseUrl(url: string): Url {
 }
 
 export function parseQuery(query: string): { [key: string]: string } {
+    // eslint-disable-next-line no-param-reassign
     query = query.replace(/^[#?]/, ''); // Strip any leading # or ?
     const result: { [key: string]: string } = {};
     for (const item of query.split('&')) {
@@ -129,7 +134,7 @@ function escapeRegExp(str: string) {
 
 function buildUrl(strings: TemplateStringsArray, keywords: string[]): string {
     const components: string[] = [];
-    for (let i = 0; i < strings.length; i++) {
+    for (let i = 0; i < strings.length; i += 1) {
         components.push(strings[i]);
         if (i < keywords.length) {
             components.push(`{${keywords[i]}}`);

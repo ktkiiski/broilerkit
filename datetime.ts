@@ -8,12 +8,13 @@ export function serializeDateTime(value: Date): string {
 export function deserializeDateTime(value: unknown): Date {
     if (typeof value === 'string') {
         // Try to parse the date from the string
+        // eslint-disable-next-line no-param-reassign
         value = Date.parse(value);
     }
     if (typeof value !== 'number') {
         throw new ValidationError(`Invalid string or integer type`);
     }
-    if (isFinite(value)) {
+    if (Number.isFinite(value)) {
         // Accept the number of milliseconds from epoch
         return new Date(value);
     }

@@ -1,12 +1,14 @@
+/* eslint-disable no-underscore-dangle */
 import { sign } from 'jsonwebtoken';
 import * as React from 'react';
 import { useState } from 'react';
-import { useLocation } from 'react-router';
+import { useLocation } from 'react-router-dom';
 import * as api from '../../auth-local-api';
 import { randomize } from '../../strings';
 import { buildQuery, parseQuery } from '../../url';
 import type { User } from '../../users';
 import { useList, useOperation } from '../api';
+import { useUniqueId } from '../client';
 
 function LocalSignInView(): JSX.Element {
     const location = useLocation();
@@ -14,6 +16,7 @@ function LocalSignInView(): JSX.Element {
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [hasAvatar, setHasAvatar] = useState(true);
+    const id = useUniqueId();
     const createUserOperation = useOperation(api._createUser);
     const signUp = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -30,8 +33,8 @@ function LocalSignInView(): JSX.Element {
 
     async function signInAs(user: User) {
         const idTokenPayload: { [key: string]: unknown } = {
-            sub: user.id,
-            exp: Math.floor(new Date().getTime() / 1000) + 60 * 60,
+            'sub': user.id,
+            'exp': Math.floor(new Date().getTime() / 1000) + 60 * 60,
             'cognito:groups': isAdmin ? ['Administrators'] : [],
         };
         if (user.email) {
@@ -62,10 +65,11 @@ function LocalSignInView(): JSX.Element {
             <h4>Sign up as a new user</h4>
             <form onSubmit={signUp}>
                 <div>
-                    <label>Email</label>
+                    <label htmlFor={`email-input-${id}`}>Email</label>
                 </div>
                 <div>
                     <input
+                        id={`email-input-${id}`}
                         type="email"
                         placeholder="Type an unique email address"
                         value={email}
@@ -73,10 +77,11 @@ function LocalSignInView(): JSX.Element {
                     />
                 </div>
                 <div>
-                    <label>Name</label>
+                    <label htmlFor={`name-input-${id}`}>Name</label>
                 </div>
                 <div>
                     <input
+                        id={`name-input-${id}`}
                         type="text"
                         placeholder="Type the full name"
                         value={name}
@@ -102,8 +107,8 @@ function LocalSignInView(): JSX.Element {
             <h4>Sign in with an existing user</h4>
             {users &&
                 users.map((user) => (
-                    <button key={user.id} onClick={() => signInAs(user)}>
-                        {user.name}({user.email || 'no email'})
+                    <button type="button" key={user.id} onClick={() => signInAs(user)}>
+                        {`${user.name} (${user.email || 'no email'})`}
                     </button>
                 ))}
         </>

@@ -3,16 +3,17 @@
 import * as childProcess from 'child_process';
 import * as path from 'path';
 import * as yargs from 'yargs';
+import * as tsNode from 'ts-node';
 import { Broiler } from './broiler';
 import { escapeForShell } from './exec';
 import type { App } from './index';
 import { red } from './palette';
 
 // Allow executing TypeScript (.ts) files
-import * as tsNode from 'ts-node';
 
 const onError = (error: Error) => {
     process.exitCode = 1;
+    // eslint-disable-next-line no-console
     console.error(red(String(error.stack || error)));
 };
 
@@ -33,11 +34,12 @@ function getBroiler(argv: CommandOptions) {
     const cwd = process.cwd();
     const appPath = path.resolve(cwd, appConfigPath);
     const projectRootPath = path.dirname(appPath);
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-var-requires,import/no-dynamic-require
     const appModule = require(appPath);
     const app: App = appModule.default; // App should be the default export
     return new Broiler(app.configure({ ...options, projectRootPath }));
 }
+// eslint-disable-next-line no-unused-expressions
 yargs
     // Read the app configuration
     .describe('appConfigPath', 'Path to the app configuration')
@@ -50,7 +52,7 @@ yargs
     .boolean('no-color')
     .describe('no-color', 'Print output without colors')
 
-    /**** Commands ****/
+    /** ** Commands *** */
     .command({
         command: 'init [directory]',
         aliases: ['pull'],

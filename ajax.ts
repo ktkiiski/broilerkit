@@ -8,7 +8,6 @@ import {
     HttpStatus,
     parseHeaders,
 } from './http';
-import hasOwnProperty from 'immuton/hasOwnProperty';
 
 const enum AjaxState {
     UNSENT = 0,
@@ -39,7 +38,7 @@ export async function ajaxJson(request: AjaxRequest): Promise<ApiResponse> {
     } else {
         response = { statusCode, headers };
     }
-    if (200 <= statusCode && statusCode < 300) {
+    if (statusCode >= 200 && statusCode < 300) {
         return response;
     }
     throw new AjaxError(request, statusCode, headers, response.data, body);
@@ -48,7 +47,7 @@ export async function ajaxJson(request: AjaxRequest): Promise<ApiResponse> {
 export async function ajax(request: AjaxRequest): Promise<HttpResponse> {
     const response = await requestRaw(request);
     const { statusCode } = response;
-    if (200 <= statusCode && statusCode < 300) {
+    if (statusCode >= 200 && statusCode < 300) {
         return response;
     }
     throw new AjaxError(request, statusCode, response.headers, response.body);
@@ -79,14 +78,12 @@ function requestRaw(request: AjaxRequest): Promise<HttpResponse> {
         xhr.open(method, url, true);
         // Set the request headers
         if (headers) {
-            for (const headerName in headers) {
-                if (hasOwnProperty(headers, headerName)) {
-                    const headerValue = headers[headerName];
-                    if (headerValue) {
-                        xhr.setRequestHeader(headerName, headerValue);
-                    }
+            Object.keys(headers).forEach((headerName) => {
+                const headerValue = headers[headerName];
+                if (headerValue) {
+                    xhr.setRequestHeader(headerName, headerValue);
                 }
-            }
+            });
         }
         xhr.onerror = onError;
         xhr.onreadystatechange = onReadyStateChange;

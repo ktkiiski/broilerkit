@@ -19,6 +19,7 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
         region: this.region,
         maxRetries: 20,
     });
+
     constructor(private region: string, private userPoolId: string) {}
 
     public async getUserById(id: string, notFoundError?: Error): Promise<CognitoUser & S> {
@@ -124,6 +125,7 @@ function parsePictureUrl(picture: string): string | null {
      */
     // Try to parse and get the nested value
     try {
+        // eslint-disable-next-line no-param-reassign
         picture = JSON.parse(picture).data.url;
     } catch {
         return null;

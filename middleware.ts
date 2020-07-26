@@ -17,35 +17,13 @@ import { countBytes, findAllMatches } from './strings';
 
 type Response = HttpResponse | ApiResponse;
 
-export function middleware<P extends any[]>(
-    handler: (request: HttpRequest, ...params: P) => Promise<Response>,
-): (request: HttpRequest, ...params: P) => Promise<HttpResponse> {
-    return compatibilityMiddleware(
-        preconditionMiddleware(
-            finalizerMiddleware(apiMiddleware(errorMiddleware(queryMethodSupportMiddleware(handler)))),
-        ),
-    );
-}
-
-export function requestMiddleware<I, O>(handleRequest: (request: I) => Promise<O>) {
-    return <P extends any[], R>(handler: (request: O, ...params: P) => Promise<R>) => async (
-        request: I,
-        ...params: P
-    ): Promise<R> => {
-        const newRequest = await handleRequest(request);
-        return await handler(newRequest, ...params);
+const compatibilityMiddleware = requestMiddleware(async (request: HttpRequest) => {
+    return {
+        ...request,
+        // Convert headers to capitalized format, e.g. `content-type` => `Content-Type`
+        headers: normalizeHeaders(request.headers),
     };
-}
-
-export function responseMiddleware<I, O, R>(handleResponse: (response: I, request: R) => Promise<O>) {
-    return <P extends any[]>(handler: (request: R, ...params: P) => Promise<I>) => async (
-        request: R,
-        ...params: P
-    ): Promise<O> => {
-        const response = await handler(request, ...params);
-        return await handleResponse(response, request);
-    };
-}
+});
 
 const queryMethodSupportMiddleware = requestMiddleware(async (request: HttpRequest) => {
     const httpMethod = request.method;
@@ -58,14 +36,6 @@ const queryMethodSupportMiddleware = requestMiddleware(async (request: HttpReque
         return { ...request, method, queryParameters };
     }
     throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
-});
-
-const compatibilityMiddleware = requestMiddleware(async (request: HttpRequest) => {
-    return {
-        ...request,
-        // Convert headers to capitalized format, e.g. `content-type` => `Content-Type`
-        headers: normalizeHeaders(request.headers),
-    };
 });
 
 const apiMiddleware = responseMiddleware(
@@ -101,26 +71,6 @@ const apiMiddleware = responseMiddleware(
     },
 );
 
-export function errorMiddleware<R, P extends any[]>(
-    handler: (request: R, ...params: P) => Promise<Response>,
-): (request: R, ...params: P) => Promise<Response> {
-    async function catchError(request: R, ...params: P): Promise<Response> {
-        try {
-            return await handler(request, ...params);
-        } catch (error) {
-            // Determine if the error was a HTTP response
-            if (isResponse(error)) {
-                // This was an intentional HTTP error, so it should be considered
-                // a successful execution of the lambda function.
-                return error;
-            }
-            // This doesn't seem like a HTTP response -> Pass through for the internal server error
-            throw error;
-        }
-    }
-    return catchError;
-}
-
 const finalizerMiddleware = responseMiddleware(async (response: HttpResponse, request: HttpRequest) => {
     const { statusCode, body, headers } = response;
     const hash = createHash('md5').update(body).digest('hex');
@@ -136,7 +86,7 @@ const finalizerMiddleware = responseMiddleware(async (response: HttpResponse, re
             // Calculate the length for the response body
             'Content-Length': String(countBytes(body)),
             // Return the ETag
-            ETag: `"${hash}"`,
+            'ETag': `"${hash}"`,
             ...headers,
         },
     };
@@ -169,4 +119,54 @@ function preconditionMiddleware<P extends any[]>(
         };
     }
     return handlePrecondition;
+}
+
+export function middleware<P extends any[]>(
+    handler: (request: HttpRequest, ...params: P) => Promise<Response>,
+): (request: HttpRequest, ...params: P) => Promise<HttpResponse> {
+    return compatibilityMiddleware(
+        preconditionMiddleware(
+            finalizerMiddleware(apiMiddleware(errorMiddleware(queryMethodSupportMiddleware(handler)))),
+        ),
+    );
+}
+
+export function requestMiddleware<I, O>(handleRequest: (request: I) => Promise<O>) {
+    return <P extends any[], R>(handler: (request: O, ...params: P) => Promise<R>) => async (
+        request: I,
+        ...params: P
+    ): Promise<R> => {
+        const newRequest = await handleRequest(request);
+        return handler(newRequest, ...params);
+    };
+}
+
+export function responseMiddleware<I, O, R>(handleResponse: (response: I, request: R) => Promise<O>) {
+    return <P extends any[]>(handler: (request: R, ...params: P) => Promise<I>) => async (
+        request: R,
+        ...params: P
+    ): Promise<O> => {
+        const response = await handler(request, ...params);
+        return handleResponse(response, request);
+    };
+}
+
+export function errorMiddleware<R, P extends any[]>(
+    handler: (request: R, ...params: P) => Promise<Response>,
+): (request: R, ...params: P) => Promise<Response> {
+    async function catchError(request: R, ...params: P): Promise<Response> {
+        try {
+            return await handler(request, ...params);
+        } catch (error) {
+            // Determine if the error was a HTTP response
+            if (isResponse(error)) {
+                // This was an intentional HTTP error, so it should be considered
+                // a successful execution of the lambda function.
+                return error;
+            }
+            // This doesn't seem like a HTTP response -> Pass through for the internal server error
+            throw error;
+        }
+    }
+    return catchError;
 }

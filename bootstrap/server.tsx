@@ -8,11 +8,18 @@ import { Pool } from 'pg';
 import { readFile } from '../fs';
 import { LambdaEvent, LambdaHttpRequest, lambdaMiddleware, LambdaHttpResponse } from '../lambda';
 import { middleware } from '../middleware';
-import { authenticationMiddleware } from '../oauth';
-import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
-import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
-import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from '../oauth';
-import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from '../oauth';
+import {
+    authenticationMiddleware,
+    OAUTH2_SIGNIN_ENDPOINT_NAME,
+    OAuth2SignInController,
+    OAUTH2_SIGNOUT_ENDPOINT_NAME,
+    OAuth2SignOutController,
+    OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME,
+    OAuth2SignedInController,
+    OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME,
+    OAuth2SignedOutController,
+} from '../oauth';
+
 import { ApiService, ServerContext } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 import { AWSFileStorage } from '../storage';
@@ -27,6 +34,7 @@ const db = getDatabase();
 // Load the module exporting the rendered React component
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const view: React.ComponentType = require('_site').default;
+
 const service = apiService.extend({
     [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, pageHtml$),
     [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),
@@ -119,9 +127,8 @@ export async function request(event: LambdaHttpRequest | LambdaEvent): Promise<v
     const context = await serverContext$;
     if ('path' in event && 'headers' in event) {
         return handleRequest(event, context);
-    } else {
-        return handleEvent(event, context);
     }
+    return handleEvent(event, context);
 }
 
 function getApiService() {

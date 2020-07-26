@@ -43,35 +43,43 @@ abstract class BaseSerializer<T, S> implements Serializer<T, S> {
     public serialize(input: T): Serialization {
         return this.transformWith(input, (field, value) => field.serialize(value));
     }
+
     public encode(input: T): Encoding {
         return this.transformWith(input, (field, value) => field.encode(value));
     }
+
     public encodeSortable(input: T): Encoding {
         return this.transformWith(input, (field, value) => field.encodeSortable(value));
     }
+
     public validate(input: T): S {
         return this.transformWith(input, (field, value) => field.validate(value)) as S;
     }
+
     public deserialize(input: unknown): S {
         return this.transformWith(input, (field, value) => field.deserialize(value));
     }
+
     public decode(input: Encoding): S {
         return this.transformWith(input, (field, value) => field.decode(value));
     }
+
     public decodeSortable(input: Encoding): S {
         return this.transformWith(input, (field, value) => field.decodeSortable(value));
     }
+
     protected transformFieldWith(field: Field<any>, value: any, key: any, callback: FieldConverter): any {
         if (typeof value === 'undefined') {
             throw new ValidationError(`Missing required value`);
         }
         return callback(field, value, key);
     }
+
     private transformWith(input: any, callback: FieldConverter): any {
         if (typeof input !== 'object' || !input) {
             throw new ValidationError(`Invalid object`);
         }
-        const fields: { [key: string]: Field<any> } = this.fields;
+        const { fields } = this;
         const output: { [key: string]: any } = {};
         const errors: KeyErrorData<string>[] = [];
         // Deserialize each field
@@ -104,12 +112,15 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Extendab
     constructor(public readonly fields: Fields<T>) {
         super();
     }
+
     public pick<K extends Key<T> & Key<Fields<T>>>(attrs: K[]): FieldSerializer<Pick<T, K>> {
         return new FieldSerializer(pick(this.fields, attrs) as Fields<Pick<T, K>>);
     }
+
     public omit<K extends Key<T>>(attrs: K[]): FieldSerializer<Omit<T, K>> {
         return new FieldSerializer(omit(this.fields, attrs) as Fields<Omit<T, K>>);
     }
+
     public partial<K extends Key<T>>(attrs: K[]): ExtendableSerializer<Require<T, K>> {
         return this.optional({
             required: attrs,
@@ -117,6 +128,7 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Extendab
             defaults: {},
         }) as ExtendableSerializer<Require<T, K>>;
     }
+
     public fullPartial(): ExtendableSerializer<Partial<T>> {
         return this.optional({
             required: [],
@@ -124,14 +136,17 @@ export class FieldSerializer<T> extends BaseSerializer<T, T> implements Extendab
             defaults: {},
         });
     }
+
     public optional<R extends Key<T>, O extends Key<T>, D extends keyof T>(
         options: OptionalOptions<T, R, O, D>,
     ): ExtendableSerializer<OptionalInput<T, R, O, D>, OptionalOutput<T, R, O, D>> {
         return new OptionalSerializer(options, this.fields);
     }
+
     public defaults<D extends keyof T>(defaults: { [P in D]: T[P] }): DefaultsSerializer<T, D> {
         return new DefaultsSerializer(defaults, this.fields);
     }
+
     public extend<E>(fields: Fields<E>): FieldSerializer<T & E> {
         return new FieldSerializer({ ...this.fields, ...fields } as Fields<T & E>);
     }
@@ -152,7 +167,9 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
     extends BaseSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>>
     implements ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
     private readonly requiredFields: R[];
+
     private readonly optionalFields: (O | D)[];
+
     private readonly defaults: { [P in D]: S[P] };
 
     constructor(private readonly options: OptionalOptions<S, R, O, D>, protected fields: Fields<S>) {
@@ -165,7 +182,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
 
     public extend<E>(fields: Fields<E>): OptionalSerializer<S & E, R | keyof E, O, D> {
         const additionalKeys = keys(fields) as (keyof E)[];
-        const options = this.options;
+        const { options } = this;
         return new OptionalSerializer<S & E, R | keyof E, O, D>(
             {
                 required: [...options.required, ...additionalKeys] as (R | keyof E)[],
@@ -195,6 +212,7 @@ export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D exten
             return super.transformFieldWith(field, value, key, callback);
         }
         // Otherwise this should be omitted
+        return undefined;
     }
 }
 
@@ -222,25 +240,34 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<
 
 class NestedSerializerField<I> implements Field<I, Serialization> {
     public readonly type: string = 'jsonb';
+
+    // eslint-disable-next-line no-shadow
     constructor(private serializer: Serializer<I, any>) {}
+
     public validate(value: I): I {
         return this.serializer.validate(value);
     }
+
     public serialize(value: I): Serialization {
         return this.serializer.serialize(value);
     }
+
     public deserialize(value: unknown): I {
         return this.serializer.deserialize(value);
     }
+
     public encode(): never {
         throw new Error('Nested resource field does not support encoding.');
     }
+
     public encodeSortable(): never {
         throw new Error('Nested resource field does not support sortable encoding.');
     }
+
     public decode(): never {
         throw new Error('Nested resource field does not support decoding.');
     }
+
     public decodeSortable(): never {
         throw new Error('Nested resource field does not support sortable decoding.');
     }

@@ -33,7 +33,9 @@ export interface FileStorage {
 
 export class AWSFileStorage implements FileStorage {
     private s3 = new AmazonS3(this.region);
+
     constructor(private readonly stackName: string, private readonly region: string) {}
+
     public async allowUpload(bucket: Bucket, config: UploadConfig): Promise<UploadForm> {
         const { userId, ...options } = config;
         const presignedPost = await this.s3.createPresignedPost({
@@ -47,16 +49,18 @@ export class AWSFileStorage implements FileStorage {
             'Content-Type': null,
             'Content-Disposition': null,
             ...presignedPost.fields,
-            action: presignedPost.url,
-            method: 'POST',
+            'action': presignedPost.url,
+            'method': 'POST',
         } as UploadForm;
     }
+
     public async retrieve(bucket: Bucket, key: string): Promise<BucketObject> {
         const bucketName = this.getBucketName(bucket);
         const { body: data, meta } = await this.s3.getObject(bucketName, key);
         const userId = meta['user-id'] || null;
         return { bucket, data, key, userId };
     }
+
     private getBucketName(bucket: Bucket): string {
         // The deployed S3 bucket starts with the stack name
         return `${this.stackName}-storage-${bucket.name}`;
@@ -65,25 +69,27 @@ export class AWSFileStorage implements FileStorage {
 
 export class LocalFileStorage implements FileStorage {
     constructor(private serverOrigin: string, private rootPath: string) {}
+
     public async allowUpload(bucket: Bucket, config: UploadConfig): Promise<UploadForm> {
         const now = new Date();
         return uploadFormSerializer.validate({
-            acl: config.access,
-            key: generateKey(),
-            action: `${this.serverOrigin}/__upload/${encodeURIComponent(bucket.name)}`,
-            method: 'POST',
-            success_action_status: '201',
+            'acl': config.access,
+            'key': generateKey(),
+            'action': `${this.serverOrigin}/__upload/${encodeURIComponent(bucket.name)}`,
+            'method': 'POST',
+            'success_action_status': '201',
             'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
             'X-Amz-Credential': getAmzCredential('XXXXXXXX', 'local', now),
             'Content-Disposition': null,
             'Content-Type': null,
             'X-Amz-Date': getAmzDate(now),
             'X-Amz-Meta-user-id': config.userId,
-            Policy: 'LOCAL_POLICY',
+            'Policy': 'LOCAL_POLICY',
             'X-Amz-Signature': 'LOCAL_SIGNATURE',
             'X-Amz-Security-Token': 'LOCAL_SECURITY_TOKEN',
         });
     }
+
     public async retrieve(bucket: Bucket, key: string): Promise<BucketObject> {
         const filePath = path.join(this.rootPath, bucket.name, key);
         const metaFilePath = path.join(this.rootPath, bucket.name, '.meta', key);
@@ -106,8 +112,11 @@ export const LOCAL_UPLOAD_ENDPOINT_NAME = 'localUpload';
 
 export class LocalUploadController implements Controller {
     public readonly methods: HttpMethod[] = ['POST'];
+
     public readonly pattern = pattern`/__upload/${'bucket'}`;
+
     constructor(private rootPath: string) {}
+
     public async execute(request: HttpRequest, context: HandlerServerContext): Promise<HttpResponse> {
         const url = new Url(request.path, request.queryParameters);
         const match = this.pattern.match(url) as { [key: string]: string };
@@ -135,7 +144,7 @@ export class LocalUploadController implements Controller {
         const { 'Content-Type': contentType, 'Content-Disposition': contentDisposition } = file.meta || {};
         const meta: { [key: string]: string } = {
             key,
-            acl: payload.acl,
+            'acl': payload.acl,
             'Content-Length': String(size),
         };
         if (userId != null) {
@@ -151,34 +160,35 @@ export class LocalUploadController implements Controller {
         await ensureDirectoryExists(metaDirPath);
         await Promise.all([writeFile(filePath, file.data), writeFile(metaFilePath, JSON.stringify(meta))]);
         // Trigger the handler (asyncrhonously)
-        this.triggerEvent(context, bucketName, key, size);
+        triggerUploadEvent(context, bucketName, key, size);
         return {
             statusCode: parseInt(payload.success_action_status, 10),
             headers: {},
             body: '',
         };
     }
-    private async triggerEvent(context: HandlerServerContext, bucketName: string, key: string, size: number) {
-        const fakeBucketName = `${context.stackName}-storage-${bucketName}`;
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const triggers: Trigger[] = Object.values(require('_triggers'));
-        await triggerEvent(
-            triggers,
-            {
-                Records: [
-                    {
-                        eventName: 'ObjectCreated:Post',
-                        eventTime: new Date().toISOString(),
-                        s3: {
-                            bucket: { name: fakeBucketName },
-                            object: { key, size },
-                        },
+}
+
+async function triggerUploadEvent(context: HandlerServerContext, bucketName: string, key: string, size: number) {
+    const fakeBucketName = `${context.stackName}-storage-${bucketName}`;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const triggers: Trigger[] = Object.values(require('_triggers'));
+    await triggerEvent(
+        triggers,
+        {
+            Records: [
+                {
+                    eventName: 'ObjectCreated:Post',
+                    eventTime: new Date().toISOString(),
+                    s3: {
+                        bucket: { name: fakeBucketName },
+                        object: { key, size },
                     },
-                ],
-            },
-            context,
-        );
-    }
+                },
+            ],
+        },
+        context,
+    );
 }
 
 function generateKey() {

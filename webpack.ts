@@ -49,7 +49,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const assetsRootUrl = url.parse(assetsRoot);
     const assetsPath = assetsRootUrl.pathname || '/';
     const assetsDir = assetsPath.replace(/^\/+/, '');
-    const assetsFilePrefix = assetsDir && assetsDir + '/';
+    const assetsFilePrefix = assetsDir && `${assetsDir}/`;
     const assetsOrigin = `${assetsRootUrl.protocol}//${assetsRootUrl.host}`;
     const gitCommitHash = executeSync('git rev-parse HEAD');
     const gitVersion = executeSync('git describe --always --dirty="-$(git diff-tree HEAD | md5 -q | head -c 8)"');
@@ -378,6 +378,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     ];
     // If an API is defined, compile it as well
     if (serverFile) {
+        // eslint-disable-next-line no-underscore-dangle
         aliases._service = path.resolve(projectRootPath, sourceDir, serverFile);
     } else {
         // API not available. Let the bundle to compile without it, but
@@ -386,6 +387,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     }
     // If a database defined, compile it as well
     if (databaseFile) {
+        // eslint-disable-next-line no-underscore-dangle
         aliases._db = path.resolve(projectRootPath, sourceDir, databaseFile);
     } else {
         // Database not available. Let the bundle to compile without it, but
@@ -394,6 +396,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     }
     // If a triggers file is defined, compile it as well
     if (triggersFile) {
+        // eslint-disable-next-line no-underscore-dangle
         aliases._triggers = path.resolve(projectRootPath, sourceDir, triggersFile);
     } else {
         // Triggers not available. Let the bundle to compile without it, but

@@ -18,8 +18,11 @@ import {
     NotFound,
     NotImplemented,
     SuccesfulResponse,
+    ApiResponse,
+    HttpResponse,
+    OK,
 } from './http';
-import { ApiResponse, HttpResponse, OK } from './http';
+
 import type { AuthenticationType, Operation, OperationType } from './operations';
 import type { Page } from './pagination';
 import { parsePayload } from './parser';
@@ -128,6 +131,7 @@ export interface Controller {
 
 class ImplementedOperation implements Controller {
     public readonly methods: HttpMethod[];
+
     public readonly pattern: UrlPattern;
 
     constructor(
@@ -228,6 +232,7 @@ export function implementAll<I, O, R, T extends Record<string, OperationType>>(o
 
 export class ApiService {
     public readonly controllers: Controller[];
+
     public readonly operations: Operation<any, any, any>[];
 
     constructor(private readonly controllersByName: Record<string, Controller>) {
@@ -274,12 +279,14 @@ export class ApiService {
                 if (isResponse(error)) {
                     if (error.statusCode === HttpStatus.NotImplemented) {
                         // Continue to the next implementation
+                        // eslint-disable-next-line no-continue
                         continue;
                     } else if (error.statusCode === HttpStatus.MethodNotAllowed) {
                         // The URL matches, but the method is not valid.
                         // Some other implementation might still accept this method,
                         // so continue iterating, or finally return this 405 if not found.
                         errorResponse = error;
+                        // eslint-disable-next-line no-continue
                         continue;
                     } else {
                         // Raise through but with side-effect headers

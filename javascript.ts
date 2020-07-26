@@ -22,9 +22,9 @@ function buildJavaScript(buffer: string[], value: unknown, baseIndent: string, i
     if (typeof value === 'string' || typeof value === 'boolean') {
         buffer.push(encodeSafeJSON(value));
     } else if (typeof value === 'number') {
-        if (isNaN(value)) {
+        if (Number.isNaN(value)) {
             buffer.push(`NaN`);
-        } else if (!isFinite(value)) {
+        } else if (!Number.isFinite(value)) {
             buffer.push(value < 0 ? `-Infinity` : `Infinity`);
         } else if (Object.is(value, -0)) {
             buffer.push(`-0`);

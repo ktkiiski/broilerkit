@@ -2,6 +2,8 @@
 *.js
 *.js.map
 *.d.ts
+# But do not ignore configuration files
+!/*.config.js
 
 # Ignore npm installed packages
 /node_modules

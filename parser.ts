@@ -5,16 +5,17 @@ import { BadRequest, parseHeaderDirectives, UnsupportedMediaType } from './http'
 import { parseFormData } from './multipart';
 import type { Serializer } from './serializers';
 
-export function parsePayload<I>(serializer: Serializer<I, any>, body: string, contentTypeHeader: string): I {
+export function parsePayload<I>(serializer: Serializer<I, any>, fullBody: string, contentTypeHeader: string): I {
     const [contentType, meta] = parseHeaderDirectives(contentTypeHeader);
     if (contentType === 'application/json') {
         // Deserialize JSON
         // NOTE: An empty string is interpreted as an empty object!
-        const serializedPayload = body ? parseJSON(body) : {};
+        const serializedPayload = fullBody ? parseJSON(fullBody) : {};
         return serializer.deserialize(serializedPayload);
-    } else if (contentType === 'multipart/form-data') {
+    }
+    if (contentType === 'multipart/form-data') {
         // Decode multipart/form-data
-        const formData = parseFormData(body, meta.boundary);
+        const formData = parseFormData(fullBody, meta.boundary);
         const encodedPayload = build(formData, ({ name, headers, filename, body }) => {
             if (!name) {
                 return undefined;

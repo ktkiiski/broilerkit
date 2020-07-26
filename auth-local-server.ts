@@ -9,6 +9,7 @@ import { users } from './users';
 import { uuid4 } from './uuid';
 
 export default implementAll(localApi).using({
+    // eslint-disable-next-line no-shadow
     _listUsers: async ({ direction, ordering, since }, { users }) => {
         return {
             results: order(flatten(await toArray(users.scan())), ordering, direction, since),

@@ -50,6 +50,7 @@ export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends K
             ordering: choice(this.orderingKeys),
             direction: choice(['asc', 'desc']),
         });
+
     constructor(
         private resource: Resource<T, any, any>,
         private urlKeywords: U[],
@@ -61,30 +62,37 @@ export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends K
         const validated = this.serializer.validate(input);
         return this.extendSince(validated, input.since, (field, since) => field.validate(since));
     }
+
     public serialize(input: Cursor<T, U, O, F>): Serialization {
         const serialized = this.serializer.serialize(input);
         return this.extendSince(serialized, input.since, (field, since) => field.serialize(since));
     }
+
     public deserialize(input: any): Cursor<T, U, O, F> {
         const deserialized = this.serializer.deserialize(input);
         return this.extendSince(deserialized, input.since, (field, since) => field.deserialize(since));
     }
+
     public encode(input: Cursor<T, U, O, F>): Encoding {
         const encoded = this.serializer.encode(input);
         return this.extendSince(encoded, input.since, (field, since) => field.encode(since));
     }
+
     public encodeSortable(input: Cursor<T, U, O, F>): Encoding {
         const encoded = this.serializer.encode(input);
         return this.extendSince(encoded, input.since, (field, since) => field.encodeSortable(since));
     }
+
     public decode(input: Encoding): Cursor<T, U, O, F> {
         const decoded = this.serializer.decode(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decode(since));
     }
+
     public decodeSortable(input: Encoding): Cursor<T, U, O, F> {
         const decoded = this.serializer.decodeSortable(input);
         return this.extendSince(decoded, input.since, (field, since) => field.decodeSortable(since));
     }
+
     private extendSince(data: any, since: any, serialize: (field: Field<T[O], any>, since: any) => any) {
         const orderingField = this.resource.fields[data.ordering as Key<T>] as Field<T[O], any>;
         if (since !== undefined) {

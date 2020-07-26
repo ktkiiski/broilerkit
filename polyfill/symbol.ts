@@ -1,5 +1,5 @@
 // Intentional side effects: ensure that async iterator Symbol is defined
-import 'core-js-pure/features/symbol/async-iterator.js';
+import 'core-js-pure/features/symbol/async-iterator';
 /**
  * Export the native Symbol, if available, or otherwise the polyfill implementation.
  */

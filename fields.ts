@@ -1,3 +1,5 @@
+/* eslint-disable no-bitwise */
+/* eslint-disable no-param-reassign */
 import { decodeDataUri, DecodedDataUri, encodeDataUri } from './data-uri';
 import { KeyErrorData, ValidationError } from './errors';
 import { isApiResponse } from './http';
@@ -19,30 +21,37 @@ export interface Field<I, E = I> {
 
 class TextField implements Field<string> {
     public readonly type: string = 'text';
+
     public validate(value: string): string {
         return value;
     }
+
     public deserialize(value: unknown): string {
         if (value == null) {
             throw new ValidationError(`Missing string value`);
         }
-        if (typeof value === 'string' || (typeof value === 'number' && isFinite(value))) {
+        if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
             return this.validate(String(value));
         }
         throw new ValidationError(`Invalid string value`);
     }
+
     public serialize(value: string): string {
         return this.validate(value);
     }
+
     public encode(value: string): string {
         return this.validate(value);
     }
+
     public decode(value: string): string {
         return this.validate(value);
     }
+
     public encodeSortable(value: string): string {
         return this.encode(value);
     }
+
     public decodeSortable(value: string): string {
         return this.decode(value);
     }
@@ -68,6 +77,7 @@ class ChoiceField<K extends string> extends TextField implements Field<K> {
     constructor(private options: K[]) {
         super();
     }
+
     public validate(value: string): K {
         const v = super.validate(value) as K;
         if (this.options.indexOf(v) >= 0) {
@@ -75,21 +85,27 @@ class ChoiceField<K extends string> extends TextField implements Field<K> {
         }
         throw new ValidationError(`Value is not one of the valid options`);
     }
+
     public serialize(value: K): K {
         return this.validate(value);
     }
+
     public deserialize(value: string): K {
         return this.validate(value);
     }
+
     public encode(value: K): K {
         return this.serialize(value);
     }
+
     public decode(value: string): K {
         return this.deserialize(value);
     }
+
     public encodeSortable(value: K): K {
         return this.encode(value);
     }
+
     public decodeSortable(value: string): K {
         return this.decode(value);
     }
@@ -100,14 +116,16 @@ interface NumberFieldOptions {
     max?: number;
 }
 
-const POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
-const NEGATIVE_INFINITY = Number.NEGATIVE_INFINITY;
+const { POSITIVE_INFINITY } = Number;
+const { NEGATIVE_INFINITY } = Number;
 
 class NumberField implements Field<number> {
     public readonly type: string = 'double precision';
+
     constructor(private options: NumberFieldOptions) {}
+
     public validate(value: number): number {
-        if (typeof value === 'number' && isFinite(value)) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
             const { min = NEGATIVE_INFINITY, max = POSITIVE_INFINITY } = this.options;
             if (value < min) {
                 throw new ValidationError(`Value cannot be less than ${min}`);
@@ -119,9 +137,11 @@ class NumberField implements Field<number> {
         }
         throw new ValidationError(`Invalid number value`);
     }
+
     public serialize(value: number): number {
         return this.validate(value);
     }
+
     public deserialize(value: unknown): number {
         if (value == null) {
             throw new ValidationError(`Missing number value`);
@@ -135,25 +155,29 @@ class NumberField implements Field<number> {
         }
         throw new ValidationError(`Invalid number value`);
     }
+
     public encode(value: number): string {
         return this.serialize(value).toString();
     }
+
     public decode(value: string): number {
         return this.validate(parseFloat(value));
     }
+
     public encodeSortable(value: number): string {
         value = this.validate(value);
         const bytes = Array.from(new Uint16Array(Float64Array.from([Math.abs(value)]).buffer));
         const chunks = bytes.map((byte) => padStart((value < 0 ? 0xffff ^ byte : byte).toString(16), 4, '0')).reverse();
         return `${value < 0 ? '-' : '0'}${chunks.join('')}`;
     }
+
     public decodeSortable(value: string): number {
         const sign = value[0];
         const byteStr = value.slice(1);
         const byteArr: number[] = [];
         for (let i = 0; i < byteStr.length; i += 4) {
             const bytes = parseInt(byteStr.slice(i, i + 4), 16);
-            if (isNaN(bytes)) {
+            if (Number.isNaN(bytes)) {
                 throw new ValidationError(`Invalid decoded number`);
             }
             byteArr.unshift(sign === '-' ? 0xffff ^ bytes : bytes);
@@ -168,8 +192,9 @@ const MIN_INTEGER = Math.max(Number.MIN_SAFE_INTEGER, -2147483648);
 
 class IntegerField extends NumberField implements Field<number> {
     public readonly type: string = 'integer';
+
     public validate(value: number): number {
-        if (typeof value === 'number' && isFinite(value)) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
             if (value > MAX_INTEGER) {
                 throw new ValidationError(`Integer value cannot be greater than ${MAX_INTEGER}`);
             }
@@ -180,6 +205,7 @@ class IntegerField extends NumberField implements Field<number> {
         }
         throw new ValidationError(`Invalid integer value`);
     }
+
     public deserialize(value: unknown): number {
         if (value == null) {
             throw new ValidationError(`Missing integer value`);
@@ -198,9 +224,11 @@ class IntegerField extends NumberField implements Field<number> {
         }
         throw new ValidationError(`Invalid integer value`);
     }
+
     public encode(value: number): string {
         return this.serialize(value).toFixed(0);
     }
+
     public decode(value: string): number {
         return this.deserialize(value);
     }
@@ -210,6 +238,7 @@ class ConstantField<K extends number> extends IntegerField {
     constructor(private choices: K[]) {
         super({});
     }
+
     public validate(value: number): K {
         const v = super.validate(value) as K;
         if (this.choices.indexOf(v) >= 0) {
@@ -217,21 +246,27 @@ class ConstantField<K extends number> extends IntegerField {
         }
         throw new ValidationError(`Value is not one of the valid options`);
     }
+
     public serialize(value: K): K {
         return this.validate(value);
     }
+
     public deserialize(value: unknown): K {
         return super.deserialize(value) as K;
     }
+
     public encode(value: K): string {
         return super.encode(value);
     }
+
     public decode(value: string): K {
         return this.deserialize(value);
     }
+
     public encodeSortable(value: K): string {
         return super.encodeSortable(value);
     }
+
     public decodeSortable(value: string): K {
         return super.decodeSortable(value) as K;
     }
@@ -239,32 +274,40 @@ class ConstantField<K extends number> extends IntegerField {
 
 class BooleanField implements Field<boolean> {
     public readonly type: string = 'boolean';
+
     public validate(value: boolean): boolean {
         return value;
     }
+
     public deserialize(value: unknown): boolean {
         if (typeof value === 'boolean') {
             return value;
         }
         throw new ValidationError(`Invalid boolean value`);
     }
+
     public serialize(value: boolean): boolean {
         return value;
     }
+
     public encode(value: boolean): 'true' | 'false' {
         return value ? 'true' : 'false';
     }
+
     public decode(value: string): boolean {
         if (value === 'true') {
             return true;
-        } else if (value === 'false') {
+        }
+        if (value === 'false') {
             return false;
         }
         throw new ValidationError(`Invalid encoded boolean value`);
     }
+
     public encodeSortable(value: boolean): 'true' | 'false' {
         return this.encode(value);
     }
+
     public decodeSortable(value: string): boolean {
         return this.decode(value);
     }
@@ -272,24 +315,31 @@ class BooleanField implements Field<boolean> {
 
 class DateTimeField implements Field<Date, string> {
     public readonly type: string = 'timestamptz';
+
     public validate(value: Date): Date {
         return value;
     }
+
     public serialize(value: Date): string {
         return serializeDateTime(value);
     }
+
     public deserialize(value: unknown): Date {
         return deserializeDateTime(value);
     }
+
     public encode(value: Date): string {
         return this.serialize(value);
     }
+
     public decode(value: string): Date {
         return this.deserialize(value);
     }
+
     public encodeSortable(value: Date): string {
         return this.serialize(value);
     }
+
     public decodeSortable(value: string): Date {
         return this.decode(value);
     }
@@ -297,24 +347,31 @@ class DateTimeField implements Field<Date, string> {
 
 class DateField implements Field<Date, string> {
     public readonly type: string = 'date';
+
     public validate(value: Date): Date {
         return new Date(value.getFullYear(), value.getMonth(), value.getDate());
     }
+
     public serialize(value: Date): string {
         return serializeDate(value);
     }
+
     public deserialize(value: unknown): Date {
         return deserializeDate(value);
     }
+
     public encode(value: Date): string {
         return this.serialize(value);
     }
+
     public decode(value: string): Date {
         return this.deserialize(value);
     }
+
     public encodeSortable(value: Date): string {
         return this.serialize(value);
     }
+
     public decodeSortable(value: string): Date {
         return this.decode(value);
     }
@@ -327,6 +384,7 @@ class RegexpField extends TextField {
     ) {
         super();
     }
+
     public validate(value: string): string {
         const strValue = super.validate(value);
         if (this.regexp.test(strValue)) {
@@ -338,10 +396,13 @@ class RegexpField extends TextField {
 
 class DecimalField extends RegexpField {
     public readonly type: string = 'numeric';
+
     private numberField = new NumberField({});
+
     constructor(private decimals: number) {
         super(/^[+-]?\d+(\.\d+)$/, `Value is not a valid decimal string`);
     }
+
     public validate(value: string | number): string {
         const { decimals } = this;
         if (typeof value === 'number') {
@@ -356,8 +417,9 @@ class DecimalField extends RegexpField {
         if (!decimals) {
             return numStr;
         }
-        return numStr + '.' + padEnd((decStr || '').slice(0, decimals), decimals, '0');
+        return `${numStr}.${padEnd((decStr || '').slice(0, decimals), decimals, '0')}`;
     }
+
     public deserialize(value: unknown): string {
         if (typeof value === 'number') {
             return this.validate(value);
@@ -383,6 +445,7 @@ class URLField extends RegexpField {
 
 class UUIDField extends RegexpField {
     public readonly type: string = 'uuid';
+
     constructor(version?: 1 | 4 | 5) {
         super(
             new RegExp(
@@ -408,30 +471,37 @@ class IdField extends RegexpField {
 
 class DataUriField implements Field<DecodedDataUri, string> {
     public readonly type: string = 'bytea';
+
     public validate(value: DecodedDataUri): DecodedDataUri {
         if (!value.contentType) {
             throw new ValidationError(`Missing data content type`);
         }
         return value;
     }
+
     public serialize(value: DecodedDataUri): string {
         return this.encode(value);
     }
+
     public deserialize(value: unknown): DecodedDataUri {
         if (typeof value !== 'string') {
             throw new ValidationError(`Invalid string value`);
         }
         return this.decode(value);
     }
+
     public encode(value: DecodedDataUri): string {
         return encodeDataUri(value);
     }
+
     public decode(value: string): DecodedDataUri {
         return decodeDataUri(value);
     }
+
     public encodeSortable(value: DecodedDataUri): string {
         return this.encode(value);
     }
+
     public decodeSortable(value: string): DecodedDataUri {
         return this.decode(value);
     }
@@ -450,25 +520,33 @@ function isNullable(value: unknown): value is null | '' {
  */
 class NullableField<I, O> implements Field<I | null, O | null> {
     public readonly type: string = this.field.type;
+
     constructor(public readonly field: Field<I, O>) {}
+
     public validate(value: I | null): I | null {
         return (!isNullable(value) && this.field.validate(value)) || null;
     }
+
     public serialize(value: I | null): O | null {
         return (!isNullable(value) && this.field.serialize(value)) || null;
     }
+
     public deserialize(value: unknown): I | null {
         return value === null || value === '' ? null : this.field.deserialize(value);
     }
+
     public encode(value: I | null): string {
         return (!isNullable(value) && this.field.encode(value)) || '';
     }
+
     public decode(value: string): I | null {
         return (!isNullable(value) && this.field.decode(value)) || null;
     }
+
     public encodeSortable(value: I): string {
         return (!isNullable(value) && this.field.encodeSortable(value)) || '';
     }
+
     public decodeSortable(value: string): I | null {
         return (!isNullable(value) && this.field.decodeSortable(value)) || null;
     }
@@ -476,35 +554,44 @@ class NullableField<I, O> implements Field<I | null, O | null> {
 
 class ListField<I, O> implements Field<I[], O[]> {
     public readonly type: string = this.field.type === 'jsonb' ? 'jsonb' : `${this.field.type}[]`;
+
     constructor(public readonly field: Field<I, O>) {}
+
     public validate(items: I[]): I[] {
         return this.mapWith(items, (item) => this.field.validate(item));
     }
+
     public serialize(items: I[]): O[] {
         return this.mapWith(items, (item) => this.field.serialize(item));
     }
+
     public deserialize(items: unknown): I[] {
         if (items && Array.isArray(items)) {
             return this.mapWith(items, (item) => this.field.deserialize(item));
         }
         throw new ValidationError(`Value is not an array`);
     }
+
     public encode(value: I[]): string {
         return this.mapWith(value, (item) => encodeURIComponent(this.field.encode(item))).join('&');
     }
+
     public decode(value: string): I[] {
         // TODO: Should differentiate an empty array vs. an array with a blank value!
         const items = value ? value.split('&') : [];
         return this.mapWith(items, (item) => this.field.decode(decodeURIComponent(item)));
     }
+
     public encodeSortable(value: I[]): string {
         return this.mapWith(value, (item) => encodeURIComponent(this.field.encodeSortable(item))).join('&');
     }
+
     public decodeSortable(value: string): I[] {
         // TODO: Should differentiate an empty array vs. an array with a blank value!
         const items = value ? value.split('&') : [];
         return this.mapWith(items, (item) => this.field.decodeSortable(decodeURIComponent(item)));
     }
+
     private mapWith<X, Y>(items: X[], iteratee: (item: X, index: number) => Y): Y[] {
         const errors: KeyErrorData<number>[] = [];
         const results = items.map((item, key) => {
@@ -514,10 +601,10 @@ class ListField<I, O> implements Field<I[], O[]> {
                 // Collect nested validation errors
                 if (isApiResponse(error)) {
                     errors.push({ ...error.data, key });
-                } else {
-                    // Pass through the error
-                    throw error;
+                    return undefined;
                 }
+                // Pass through the error
+                throw error;
             }
         });
         if (errors.length) {

@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 /**
  * GIT commit hash of the web app build.
  */

@@ -23,6 +23,7 @@ export async function triggerEvent(
                             // TODO: Side-effects and real-time changes!
                             await executeHandler(trigger.handler, object, { ...serverContext, effects: [] }, {});
                         } catch (error) {
+                            // eslint-disable-next-line no-console
                             console.error(
                                 `Failed to process event ${trigger.eventName} for bucket ${bucket.name}:`,
                                 error,

@@ -1,7 +1,7 @@
+import hasOwnProperty from 'immuton/hasOwnProperty';
 import type { ParameterConfig } from './index';
 import { bold } from './palette';
 import { readAnswer } from './readline';
-import hasOwnProperty from 'immuton/hasOwnProperty';
 
 interface ParameterConfigs {
     [param: string]: ParameterConfig;
@@ -17,6 +17,7 @@ export async function askParameters<T = never>(
 ): Promise<Parameters<T>> {
     const customParameters: { [param: string]: string | T } = {};
     if (parameters) {
+        // eslint-disable-next-line no-restricted-syntax
         for (const key in parameters) {
             if (hasOwnProperty(parameters, key)) {
                 const paramName = `${prefix}${key}`;

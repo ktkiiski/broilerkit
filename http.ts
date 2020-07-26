@@ -138,12 +138,15 @@ export interface ApiResponse<T = any> {
 
 export abstract class SuccesfulResponse<T> implements ApiResponse<T> {
     public abstract readonly statusCode: HttpSuccessStatus;
+
     constructor(public readonly data: T, public readonly headers: HttpResponseHeaders = {}) {}
 }
 
 export abstract class ExceptionResponse extends Error implements ApiResponse {
     public abstract readonly statusCode: HttpRedirectStatus | HttpErrorStatus;
+
     public readonly data: any;
+
     constructor(message: string, data?: Record<string, unknown>, public readonly headers: HttpResponseHeaders = {}) {
         super(message);
         this.data = { ...data, message };
@@ -160,6 +163,7 @@ export class Created<T> extends SuccesfulResponse<T> {
 
 export class NoContent extends SuccesfulResponse<void> {
     public readonly statusCode = HttpStatus.NoContent;
+
     constructor(headers?: HttpResponseHeaders) {
         super(undefined, headers);
     }
@@ -199,8 +203,11 @@ export class NotImplemented extends ExceptionResponse {
 
 export class Redirect extends Error implements ApiResponse<null>, HttpResponse {
     public readonly headers = { Location: this.url };
+
     public readonly data = null;
+
     public readonly body = '';
+
     constructor(
         public readonly url: string,
         public readonly statusCode: HttpStatus.Found | HttpStatus.MovedPermanently = HttpStatus.Found,
@@ -220,7 +227,7 @@ export function isResponse(response: any, statusCode?: HttpStatus): response is 
     const { statusCode: responseStatusCode } = response;
     return (
         typeof responseStatusCode === 'number' &&
-        !isNaN(responseStatusCode) &&
+        !Number.isNaN(responseStatusCode) &&
         typeof response.headers === 'object' &&
         (typeof response.body === 'string' || typeof response.data !== 'undefined') &&
         (statusCode == null || responseStatusCode === statusCode)
@@ -253,6 +260,7 @@ export function acceptsContentType(request: HttpRequest, contentType: string): b
 
 export function parseCookies(cookieHeader: string) {
     const cookies = {} as Record<string, string>;
+    // eslint-disable-next-line no-param-reassign
     cookieHeader = cookieHeader.trim();
     if (!cookieHeader) {
         return cookies;
@@ -275,7 +283,8 @@ export function parseHeaders(headersString: string) {
     for (const headerLine of headersString.split('\r\n')) {
         const headerMatch = /^(.+?):\s*(.*)$/.exec(headerLine);
         if (headerMatch) {
-            headers[headerMatch[1]] = headerMatch[2];
+            const [, headerName, headerValue] = headerMatch;
+            headers[headerName] = headerValue;
         }
     }
     return normalizeHeaders(headers);

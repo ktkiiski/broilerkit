@@ -3,14 +3,14 @@ import type { Deserialization } from './resources';
 import { serializer } from './serializers';
 
 export const uploadFormSerializer = serializer({
-    action: url(),
-    method: choice(['POST' as const]),
-    acl: choice(['private', 'public-read']),
+    'action': url(),
+    'method': choice(['POST' as const]),
+    'acl': choice(['private', 'public-read']),
     'Content-Type': nullable(string()),
     'Content-Disposition': nullable(string()),
-    key: string(),
-    Policy: string(),
-    success_action_status: choice(['200', '201', '204']),
+    'key': string(),
+    'Policy': string(),
+    'success_action_status': choice(['200', '201', '204']),
     'X-Amz-Algorithm': choice(['AWS4-HMAC-SHA256']),
     'X-Amz-Credential': string(),
     'X-Amz-Date': string(),

@@ -42,6 +42,7 @@ export async function executeHandler<I, O, R>(
         return new PostgreSqlPoolConnection(client, serverContext.effects);
     });
     const users: UserPool =
+        // eslint-disable-next-line no-nested-ternary
         region === 'local'
             ? new LocalUserPool(dbClient)
             : userPoolId

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { SecretsManager } from 'aws-sdk';
 import * as https from 'https';
@@ -74,7 +75,7 @@ export async function deleteTable(client: Client, state: TableState): Promise<vo
 export async function updateTable(client: Client, state: TableState, oldState: TableState | undefined): Promise<void> {
     const tableName = state.name;
     const oldTableName = oldState && oldState.name;
-    const columns = state.columns;
+    const { columns } = state;
     if (oldTableName && tableName !== oldTableName) {
         // Renamte the table
         const sql = `ALTER TABLE ${escapeRef(oldTableName)} RENAME TO ${escapeRef(tableName)};`;

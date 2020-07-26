@@ -38,16 +38,21 @@ export type SqlScanOperation<S> = (connection: SqlConnection, db: Database) => A
 
 abstract class BasePostgreSqlConnection<T extends ClientBase> {
     protected abstract client: T;
+
     private transactionCount = 0;
+
     private snapshotEffects: ResourceEffect[] = [];
+
     constructor(public readonly effects: ResourceEffect[]) {}
+
     public async query(sql: string, params?: any[]): Promise<SqlResult> {
         if (sql === '') {
             return { rowCount: 0, rows: [] };
         }
         const { client } = this;
-        return await logSql(sql, params, () => client.query(sql, params));
+        return logSql(sql, params, () => client.query(sql, params));
     }
+
     public async queryAll(queries: { sql: string; params?: any[] }[]): Promise<SqlResult[]> {
         // TODO: Could probably be optimized as a single ';' separated query string in some cases
         const results: SqlResult[] = [];
@@ -56,6 +61,7 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
         }
         return results;
     }
+
     public async *scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk> {
         if (sql === '') {
             return;
@@ -65,24 +71,26 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             yield { rows, rowCount: rows.length, isComplete: rows.length < chunkSize };
         }
     }
+
     public abstract disconnect(error?: any): Promise<void>;
+
     public async transaction<R>(callback: () => Promise<R>): Promise<R> {
         this.transactionCount += 1;
         try {
             if (this.transactionCount === 1) {
                 // Begin a new transaction
                 return await this.newTransaction(callback);
-            } else {
-                // Already in a transaction
-                return await callback();
             }
+            // Already in a transaction
+            return await callback();
         } finally {
             this.transactionCount -= 1;
         }
     }
+
     private async newTransaction<R>(callback: () => Promise<R>): Promise<R> {
         // Serializable transactions must be retried on serialization errors
-        return await retry(
+        return retry(
             async () => {
                 // Save the effects so far
                 this.snapshotEffects = this.effects.slice();
@@ -121,6 +129,7 @@ export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> imple
     constructor(protected client: Client, effects: ResourceEffect[]) {
         super(effects);
     }
+
     public async disconnect(): Promise<void> {
         this.client.end();
     }
@@ -130,6 +139,7 @@ export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClien
     constructor(protected client: PoolClient, effects: ResourceEffect[]) {
         super(effects);
     }
+
     public async disconnect(error?: Error): Promise<void> {
         this.client.release(error);
     }
@@ -137,16 +147,19 @@ export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClien
 
 export class RemotePostgreSqlConnection implements SqlConnection {
     public readonly effects: ResourceEffect[] = [];
+
     private rdsDataApi?: RDSDataService = new RDSDataService({
         apiVersion: '2018-08-01',
         region: this.region,
     });
+
     constructor(
         private readonly region: string,
         private readonly resourceArn: string,
         private readonly secretArn: string,
         private readonly database: string,
     ) {}
+
     public async query(sql: string, params?: any[]): Promise<SqlResult> {
         if (sql === '') {
             return { rowCount: 0, rows: [] };
@@ -179,6 +192,7 @@ export class RemotePostgreSqlConnection implements SqlConnection {
         });
         return { rowCount, rows };
     }
+
     public async queryAll(queries: { sql: string; params?: any[] }[]): Promise<SqlResult[]> {
         const results: SqlResult[] = [];
         for (const { sql, params } of queries) {
@@ -186,9 +200,11 @@ export class RemotePostgreSqlConnection implements SqlConnection {
         }
         return results;
     }
+
     public async *scan(chunkSize: number, sql: string, params?: any[]): AsyncIterableIterator<SqlScanChunk> {
         if (sql === '') {
-            return { rowCount: 0, rows: [] };
+            yield { rowCount: 0, rows: [], isComplete: true };
+            return;
         }
         // The RDSDataService does not support cursors. For now, we just attempt
         // to retrieve everything, but this will fail when the data masses increase.
@@ -199,9 +215,11 @@ export class RemotePostgreSqlConnection implements SqlConnection {
             yield { rows, rowCount: rows.length, isComplete: !allRows.length };
         }
     }
+
     public transaction(): never {
         throw new Error('Transactions not implemented.');
     }
+
     public async disconnect(): Promise<void> {
         delete this.rdsDataApi;
     }
@@ -230,13 +248,19 @@ export class DatabaseClient {
     public async runAll<T1, T2, T3, T4, T5>(
         queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>, SqlQuery<T4>, SqlQuery<T5>],
     ): Promise<[T1, T2, T3, T4, T5]>;
+
     public async runAll<T1, T2, T3, T4>(
         queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>, SqlQuery<T4>],
     ): Promise<[T1, T2, T3, T4]>;
+
     public async runAll<T1, T2, T3>(queries: [SqlQuery<T1>, SqlQuery<T2>, SqlQuery<T3>]): Promise<[T1, T2, T3]>;
+
     public async runAll<T1, T2>(queries: [SqlQuery<T1>, SqlQuery<T2>]): Promise<[T1, T2]>;
+
     public async runAll<T1>(queries: [SqlQuery<T1>]): Promise<[T1]>;
+
     public async runAll<T>(queries: SqlQuery<T>[]): Promise<T[]>;
+
     public async runAll<T>(queries: SqlQuery<T>[]): Promise<T[]> {
         return this.withConnection(async (connection) => {
             const results = await connection.queryAll(queries);
@@ -253,15 +277,21 @@ export class DatabaseClient {
     public async batch<T1, T2, T3, T4, T5>(
         queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>, SqlOperation<T4>, SqlOperation<T5>],
     ): Promise<[T1, T2, T3, T4, T5]>;
+
     public async batch<T1, T2, T3, T4>(
         queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>, SqlOperation<T4>],
     ): Promise<[T1, T2, T3, T4]>;
+
     public async batch<T1, T2, T3>(
         queries: [SqlOperation<T1>, SqlOperation<T2>, SqlOperation<T3>],
     ): Promise<[T1, T2, T3]>;
+
     public async batch<T1, T2>(queries: [SqlOperation<T1>, SqlOperation<T2>]): Promise<[T1, T2]>;
+
     public async batch<T1>(queries: [SqlOperation<T1>]): Promise<[T1]>;
+
     public async batch<T>(queries: SqlOperation<T>[]): Promise<T[]>;
+
     public async batch<T>(operations: SqlOperation<T>[]): Promise<T[]> {
         const db = this.getDatabase();
         return this.withTransaction(async (connection) => {

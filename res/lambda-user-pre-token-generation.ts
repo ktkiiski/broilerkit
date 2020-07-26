@@ -14,19 +14,20 @@ interface PreTokenGenerationTriggerEvent {
 }
 
 export const handler = async (event: PreTokenGenerationTriggerEvent): Promise<PreTokenGenerationTriggerEvent> => {
-    let picture: string | null = event.request.userAttributes.picture;
+    let pic: string | null = event.request.userAttributes.picture;
     try {
-        picture = JSON.parse(picture).data.url;
+        pic = JSON.parse(pic).data.url;
     } catch (err) {
         // Not a JSON structure (e.g. Google)
     }
-    if (typeof picture !== 'string' || !/^https?:\/\//.test(picture)) {
-        picture = null;
+    if (typeof pic !== 'string' || !/^https?:\/\//.test(pic)) {
+        pic = null;
     }
+    // eslint-disable-next-line no-param-reassign
     event.response = {
         claimsOverrideDetails: {
             claimsToAddOrOverride: {
-                picture,
+                picture: pic,
             },
         },
     };

@@ -55,6 +55,7 @@ interface CommonEndpointOptions<A extends AuthenticationType, B extends undefine
 
 abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined> {
     public abstract readonly methods: HttpMethod[];
+
     public abstract readonly route: Route<any, U>;
 
     constructor(
@@ -74,18 +75,23 @@ export class ListOperation<
 > extends BaseOperation<S, U, A, B>
     implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'> {
     public readonly type = 'list';
+
     public readonly methods: HttpMethod[] = ['GET'];
+
     public readonly urlSerializer = new CursorSerializer(
         this.endpoint.resource,
         this.endpoint.pattern.pathKeywords,
         this.orderingKeys,
         this.filteringKeys,
     );
+
     public readonly route = route(this.endpoint.pattern, this.urlSerializer);
+
     public readonly responseSerializer: Serializer<Page<S, Cursor<S, U, O, F>>> = new FieldSerializer({
         next: nullable(nested(this.urlSerializer as any)),
         results: nestedList(this.endpoint.resource),
     });
+
     constructor(
         endpoint: Endpoint<S, any, U>,
         private readonly orderingKeys: O[],
@@ -95,9 +101,11 @@ export class ListOperation<
     ) {
         super(endpoint, authType, userIdAttribute);
     }
+
     public getPayloadSerializer(): null {
         return null;
     }
+
     public asImplementable(): Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'> {
         return this;
     }
@@ -107,15 +115,20 @@ export class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType
     extends BaseOperation<S, U, A, B>
     implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
     public readonly type = 'retrieve';
+
     public readonly methods: HttpMethod[] = ['GET'];
+
     public readonly route = route(
         this.endpoint.pattern,
         this.endpoint.resource.pick(this.endpoint.pattern.pathKeywords),
     );
+
     public readonly responseSerializer = this.endpoint.resource;
+
     public getPayloadSerializer(): null {
         return null;
     }
+
     public asImplementable(): Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
         return this;
     }
@@ -134,10 +147,15 @@ export class CreateOperation<
         Bindable<CreateApi<S, U, R, O, D, B>>,
         Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'create'> {
     public readonly type = 'create';
+
     public readonly methods: HttpMethod[] = ['POST'];
+
     public readonly route = this.endpoint.asRoute();
+
     public readonly responseSerializer = this.endpoint.resource;
+
     private readonly payloadSerializer = this.endpoint.resource.optional(this.options);
+
     constructor(
         readonly endpoint: Endpoint<S, any, U>,
         private readonly options: OptionalOptions<S, R, O, D>,
@@ -146,12 +164,15 @@ export class CreateOperation<
     ) {
         super(endpoint, authType, userIdAttribute);
     }
+
     public bind(client: Client): CreateApi<S, U, R, O, D, B> {
         return new CreateApi(this, client);
     }
+
     public getPayloadSerializer(): ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
         return this.payloadSerializer;
     }
+
     public asImplementable(): Operation<
         OptionalOutput<S, R | U, O, D>,
         SuccesfulResponse<S>,
@@ -175,13 +196,19 @@ export class UpdateOperation<
         Bindable<UpdateApi<S, U, R, O, D, B>>,
         Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'update'> {
     public readonly type = 'update';
+
     public readonly methods: HttpMethod[] = ['PUT', 'PATCH'];
+
     public readonly route = this.endpoint.asRoute();
+
     public readonly replaceSerializer = this.endpoint.resource.optional(this.options);
+
     public readonly updateSerializer = this.endpoint.resource
         .pick([...this.options.required, ...this.options.optional, ...keys(this.options.defaults)])
         .fullPartial();
+
     public readonly responseSerializer = this.endpoint.resource;
+
     constructor(
         endpoint: Endpoint<S, any, any>,
         private readonly options: OptionalOptions<S, R, O, D>,
@@ -190,12 +217,15 @@ export class UpdateOperation<
     ) {
         super(endpoint, authType, userIdAttribute);
     }
+
     public bind(client: Client): UpdateApi<S, U, R, O, D, B> {
         return new UpdateApi(this, client);
     }
+
     public getPayloadSerializer(method: HttpMethod): Serializer {
         return method === 'PATCH' ? this.updateSerializer : this.replaceSerializer;
     }
+
     public asImplementable(): Operation<
         OptionalOutput<S, R | U, O, D>,
         SuccesfulResponse<S>,
@@ -210,15 +240,21 @@ export class DestroyOperation<S, U extends Key<S>, A extends AuthenticationType,
     extends BaseOperation<S, U, A, B>
     implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'> {
     public readonly type = 'destroy';
+
     public readonly methods: HttpMethod[] = ['DELETE'];
+
     public readonly route = this.endpoint.asRoute();
+
     public readonly responseSerializer = null;
+
     public bind(client: Client): DestroyApi<S, U, B> {
         return new DestroyApi(this, client);
     }
+
     public getPayloadSerializer(): null {
         return null;
     }
+
     public asImplementable(): Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'> {
         return this;
     }
@@ -248,12 +284,19 @@ export class UploadOperation<
             'upload'
         > {
     public readonly type = 'upload';
+
     public readonly methods: HttpMethod[] = ['POST'];
+
     public readonly route = this.endpoint.asRoute();
+
     public readonly responseSerializer = this.endpoint.resource;
+
     public readonly files: F[] = this.options.files;
+
     public readonly requestDataSerializer = this.endpoint.resource.optional(this.options);
+
     private readonly payloadSerializer = this.requestDataSerializer.extend(build(this.files, (key) => [key, data()]));
+
     constructor(
         readonly endpoint: Endpoint<S, any, U>,
         private readonly options: UploadOptions<S, F, R, O, D>,
@@ -262,12 +305,15 @@ export class UploadOperation<
     ) {
         super(endpoint, authType, userIdAttribute);
     }
+
     public bind(client: Client): UploadApi<S, F, U, R, O, D, B> {
         return new UploadApi(this, client);
     }
+
     public getPayloadSerializer(): ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
         return this.payloadSerializer;
     }
+
     public asImplementable(): Operation<
         OptionalOutput<S, R | U, O, D> & Record<F, DecodedDataUri>,
         SuccesfulResponse<S>,

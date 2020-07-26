@@ -27,6 +27,7 @@ export function searchFiles(dir: string, patterns: string[]): Promise<File[]> {
     const baseDir = path.resolve(process.cwd(), dir);
     // If the first pattern is exclusion, prepend an all-matching pattern
     if (patterns.length && patterns[0].startsWith('!')) {
+        // eslint-disable-next-line no-param-reassign
         patterns = ['**/*', ...patterns];
     }
     return src(patterns, {
@@ -125,6 +126,7 @@ export function createDirectory(dirPath: string): Promise<void> {
 }
 
 export async function ensureDirectoryExists(dirPath: string) {
+    // eslint-disable-next-line no-param-reassign
     dirPath = path.normalize(dirPath);
     // Recursively ensure that the parent directory exists
     const parentDir = path.dirname(dirPath);

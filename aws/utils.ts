@@ -14,12 +14,14 @@ export async function* retrievePages<D, E, T extends keyof D>(
         if (!$response.hasNextPage()) {
             break;
         }
+        // eslint-disable-next-line no-param-reassign
         request = $response.nextPage(undefined) as AWS.Request<D, E>;
     }
 }
 
 export function formatS3KeyName(filename: string, extension?: string): string {
     const realExtension = path.extname(filename);
+    // eslint-disable-next-line no-param-reassign
     extension = extension || realExtension;
     const dirname = path.dirname(filename);
     const basename = path.basename(filename, realExtension);

@@ -1,11 +1,11 @@
+/* eslint-disable no-continue */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { CloudWatchLogs } from 'aws-sdk';
+import * as YAML from 'yamljs';
 import { mergeAsync, toArray, wait } from '../async';
 import { cyan, dim, red } from '../palette';
 import { indent, stripPrefix } from '../strings';
 import { retrievePages } from './utils';
-
-import * as YAML from 'yamljs';
 
 export interface LogStreamOptions {
     logGroupName: string;
@@ -77,7 +77,7 @@ export class AmazonCloudWatch {
         const sortedEvents = oldEvents.sort((a, b) => a.timestamp - b.timestamp);
         for (const event of sortedEvents) {
             yield event;
-            maxCount--;
+            maxCount -= 1;
             if (maxCount <= 0) {
                 return;
             }
@@ -88,7 +88,7 @@ export class AmazonCloudWatch {
             const iterator = this.streamLogGroups({ logGroupNames, startTime, maxCount, follow: false });
             for await (const event of iterator) {
                 yield event;
-                maxCount--;
+                maxCount -= 1;
                 if (maxCount <= 0) {
                     return;
                 }
@@ -114,7 +114,7 @@ export class AmazonCloudWatch {
             }
             for (const event of page) {
                 yield { ...event, logGroupName } as LogEvent;
-                maxCount--;
+                maxCount -= 1;
                 // Stop if yielded max number of events
                 if (maxCount <= 0) {
                     return;
@@ -144,7 +144,7 @@ export function formatLogEvent(event: LogEvent, stackName?: string): string {
             const color = /^(error\w+|stackTrace)$/i.test(attr) ? red : dim;
             return `${indentation}${color(attr)}:`;
         });
-        return '\n' + indent(prettified.trimRight(), 2);
+        return `\n${indent(prettified.trimRight(), 2)}`;
     });
     return `${dim(`${timestamp}:`)} ${cyan(functionName)} ${message}`;
 }

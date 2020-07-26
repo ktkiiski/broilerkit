@@ -4,10 +4,17 @@
  */
 import * as React from 'react';
 import authLocalServer from '../auth-local-server';
-import { OAUTH2_SIGNIN_ENDPOINT_NAME, OAuth2SignInController } from '../oauth';
-import { OAUTH2_SIGNOUT_ENDPOINT_NAME, OAuth2SignOutController } from '../oauth';
-import { OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME, OAuth2SignedInController } from '../oauth';
-import { OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME, OAuth2SignedOutController } from '../oauth';
+import {
+    OAUTH2_SIGNIN_ENDPOINT_NAME,
+    OAuth2SignInController,
+    OAUTH2_SIGNOUT_ENDPOINT_NAME,
+    OAuth2SignOutController,
+    OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME,
+    OAuth2SignedInController,
+    OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME,
+    OAuth2SignedOutController,
+} from '../oauth';
+
 import type { Database } from '../postgres';
 import LocalAuthRouter from '../react/components/LocalAuthRouter';
 import { ApiService } from '../server';

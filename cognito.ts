@@ -23,15 +23,19 @@ export class DummyUserPool implements UserPool {
     public retrieve(): never {
         throw new Error('User pool is not configured');
     }
+
     public update(): never {
         throw new Error('User pool is not configured');
     }
+
     public destroy(): never {
         throw new Error('User pool is not configured');
     }
+
     public scan(): never {
         throw new Error('User pool is not configured');
     }
+
     public batchRetrieve(): never {
         throw new Error('User pool is not configured');
     }
@@ -41,6 +45,7 @@ export class CognitoUserPool implements UserPool {
     private updateSerializer = users.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<
         UserPartialUpdate
     >;
+
     private identitySerializer = users.pick(['id']);
 
     constructor(private userPoolId: string, private region: string) {}
@@ -128,7 +133,7 @@ export class LocalUserPool implements UserPool {
  */
 export function mapCached<T, R>(items: T[], callback: (item: T) => R): R[] {
     const results: R[] = [];
-    for (let i = 0; i < items.length; i++) {
+    for (let i = 0; i < items.length; i += 1) {
         const item = items[i];
         const reuseIndex = items.slice(0, i).findIndex((x) => isEqual(x, item));
         if (reuseIndex < 0) {

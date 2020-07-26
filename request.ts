@@ -64,9 +64,8 @@ export async function request({ url, query, body: requestBody, ...options }: Req
     const headers = normalizeHeaders(rawHeaders);
     if (statusCode >= 200 && statusCode < 300) {
         return { statusCode, headers, body };
-    } else {
-        throw { statusCode, headers, body };
     }
+    throw Object.assign(new Error('Request failed'), { statusCode, headers, body });
 }
 
 export async function requestJson({ data, ...options }: JsonRequest): Promise<JsonResponse> {

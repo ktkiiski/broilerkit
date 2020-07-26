@@ -2,7 +2,9 @@ import build from 'immuton/build';
 import mapObject from 'immuton/mapObject';
 import * as React from 'react';
 import { renderToString } from 'react-dom/server';
-import { StaticRouter, StaticRouterContext } from 'react-router';
+import { StaticRouter } from 'react-router-dom';
+import type { StaticRouterContext } from 'react-router';
+import type { Location } from 'history';
 import { Auth, authSerializer, DummyAuthClient } from './auth';
 import {
     Client,
@@ -23,12 +25,12 @@ import { MetaContextProvider } from './react/meta';
 import type { Serializer } from './serializers';
 import type { ApiService, Controller, ServerContext } from './server';
 import { buildQuery, Url, UrlPattern } from './url';
-import type { Location } from 'history';
 
 export const RENDER_WEBSITE_ENDPOINT_NAME = 'renderWebsite' as const;
 
 export class SsrController implements Controller {
     public readonly methods = ['GET' as const];
+
     public readonly pattern = new UrlPattern('/{path+}');
 
     constructor(
@@ -80,7 +82,7 @@ async function renderView(
         renderResult = render(view, client, location);
     }
     const { viewHtml, meta, routerContext } = renderResult;
-    const title = meta.title;
+    const { title } = meta;
     const styleTags = mapObject(meta.styles, (renderCss, id) => {
         const css = renderCss();
         if (!css) {
@@ -215,6 +217,7 @@ function getActionUrls<T extends Retrieval | Listing>(actions: T[]): Record<stri
             return [url.toString(), [url, action] as [Url, T]];
         } catch {
             // Omit on error (e.g. invalid input)
+            return null;
         }
     });
 }
