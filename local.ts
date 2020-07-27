@@ -60,6 +60,8 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
             // Prevent CORS issues with resources
             'Access-Control-Allow-Origin': serverRootUrl.origin,
         },
+        // Write files to disk, as we need to read index.html for SSR
+        writeToDisk: true,
     };
     WebpackDevServer.addDevServerEntrypoints(config, devServerOptions);
     const compiler = webpack(config);

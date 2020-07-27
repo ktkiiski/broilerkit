@@ -12,7 +12,6 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
-const HtmlWebpackHarddiskPlugin = require('html-webpack-harddisk-plugin');
 
 export interface WebpackConfigOptions extends BroilerConfig {
     devServer: boolean;
@@ -67,8 +66,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             inject: 'body',
             // No cache-busting needed, because hash is included in file names
             hash: false,
-            // Force-write the file to file system to make it available for SSR
-            alwaysWriteToDisk: devServer,
         }),
         /**
          * Provide polyfills with ProvidePlugin.
@@ -162,8 +159,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             }),
         );
     }
-    // Add support for `alwaysWriteToDisk` option
-    plugins.push(new HtmlWebpackHarddiskPlugin());
     return {
         context: projectRootPath,
         // Development or production build?
