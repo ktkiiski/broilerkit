@@ -56,16 +56,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
-        // Perform type checking for TypeScript
-        new ForkTsCheckerWebpackPlugin({
-            typescript: {
-                // Use the tsconfig.json in the project folder (not in this library)
-                configFile: tsConfigPath,
-            },
-            eslint: {
-                files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
-            },
-        }),
+        ...getCommonPlugins(tsConfigPath, sourceDirPath),
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
             title,
@@ -97,14 +88,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
             // Allow using the GIT branch name
             __BRANCH__: JSON.stringify(gitBranch),
         }),
-        /**
-         * Prevent all the MomentJS locales to be imported by default.
-         */
-        new webpack.ContextReplacementPlugin(
-            /\bmoment[/\\]locale\b/,
-            // Regular expression to match the files that should be imported
-            /\ben.js/,
-        ),
     ];
     if (!devServer) {
         plugins.push(
@@ -206,23 +189,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
 
         module: {
             rules: [
-                // Pre-process sourcemaps for scripts
-                {
-                    test: /\.(jsx?|tsx?)$/,
-                    loader: 'source-map-loader',
-                    enforce: 'pre',
-                },
-                // Compile TypeScript files ('.ts' or '.tsx')
-                {
-                    test: /\.tsx?$/,
-                    loader: 'ts-loader',
-                    options: {
-                        // Explicitly expect the tsconfig.json to be located at the project root
-                        configFile: tsConfigPath,
-                        // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
-                        transpileOnly: true,
-                    },
-                },
+                ...getCommonRules(tsConfigPath),
                 // Extract CSS stylesheets from the main bundle
                 {
                     test: /\.(css|scss)($|\?)/,
@@ -331,25 +298,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
-        new ForkTsCheckerWebpackPlugin({
-            typescript: {
-                configFile: tsConfigPath,
-                configOverwrite: {
-                    compilerOptions,
-                },
-            },
-            eslint: {
-                files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
-            },
-        }),
-        /**
-         * Prevent all the MomentJS locales to be imported by default.
-         */
-        new webpack.ContextReplacementPlugin(
-            /\bmoment[/\\]locale\b/,
-            // Regular expression to match the files that should be imported
-            /\ben.js/,
-        ),
+        ...getCommonPlugins(tsConfigPath, sourceDirPath, compilerOptions),
         /**
          * Prevent `pg` module to import `pg-native` binding library.
          */
@@ -433,26 +382,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         },
 
         module: {
-            rules: [
-                // Pre-process sourcemaps for scripts
-                {
-                    test: /\.(jsx?|tsx?)$/,
-                    loader: 'source-map-loader',
-                    enforce: 'pre',
-                },
-                // Compile TypeScript files ('.ts' or '.tsx')
-                {
-                    test: /\.tsx?$/,
-                    loader: 'ts-loader',
-                    options: {
-                        // Explicitly expect the tsconfig.json to be located at the project root
-                        configFile: tsConfigPath,
-                        // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
-                        transpileOnly: true,
-                        compilerOptions,
-                    },
-                },
-            ],
+            rules: getCommonRules(tsConfigPath, compilerOptions),
         },
 
         externals,
@@ -474,6 +404,52 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         // Plugins
         plugins,
     };
+}
+
+function getCommonPlugins(tsConfigPath: string, sourceDirPath: string, compilerOptions?: unknown): webpack.Plugin[] {
+    return [
+        // Perform type checking for TypeScript
+        new ForkTsCheckerWebpackPlugin({
+            typescript: {
+                configFile: tsConfigPath,
+                configOverwrite: {
+                    compilerOptions,
+                },
+            },
+            eslint: {
+                files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
+            },
+        }),
+        // Prevent all the MomentJS locales to be imported by default.
+        new webpack.ContextReplacementPlugin(
+            /\bmoment[/\\]locale\b/,
+            // Regular expression to match the files that should be imported
+            /\ben.js/,
+        ),
+    ];
+}
+
+function getCommonRules(tsConfigPath: string, compilerOptions?: unknown): webpack.RuleSetRule[] {
+    return [
+        // Pre-process sourcemaps for scripts
+        {
+            test: /\.(jsx?|tsx?)$/,
+            loader: 'source-map-loader',
+            enforce: 'pre' as const,
+        },
+        // Compile TypeScript files ('.ts' or '.tsx')
+        {
+            test: /\.tsx?$/,
+            loader: 'ts-loader',
+            options: {
+                // Explicitly expect the tsconfig.json to be located at the project root
+                configFile: tsConfigPath,
+                // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
+                transpileOnly: true,
+                compilerOptions,
+            },
+        },
+    ];
 }
 
 function getBundleAnalyzerPlugin(enabled: boolean, filename: string) {
