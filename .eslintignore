@@ -5,3 +5,6 @@ node_modules
 *.d.ts
 # ...expect the ones in `types`folder
 !/types/*.d.ts
+
+# Do not lint compiled JavaScript files
+*.js
