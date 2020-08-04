@@ -1,3 +1,4 @@
+/* eslint-disable no-continue */
 import transform from 'immuton/transform';
 import { JWK } from 'node-jose';
 import type { Pool } from 'pg';
@@ -7,18 +8,18 @@ import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
-import { watch } from './compile';
 import type { BroilerConfig } from './config';
 import { escapeForShell, execute, spawn } from './exec';
 import { readFile, readStream } from './fs';
 import type { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
 import { middleware, requestMiddleware } from './middleware';
 import { authenticationMiddleware } from './oauth';
-import { cyan, dim, green, red, yellow } from './palette';
+import { cyan, dim, green, red, yellow, underline } from './palette';
 import type { Database } from './postgres';
 import type { ApiService, ServerContext } from './server';
 import { LocalFileStorage } from './storage';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
+import { generate } from './async';
 
 const rawSessionEncryptionKey = {
     kty: 'oct',
@@ -27,15 +28,26 @@ const rawSessionEncryptionKey = {
 };
 
 /**
- * Runs the Webpack development server.
+ * Runs the development server, including the Webpack development server
+ * and the backend server.
  */
-export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Promise<void> {
+export async function serve(
+    options: BroilerConfig,
+    params: { [param: string]: string },
+    dbConnectionPool: Pool | null,
+): Promise<void> {
+    const { stackName, auth, serverRoot, stageDir, buildDir, projectRootPath } = options;
     const assetsRootUrl = new URL(options.assetsRoot);
     const assetsProtocol = assetsRootUrl.protocol;
-    const serverRootUrl = new URL(options.serverRoot);
-    const serverPort = parseInt(assetsRootUrl.port, 10);
-    const enableHttps = assetsProtocol === 'https:';
-    const config = getFrontendWebpackConfig({
+    const assetsEnableHttps = assetsProtocol === 'https:';
+    const assetsServerPort = assetsRootUrl && parseInt(assetsRootUrl.port, 10);
+    const serverRootUrl = new URL(serverRoot);
+    const serverOrigin = serverRootUrl.origin;
+    const serverProtocol = serverRootUrl && serverRootUrl.protocol;
+    const serverPort = serverRootUrl && parseInt(serverRootUrl.port, 10);
+    const serverEnableHttps = serverProtocol === 'https:';
+    const storageDir = path.join(stageDir, 'storage');
+    const frontendConfig = getFrontendWebpackConfig({
         ...options,
         debug: options.debug,
         devServer: true,
@@ -44,7 +56,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
     const devServerOptions: WebpackDevServer.Configuration = {
         inline: true,
         allowedHosts: [assetsRootUrl.hostname],
-        https: enableHttps,
+        https: assetsEnableHttps,
         stats: {
             colors: true,
         },
@@ -52,7 +64,7 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
             poll: 1000,
         },
         host: assetsRootUrl.hostname,
-        port: serverPort,
+        port: assetsServerPort,
         // As we are "proxying" the base HTML file, where the script is injected,
         // we need to explicitly define the host of the webpack-dev-server
         public: assetsRootUrl.host,
@@ -63,37 +75,6 @@ export function serveFrontEnd(options: BroilerConfig, onReady?: () => void): Pro
         // Write files to disk, as we need to read index.html for SSR
         writeToDisk: true,
     };
-    WebpackDevServer.addDevServerEntrypoints(config, devServerOptions);
-    const compiler = webpack(config);
-    const devServer = new WebpackDevServer(compiler, devServerOptions);
-    return new Promise((resolve, reject) => {
-        const server = devServer.listen(serverPort, (error) => {
-            if (error) {
-                reject(error);
-            } else if (onReady) {
-                onReady();
-            }
-        });
-        server.on('close', () => resolve());
-        server.on('error', (error) => reject(error));
-    });
-}
-
-/**
- * Runs the REST API development server.
- */
-export async function serveBackEnd(
-    options: BroilerConfig,
-    params: { [param: string]: string },
-    dbConnectionPool: Pool | null,
-): Promise<void> {
-    const { stackName, auth, serverRoot, stageDir, buildDir, projectRootPath } = options;
-    const serverRootUrl = new URL(serverRoot);
-    const serverOrigin = serverRootUrl.origin;
-    const serverProtocol = serverRootUrl && serverRootUrl.protocol;
-    const serverPort = serverRootUrl && parseInt(serverRootUrl.port, 10);
-    const serverEnableHttps = serverProtocol === 'https:';
-    const storageDir = path.join(stageDir, 'storage');
     if (serverRoot && serverEnableHttps) {
         throw new Error(
             `HTTPS is not yet supported on the local server! Switch to use ${serverRoot.replace(
@@ -104,15 +85,34 @@ export async function serveBackEnd(
     }
     const htmlPagePath = path.resolve(buildDir, './index.html');
     const sessionEncryptionKey = auth ? await JWK.asKey(rawSessionEncryptionKey) : null;
-    const config = getBackendWebpackConfig({ ...options, debug: true, devServer: true, analyze: false });
+    const backendConfig = getBackendWebpackConfig({
+        ...options,
+        debug: true,
+        devServer: true,
+        analyze: false,
+    });
+    // WebpackDevServer.addDevServerEntrypoints(frontendConfig, devServerOptions);
+    const compiler = webpack([frontendConfig, backendConfig]);
+    const statsIterator = generate<webpack.compilation.MultiStats>(({ next, error, complete }) => {
+        compiler.hooks.done.tap('Broiler', (stats) => {
+            next(stats);
+        });
+        const devServer = new WebpackDevServer(compiler, devServerOptions);
+        const httpDevServer = devServer.listen(assetsServerPort, (err) => {
+            if (err) {
+                error(err);
+            } else {
+                // eslint-disable-next-line no-console
+                console.log(`Serving the local development website at ${underline(`${options.serverRoot}/`)}`);
+            }
+        });
+        httpDevServer.on('close', () => complete());
+        httpDevServer.on('error', (err) => error(err));
+    });
+
     let server: http.Server | undefined;
     try {
-        for await (const stats of watch(config)) {
-            // Close any previously running server(s)
-            if (server) {
-                server.close();
-                server = undefined;
-            }
+        for await (const stats of statsIterator) {
             // Check for compilation errors
             if (stats.hasErrors()) {
                 // eslint-disable-next-line no-console
@@ -122,14 +122,12 @@ export async function serveBackEnd(
                         colors: true, // Shows colors in the console
                     }),
                 );
-                // eslint-disable-next-line no-continue
                 continue;
             }
             // Successful compilation -> start the HTTP server
             // eslint-disable-next-line no-console
             console.log(stats.toString('minimal'));
-
-            const statsJson = stats.toJson();
+            const statsJson = stats.stats[1].toJson();
             // NOTE: Webpack type definition is wrong there! Need to force re-cast!
             const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
             // Get compiled server-site rendering view
@@ -137,11 +135,19 @@ export async function serveBackEnd(
             const serverRequestHandlerFilePath = path.resolve(projectRootPath, buildDir, serverRequestHandlerFileName);
             // Ensure that module will be re-loaded
             delete require.cache[serverRequestHandlerFilePath];
-            // Load the module exporting the service getter
-            const serverModule = await import(serverRequestHandlerFilePath);
-            const htmlPagePath$ = readFile(htmlPagePath);
-            const service: ApiService = serverModule.getApiService(htmlPagePath$, storageDir);
-            const db: Database | null = serverModule.getDatabase();
+            let service: ApiService;
+            let db: Database | null;
+            try {
+                // Load the module exporting the service getter
+                const serverModule = await import(serverRequestHandlerFilePath);
+                const htmlPagePath$ = readFile(htmlPagePath);
+                service = serverModule.getApiService(htmlPagePath$, storageDir);
+                db = serverModule.getDatabase();
+            } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error(red(`Failed to initialize the app: ${error.stack}`));
+                continue;
+            }
             // Get handler for the API requests (if defined)
             const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) =>
                 convertNodeRequest(httpRequest, serverOrigin, serverRoot),
@@ -164,8 +170,12 @@ export async function serveBackEnd(
                 authTokenUri: null,
                 environment: params,
             };
+            // Close any previously running server(s)
+            if (server) {
+                server.close();
+            }
             server = createServer(nodeMiddleware((req) => executeServerRequest(req, serverContext)));
-            server.listen(serverPort);
+            await startServer(server, serverPort);
         }
     } finally {
         if (server) {
@@ -182,6 +192,19 @@ interface LocalDatabaseLaunchOptions {
 
 function getDbDockerContainerName(name: string, stage: string) {
     return `${name}_${stage}_postgres`.replace(/-+/g, '_');
+}
+
+function startServer(server: http.Server, serverPort: number) {
+    return new Promise((resolve, reject) => {
+        server.listen(serverPort, () => {
+            resolve();
+        });
+        server.on('error', (err) => {
+            // eslint-disable-next-line no-console
+            console.error(red(`Failed to set up the server: ${err.stack}`));
+            reject(err);
+        });
+    });
 }
 
 export async function launchLocalDatabase({ name, stage, port }: LocalDatabaseLaunchOptions): Promise<void> {

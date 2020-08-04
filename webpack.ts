@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 /* eslint-disable @typescript-eslint/no-var-requires */
 import * as path from 'path';
 import * as url from 'url';
@@ -184,8 +185,9 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
 
         module: {
             rules: [
-                ...getCommonRules(tsConfigPath),
+                ...getCommonRules({ tsConfigPath, debug, devServer, assetsFilePrefix, emitFile: true }),
                 // Extract CSS stylesheets from the main bundle
+                // TODO: Make it work on server-side. Replace with https://github.com/faceyspacey/extract-css-chunks-webpack-plugin
                 {
                     test: /\.(css|scss)($|\?)/,
                     sideEffects: true,
@@ -203,41 +205,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
                             },
                         },
                     ],
-                },
-                // Optimize image files and bundle them as files or data URIs
-                {
-                    test: /\.(gif|png|jpe?g|svg)$/,
-                    use: [
-                        {
-                            loader: 'url-loader',
-                            options: {
-                                // Max bytes to be converted to inline data URI
-                                limit: 100,
-                                // If larger, then convert to a file instead
-                                name: `${assetsFilePrefix}images/[name].[hash].[ext]`,
-                            },
-                        },
-                        {
-                            loader: 'image-webpack-loader',
-                            options: {
-                                disable: debug || devServer,
-                                optipng: {
-                                    optimizationLevel: 7,
-                                },
-                            },
-                        },
-                    ],
-                },
-                // Include font files either as data URIs or separate files
-                {
-                    test: /\.(eot|ttf|otf|woff2?|svg)($|\?|#)/,
-                    loader: 'url-loader',
-                    options: {
-                        // Max bytes to be converted to inline data URI
-                        limit: 100,
-                        // If larger, then convert to a file instead
-                        name: `${assetsFilePrefix}fonts/[name].[hash].[ext]`,
-                    },
                 },
             ],
         },
@@ -289,6 +256,11 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     const tsConfigPath = path.resolve(projectRootPath, './tsconfig.json');
     // Target backend always to ES2018
     const compilerOptions = { target: 'ES2017' } as const;
+    // Determine the directory for the assets and the site
+    const assetsRootUrl = url.parse(assetsRoot);
+    const assetsPath = assetsRootUrl.pathname || '/';
+    const assetsDir = assetsPath.replace(/^\/+/, '');
+    const assetsFilePrefix = assetsDir && `${assetsDir}/`;
 
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
@@ -377,7 +349,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
         },
 
         module: {
-            rules: getCommonRules(tsConfigPath, compilerOptions),
+            rules: getCommonRules({
+                devServer,
+                debug,
+                tsConfigPath,
+                compilerOptions,
+                assetsFilePrefix,
+                emitFile: false,
+            }),
         },
 
         externals,
@@ -424,7 +403,15 @@ function getCommonPlugins(tsConfigPath: string, sourceDirPath: string, compilerO
     ];
 }
 
-function getCommonRules(tsConfigPath: string, compilerOptions?: unknown): webpack.RuleSetRule[] {
+function getCommonRules(options: {
+    assetsFilePrefix: string;
+    debug: boolean;
+    devServer: boolean;
+    tsConfigPath: string;
+    emitFile: boolean;
+    compilerOptions?: unknown;
+}): webpack.RuleSetRule[] {
+    const { tsConfigPath, compilerOptions, debug, devServer, assetsFilePrefix, emitFile } = options;
     return [
         // Pre-process sourcemaps for scripts
         {
@@ -442,6 +429,45 @@ function getCommonRules(tsConfigPath: string, compilerOptions?: unknown): webpac
                 // Disable type checker - use `fork-ts-checker-webpack-plugin` for that purpose instead
                 transpileOnly: true,
                 compilerOptions,
+            },
+        },
+        // Optimize image files and bundle them as files or data URIs
+        {
+            test: /\.(gif|png|jpe?g|svg)$/,
+            use: [
+                {
+                    loader: 'url-loader',
+                    options: {
+                        // Max bytes to be converted to inline data URI
+                        limit: 100,
+                        // Asset files Files not emitted on server-side compilation
+                        emitFile,
+                        // If larger, then convert to a file instead
+                        name: `${assetsFilePrefix}images/[name].[hash].[ext]`,
+                    },
+                },
+                {
+                    loader: 'image-webpack-loader',
+                    options: {
+                        disable: debug || devServer,
+                        optipng: {
+                            optimizationLevel: 7,
+                        },
+                    },
+                },
+            ],
+        },
+        // Include font files either as data URIs or separate files
+        {
+            test: /\.(eot|ttf|otf|woff2?|svg)($|\?|#)/,
+            loader: 'url-loader',
+            options: {
+                // Max bytes to be converted to inline data URI
+                limit: 100,
+                // Asset files Files not emitted on server-side compilation
+                emitFile,
+                // If larger, then convert to a file instead
+                name: `${assetsFilePrefix}fonts/[name].[hash].[ext]`,
             },
         },
     ];

@@ -23,7 +23,7 @@ export function renderRoute<S>(
 ): JSX.Element {
     const { pattern } = route.pattern;
     const pathPattern = pattern.replace(/\{(\w+)\}/g, (_, urlKeyword: string) => `:${urlKeyword}`);
-    const routedComponent = (props: RouteComponentProps<{ url: string }>) => {
+    function RoutedComponent(props: RouteComponentProps<{ url: string }>) {
         const { match } = props;
         try {
             const routeMatch = route.match(match.url);
@@ -43,16 +43,16 @@ export function renderRoute<S>(
             return null;
         }
         return React.createElement(errorComponent, props);
-    };
-    return <ReactRoute exact sensitive path={pathPattern} component={routedComponent} />;
+    }
+    return <ReactRoute exact sensitive path={pathPattern} component={RoutedComponent} />;
 }
 
 export function renderStaticRoute(component: React.ComponentType, statusCode = HttpStatus.OK): JSX.Element {
-    const routedComponent = (props: RouteComponentProps<any>) => {
+    function RoutedComponent(props: RouteComponentProps<any>) {
         setStatusCode(props, statusCode);
         return React.createElement(component);
-    };
-    return <ReactRoute component={routedComponent} />;
+    }
+    return <ReactRoute component={RoutedComponent} />;
 }
 
 function setStatusCode({ staticContext }: RouteComponentProps<any>, statusCode: HttpStatus) {

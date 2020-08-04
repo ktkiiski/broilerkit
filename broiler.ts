@@ -35,18 +35,8 @@ import {
 } from './fs';
 import { HttpStatus, isResponse } from './http';
 import type { AppStageConfig } from './index';
-import { launchLocalDatabase, openLocalDatabasePsql, serveBackEnd, serveFrontEnd } from './local';
+import { launchLocalDatabase, openLocalDatabasePsql, serve } from './local';
 import { createTable } from './migration';
-import {
-    OAUTH2_SIGNOUT_ENDPOINT_NAME,
-    OAuth2SignOutController,
-    OAUTH2_SIGNIN_ENDPOINT_NAME,
-    OAuth2SignInController,
-    OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME,
-    OAuth2SignedInController,
-    OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME,
-    OAuth2SignedOutController,
-} from './oauth';
 
 import { forEachKey } from './objects';
 import { bold, cyan, dim, green, red, underline, yellow } from './palette';
@@ -54,8 +44,6 @@ import { askParameters } from './parameters';
 import { Database, DatabaseClient, PostgreSqlConnection, RemotePostgreSqlConnection, SqlConnection } from './postgres';
 import { readAnswer } from './readline';
 import { retryWithBackoff } from './retry';
-import { ApiService } from './server';
-import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from './ssr';
 import { upperFirst } from './strings';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import type { Trigger } from './triggers';
@@ -74,6 +62,9 @@ const staticAssetsCacheDuration = 31556926;
 
 const dbTableMigrationVersion = '0.0.3';
 const localDbPortNumber = 54320;
+
+// Show longer stack traces
+Error.stackTraceLimit = 100;
 
 export class Broiler {
     private readonly config: BroilerConfig;
@@ -253,12 +244,7 @@ export class Broiler {
                 idleTimeoutMillis: 60 * 1000,
             });
         }
-        await Promise.all([
-            serveFrontEnd(opts, () =>
-                this.log(`Serving the local development website at ${underline(`${opts.serverRoot}/`)}`),
-            ),
-            serveBackEnd(opts, params, dbConnectionPool),
-        ]);
+        await serve(opts, params, dbConnectionPool);
     }
 
     /**
@@ -797,7 +783,6 @@ export class Broiler {
     }
 
     private async generateTemplate(): Promise<any> {
-        const server = this.importServer();
         // TODO: At this point validate that the endpoint configuration looks legit?
         const templateFiles = [
             'cloudformation-init.yml',
@@ -821,9 +806,6 @@ export class Broiler {
         const template$ = readTemplates(templateFiles, {
             ServerDeploymentId: siteHash.toUpperCase(),
         });
-        if (!server) {
-            return template$;
-        }
         const templates = await Promise.all([
             template$,
             this.generateDbTemplates(),
@@ -1117,24 +1099,6 @@ export class Broiler {
         const modulePath = path.resolve(projectRootPath, sourceDir, dir);
         // eslint-disable-next-line import/no-dynamic-require
         return require(modulePath);
-    }
-
-    private importServer(): ApiService | null {
-        const { serverFile, siteFile } = this.config;
-        if (serverFile) {
-            const serverModule = this.importModule(serverFile);
-            const siteModule = this.importModule(siteFile);
-            const apiService = new ApiService(serverModule.default);
-            const view = siteModule.default;
-            return apiService.extend({
-                [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, Promise.resolve('')),
-                [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),
-                [OAUTH2_SIGNOUT_ENDPOINT_NAME]: new OAuth2SignOutController(),
-                [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedInController(),
-                [OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedOutController(),
-            });
-        }
-        return null;
     }
 
     private getDatabaseName() {

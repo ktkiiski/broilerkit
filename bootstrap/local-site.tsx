@@ -5,6 +5,8 @@
 import * as React from 'react';
 import { hydrate } from 'react-dom';
 import { BrowserRouter } from 'react-router-dom';
+// @ts-ignore: Webpack bundler loads the configured app site module aliased as '_site'
+import View from '_site';
 import { Auth, BrowserAuthClient } from '../auth';
 import { BrowserClient, CollectionCache, ResourceCache } from '../client';
 import { ClientProvider } from '../react/client';
@@ -21,10 +23,6 @@ export function start(
     resourceCache?: ResourceCache,
     collectionCache?: CollectionCache,
 ): void {
-    // Webpack bundler loads the configured app site module aliased as '_site'
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const siteModule = require('_site');
-    const View: React.ComponentType = siteModule.default;
     const client = new BrowserClient(apiRoot, new BrowserAuthClient(auth), resourceCache, collectionCache);
     hydrate(
         <ClientProvider client={client}>

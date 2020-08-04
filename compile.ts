@@ -1,5 +1,4 @@
 import * as webpack from 'webpack';
-import { generate } from './async';
 
 export function compile(configs: webpack.Configuration[]): Promise<webpack.compilation.MultiStats> {
     const compiler = webpack(configs);
@@ -13,26 +12,5 @@ export function compile(configs: webpack.Configuration[]): Promise<webpack.compi
                 resolve(stats);
             }
         });
-    });
-}
-
-export function watch(config: webpack.Configuration): AsyncIterableIterator<webpack.Stats> {
-    return generate(({ next, error }) => {
-        const compiler = webpack(config);
-        const watching = compiler.watch(
-            {
-                aggregateTimeout: 300,
-                poll: 5000,
-            },
-            (err, stats) => {
-                if (err) {
-                    error(err);
-                } else {
-                    // NOTE: There may still be compilation errors
-                    next(stats);
-                }
-            },
-        );
-        return () => watching.close(() => undefined);
     });
 }

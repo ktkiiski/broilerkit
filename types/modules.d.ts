@@ -3,7 +3,7 @@
  */
 declare module '*.png' {
     const imageUrl: string;
-    export = imageUrl;
+    export default imageUrl;
 }
 
 /**
@@ -11,7 +11,7 @@ declare module '*.png' {
  */
 declare module '*.jpg' {
     const imageUrl: string;
-    export = imageUrl;
+    export default imageUrl;
 }
 
 /**
@@ -19,5 +19,5 @@ declare module '*.jpg' {
  */
 declare module '*.gif' {
     const imageUrl: string;
-    export = imageUrl;
+    export default imageUrl;
 }
