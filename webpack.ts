@@ -3,16 +3,14 @@
 import * as path from 'path';
 import * as url from 'url';
 import * as webpack from 'webpack';
-
 import type { BroilerConfig } from './config';
 import { executeSync } from './exec';
-
 // Webpack plugins
-const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 
 export interface WebpackConfigOptions extends BroilerConfig {
     devServer: boolean;

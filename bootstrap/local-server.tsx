@@ -2,6 +2,8 @@
  * IMPORTANT: Do not import this file directly!
  * This is used as an endpoint file for a webpack bundle!
  */
+// @ts-ignore: Webpack bundler loads the configured app site module aliased as '_site'
+import View from '_site';
 import * as React from 'react';
 import authLocalServer from '../auth-local-server';
 import {
@@ -14,7 +16,6 @@ import {
     OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME,
     OAuth2SignedOutController,
 } from '../oauth';
-
 import type { Database } from '../postgres';
 import LocalAuthRouter from '../react/components/LocalAuthRouter';
 import { ApiService } from '../server';
@@ -30,14 +31,10 @@ export function getApiService(pageHtml$: Promise<string>, uploadDirPath: string)
         return new ApiService({});
     }
     const apiService = new ApiService(module.default).extend(authLocalServer);
-    // Load the module exporting the rendered React component
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const siteModule = require('_site');
-    const view: React.ComponentType = siteModule.default;
     return apiService.extend({
         [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(
             apiService,
-            () => <LocalAuthRouter component={view} />,
+            () => <LocalAuthRouter component={View} />,
             pageHtml$,
         ),
         [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),

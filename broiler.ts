@@ -18,7 +18,6 @@ import { AmazonCloudWatch, formatLogEvent } from './aws/cloudwatch';
 import { AmazonRoute53 } from './aws/route53';
 import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError, formatS3KeyName } from './aws/utils';
-
 import type { Bucket } from './buckets';
 import { clean } from './clean';
 import { compile } from './compile';
@@ -37,7 +36,6 @@ import { HttpStatus, isResponse } from './http';
 import type { AppStageConfig } from './index';
 import { launchLocalDatabase, openLocalDatabasePsql, serve } from './local';
 import { createTable } from './migration';
-
 import { forEachKey } from './objects';
 import { bold, cyan, dim, green, red, underline, yellow } from './palette';
 import { askParameters } from './parameters';

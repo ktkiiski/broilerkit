@@ -22,7 +22,6 @@ import {
     HttpResponse,
     OK,
 } from './http';
-
 import type { AuthenticationType, Operation, OperationType } from './operations';
 import type { Page } from './pagination';
 import { parsePayload } from './parser';

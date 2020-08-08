@@ -2,6 +2,8 @@
  * IMPORTANT: Do not import this file directly!
  * This is used as an endpoint file for a webpack bundle!
  */
+// @ts-ignore: Webpack bundler loads the configured app site module aliased as '_site'
+import View from '_site';
 import { SecretsManager } from 'aws-sdk';
 import { JWK } from 'node-jose';
 import { Pool } from 'pg';
@@ -19,24 +21,19 @@ import {
     OAUTH2_SIGNOUT_CALLBACK_ENDPOINT_NAME,
     OAuth2SignedOutController,
 } from '../oauth';
-
 import { ApiService, ServerContext } from '../server';
 import { RENDER_WEBSITE_ENDPOINT_NAME, SsrController } from '../ssr';
 import { AWSFileStorage } from '../storage';
 import { Trigger, triggerEvent } from '../triggers';
-
 // When deployed, load the HTML base file immediately, which is expected to be located as a sibling index.html file
 const pageHtml$ = readFile('./index.html');
 // API service
 const apiService = getApiService();
 // Database
 const db = getDatabase();
-// Load the module exporting the rendered React component
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const view: React.ComponentType = require('_site').default;
 
 const service = apiService.extend({
-    [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, view, pageHtml$),
+    [RENDER_WEBSITE_ENDPOINT_NAME]: new SsrController(apiService, View, pageHtml$),
     [OAUTH2_SIGNIN_ENDPOINT_NAME]: new OAuth2SignInController(),
     [OAUTH2_SIGNOUT_ENDPOINT_NAME]: new OAuth2SignOutController(),
     [OAUTH2_SIGNIN_CALLBACK_ENDPOINT_NAME]: new OAuth2SignedInController(),

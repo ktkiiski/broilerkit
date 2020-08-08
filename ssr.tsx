@@ -1,10 +1,10 @@
+import type { Location } from 'history';
 import build from 'immuton/build';
 import mapObject from 'immuton/mapObject';
 import * as React from 'react';
 import { renderToString } from 'react-dom/server';
-import { StaticRouter } from 'react-router-dom';
 import type { StaticRouterContext } from 'react-router';
-import type { Location } from 'history';
+import { StaticRouter } from 'react-router-dom';
 import { Auth, authSerializer, DummyAuthClient } from './auth';
 import {
     Client,
