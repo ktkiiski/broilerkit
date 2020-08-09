@@ -360,11 +360,12 @@ function getCommonPlugins(options: {
     compilerOptions?: unknown;
 }): webpack.Plugin[] {
     const { devServer, assetsFilePrefix, tsConfigPath, sourceDirPath, compilerOptions } = options;
+    const cssFilePrefix = `${assetsFilePrefix}css/`;
     return [
         // https://github.com/faceyspacey/extract-css-chunks-webpack-plugin
         new ExtractCssChunks({
-            filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
-            chunkFilename: devServer ? `${assetsFilePrefix}[id].css` : `${assetsFilePrefix}[id].[contenthash].css`,
+            filename: devServer ? `${cssFilePrefix}[name].css` : `${cssFilePrefix}[contenthash].css`,
+            chunkFilename: devServer ? `${cssFilePrefix}[id].css` : `${cssFilePrefix}[contenthash].css`,
             ignoreOrder: false,
         }),
         // Perform type checking for TypeScript
