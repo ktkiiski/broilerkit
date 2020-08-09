@@ -14,16 +14,18 @@
         "moduleResolution": "node",
         "noUnusedLocals": true,
         "noUnusedParameters": true,
+        "plugins": [{ "name": "typescript-plugin-css-modules" }],
         "sourceMap": false,
         "strict": true,
         "target": "ES2017"
     },
     "include": [
+        "./types/modules.d.ts",
         "./**/*.tsx",
         "./**/*.ts"
     ],
     "exclude": [
         "./node_modules/**",
-        "./**/*.d.ts"
+        "./types/constants.d.ts"
     ]
 }

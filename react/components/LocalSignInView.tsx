@@ -9,6 +9,7 @@ import { buildQuery, parseQuery } from '../../url';
 import type { User } from '../../users';
 import { useList, useOperation } from '../api';
 import { useUniqueId } from '../client';
+import styles from './LocalSignInView.module.css';
 
 function LocalSignInView(): JSX.Element {
     const location = useLocation();
@@ -54,20 +55,22 @@ function LocalSignInView(): JSX.Element {
     }
 
     return (
-        <>
+        <div className={styles.container}>
             <h1>Log in</h1>
             <p>
-                <label>
+                <label className={styles.formLabel}>
                     <input type="checkbox" checked={isAdmin} onChange={(event) => setIsAdmin(event.target.checked)} />
                     Log in as an admin
                 </label>
             </p>
             <h4>Sign up as a new user</h4>
             <form onSubmit={signUp}>
-                <div>
-                    <label htmlFor={`email-input-${id}`}>Email</label>
+                <div className={styles.formGroup}>
+                    <label className={styles.formLabel} htmlFor={`email-input-${id}`}>
+                        Email
+                    </label>
                 </div>
-                <div>
+                <div className={styles.formGroup}>
                     <input
                         id={`email-input-${id}`}
                         type="email"
@@ -76,10 +79,12 @@ function LocalSignInView(): JSX.Element {
                         onChange={(event) => setEmail(event.target.value)}
                     />
                 </div>
-                <div>
-                    <label htmlFor={`name-input-${id}`}>Name</label>
+                <div className={styles.formGroup}>
+                    <label className={styles.formLabel} htmlFor={`name-input-${id}`}>
+                        Name
+                    </label>
                 </div>
-                <div>
+                <div className={styles.formGroup}>
                     <input
                         id={`name-input-${id}`}
                         type="text"
@@ -88,8 +93,8 @@ function LocalSignInView(): JSX.Element {
                         onChange={(event) => setName(event.target.value)}
                     />
                 </div>
-                <div>
-                    <label>
+                <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>
                         <input
                             type="checkbox"
                             checked={hasAvatar}
@@ -99,19 +104,29 @@ function LocalSignInView(): JSX.Element {
                         Has avatar
                     </label>
                 </div>
-                <div>
-                    <button type="submit">Sign up</button>
+                <div className={styles.formGroup}>
+                    <button className={styles.signInButton} type="submit">
+                        Sign up
+                    </button>
                 </div>
             </form>
-            <hr />
-            <h4>Sign in with an existing user</h4>
-            {users &&
-                users.map((user) => (
-                    <button type="button" key={user.id} onClick={() => signInAs(user)}>
-                        {`${user.name} (${user.email || 'no email'})`}
-                    </button>
-                ))}
-        </>
+            {!users?.length ? null : (
+                <>
+                    <hr />
+                    <h4>Sign in with an existing user</h4>
+                    {users.map((user) => (
+                        <button
+                            type="button"
+                            key={user.id}
+                            onClick={() => signInAs(user)}
+                            className={styles.userButton}
+                        >
+                            {`${user.name} (${user.email || 'no email'})`}
+                        </button>
+                    ))}
+                </>
+            )}
+        </div>
     );
 }
 

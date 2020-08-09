@@ -1,0 +1,22 @@
+.container {
+    margin: 0 auto;
+    max-width: 800px;
+    padding: 20px;
+    font-family: sans-serif;
+}
+.formGroup {
+    margin-bottom: 8px;
+}
+.formLabel {
+    font-weight: bold;
+    cursor: pointer;
+}
+.signInButton {
+    cursor: pointer;
+    min-width: 100px;
+}
+.userButton {
+    display: block;
+    margin-bottom: 8px;
+    cursor: pointer;
+}

@@ -6,9 +6,9 @@ import * as webpack from 'webpack';
 import type { BroilerConfig } from './config';
 import { executeSync } from './exec';
 // Webpack plugins
+const ExtractCssChunks = require('extract-css-chunks-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 
@@ -54,7 +54,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
-        ...getCommonPlugins(tsConfigPath, sourceDirPath),
+        ...getCommonPlugins({ devServer, assetsFilePrefix, tsConfigPath, sourceDirPath }),
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
             title,
@@ -87,10 +87,6 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     ];
     if (!devServer) {
         plugins.push(
-            // Extract stylesheets to separate files in production
-            new MiniCssExtractPlugin({
-                filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
-            }),
             // Generate some stats for the bundles
             getBundleAnalyzerPlugin(analyze, path.resolve(stageDirPath, `report-frontend.html`)),
         );
@@ -182,29 +178,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         },
 
         module: {
-            rules: [
-                ...getCommonRules({ tsConfigPath, debug, devServer, assetsFilePrefix, emitFile: true }),
-                // Extract CSS stylesheets from the main bundle
-                // TODO: Make it work on server-side. Replace with https://github.com/faceyspacey/extract-css-chunks-webpack-plugin
-                {
-                    test: /\.(css|scss)($|\?)/,
-                    sideEffects: true,
-                    use: [
-                        // For production extract to a separate CSS file
-                        devServer || debug ? 'style-loader' : MiniCssExtractPlugin.loader,
-                        {
-                            loader: 'css-loader',
-                            options: {
-                                // For production, compress the CSS
-                                minimize: !devServer && !debug,
-                                sourceMap: devServer || debug,
-                                url: true,
-                                import: true,
-                            },
-                        },
-                    ],
-                },
-            ],
+            rules: getCommonRules({ tsConfigPath, debug, devServer, assetsFilePrefix, emitFile: true }),
         },
 
         resolve: {
@@ -263,7 +237,7 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
-        ...getCommonPlugins(tsConfigPath, sourceDirPath, compilerOptions),
+        ...getCommonPlugins({ devServer, assetsFilePrefix, tsConfigPath, sourceDirPath, compilerOptions }),
         /**
          * Prevent `pg` module to import `pg-native` binding library.
          */
@@ -378,8 +352,21 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     };
 }
 
-function getCommonPlugins(tsConfigPath: string, sourceDirPath: string, compilerOptions?: unknown): webpack.Plugin[] {
+function getCommonPlugins(options: {
+    devServer: boolean;
+    assetsFilePrefix: string;
+    tsConfigPath: string;
+    sourceDirPath: string;
+    compilerOptions?: unknown;
+}): webpack.Plugin[] {
+    const { devServer, assetsFilePrefix, tsConfigPath, sourceDirPath, compilerOptions } = options;
     return [
+        // https://github.com/faceyspacey/extract-css-chunks-webpack-plugin
+        new ExtractCssChunks({
+            filename: devServer ? `${assetsFilePrefix}[name].css` : `${assetsFilePrefix}[name].[contenthash].css`,
+            chunkFilename: devServer ? `${assetsFilePrefix}[id].css` : `${assetsFilePrefix}[id].[contenthash].css`,
+            ignoreOrder: false,
+        }),
         // Perform type checking for TypeScript
         new ForkTsCheckerWebpackPlugin({
             typescript: {
@@ -428,6 +415,20 @@ function getCommonRules(options: {
                 transpileOnly: true,
                 compilerOptions,
             },
+        },
+        // Extract stylesheets as separate CSS files
+        {
+            test: /\.css$/i,
+            sideEffects: true,
+            use: [
+                {
+                    loader: ExtractCssChunks.loader,
+                    options: {
+                        esModule: true,
+                    },
+                },
+                'css-loader',
+            ],
         },
         // Optimize image files and bundle them as files or data URIs
         {

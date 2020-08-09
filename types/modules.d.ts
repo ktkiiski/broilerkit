@@ -1,4 +1,11 @@
 /**
+ * Import CSS module files as objects with string values.
+ */
+declare module '*.module.css' {
+    const classes: { [key: string]: string };
+    export default classes;
+}
+/**
  * When importing a PNG file, the imported value is the URL of the image.
  */
 declare module '*.png' {

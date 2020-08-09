@@ -131,7 +131,9 @@ export async function serve(
             // NOTE: Webpack type definition is wrong there! Need to force re-cast!
             const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
             // Get compiled server-site rendering view
-            const serverRequestHandlerFileName: string = assetsByChunkName.server && assetsByChunkName.server[0];
+            const serverAssetFiles = assetsByChunkName.server;
+            const serverRequestHandlerFileName: string =
+                serverAssetFiles && (serverAssetFiles.find((filename) => /\.js$/.test(filename)) as string);
             const serverRequestHandlerFilePath = path.resolve(projectRootPath, buildDir, serverRequestHandlerFileName);
             // Ensure that module will be re-loaded
             delete require.cache[serverRequestHandlerFilePath];
