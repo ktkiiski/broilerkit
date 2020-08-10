@@ -212,13 +212,13 @@ export class Broiler {
         } catch (error) {
             this.log(red(`Failed to write parameters to the JSON file:\n${error}`));
         }
-        const tables = this.getTables();
+        const tables = this.getLocalTables();
         let dbConnectionPool: Pool | null = null;
         if (tables.length) {
             process.stdout.write(`Connecting to the database...`);
             // Ensure that the database is running
             await launchLocalDatabase({ ...opts, port: localDbPortNumber });
-            const client = await retryWithBackoff(10, async () => {
+            const client = await retryWithBackoff(20, async () => {
                 process.stdout.write(`.`);
                 const newClient = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
                 await newClient.connect();
@@ -314,7 +314,7 @@ export class Broiler {
             return;
         }
         for (const table of tables) {
-            this.log(`${table.resource.name} ${dim('[?]')}`);
+            this.log(table.resource.name);
         }
     }
 
@@ -1117,7 +1117,6 @@ export class Broiler {
     }
 
     private getTables() {
-        const { region, auth } = this.config;
         let db;
         try {
             db = this.getDatabase();
@@ -1125,10 +1124,13 @@ export class Broiler {
             return [];
         }
         const tables = db.tables.slice();
-        if (auth && region === 'local') {
-            tables.push(new DatabaseTable(users, []));
-        }
         return sort(tables, (table) => table.resource.name, 'asc');
+    }
+
+    private getLocalTables() {
+        const { auth } = this.config;
+        const tables = this.getTables();
+        return auth ? [...tables, new DatabaseTable(users, [])] : tables;
     }
 
     private getTable(tableName: string) {
