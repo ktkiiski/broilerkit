@@ -204,43 +204,6 @@ yargs
                     },
                 })
                 .command({
-                    command: 'backup <stage>',
-                    describe: 'Saves contents of all tables to a local directory',
-                    builder: (subCmdYargs) =>
-                        subCmdYargs.option('path', {
-                            alias: 'p',
-                            normalize: true,
-                            describe: 'Path to the backup directory',
-                            type: 'string',
-                        }),
-                    handler: (argv: any) => {
-                        const broiler = getBroiler(argv);
-                        broiler.backupDatabase(argv.path).catch(onError);
-                    },
-                })
-                .command({
-                    command: 'restore <stage>',
-                    describe: 'Uploads database contents from a local backup directory',
-                    builder: (subCmdYargs) =>
-                        subCmdYargs
-                            .option('path', {
-                                alias: 'p',
-                                demandOption: true,
-                                normalize: true,
-                                describe: 'Path to the backup directory',
-                                type: 'string',
-                            })
-                            .option('overwrite', {
-                                alias: 'o',
-                                describe: 'Overwrite existing records',
-                                type: 'boolean',
-                            }),
-                    handler: (argv: any) => {
-                        const broiler = getBroiler(argv);
-                        broiler.restoreDatabase(argv.path, argv.overwrite).catch(onError);
-                    },
-                })
-                .command({
                     command: 'psql [stage]',
                     describe: 'Open psql shell for local stage database',
                     builder: (subCmdYargs) => subCmdYargs.default('stage', 'local'),
@@ -251,6 +214,43 @@ yargs
                 }),
         handler: () => {
             /* do nothing */
+        },
+    })
+    .command({
+        command: 'backup <stage>',
+        describe: 'Saves contents of all tables to a local directory',
+        builder: (subCmdYargs) =>
+            subCmdYargs.option('path', {
+                alias: 'p',
+                normalize: true,
+                describe: 'Path to the backup directory',
+                type: 'string',
+            }),
+        handler: (argv: any) => {
+            const broiler = getBroiler(argv);
+            broiler.backupDatabase(argv.path).catch(onError);
+        },
+    })
+    .command({
+        command: 'restore <stage>',
+        describe: 'Uploads database contents from a local backup directory',
+        builder: (subCmdYargs) =>
+            subCmdYargs
+                .option('path', {
+                    alias: 'p',
+                    demandOption: true,
+                    normalize: true,
+                    describe: 'Path to the backup directory',
+                    type: 'string',
+                })
+                .option('overwrite', {
+                    alias: 'o',
+                    describe: 'Overwrite existing records',
+                    type: 'boolean',
+                }),
+        handler: (argv: any) => {
+            const broiler = getBroiler(argv);
+            broiler.restoreDatabase(argv.path, argv.overwrite).catch(onError);
         },
     })
     .demandCommand(1)
