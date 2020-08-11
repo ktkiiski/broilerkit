@@ -217,6 +217,23 @@ yargs
         },
     })
     .command({
+        command: 'users <command>',
+        describe: 'Manage app users',
+        builder: (cmdYargs) =>
+            cmdYargs.command({
+                command: 'dump <stage>',
+                describe: 'Print out all the users',
+                builder: (subCmdYargs) => subCmdYargs.boolean('pretty').describe('pretty', 'Print formatted JSON'),
+                handler: (argv: any) => {
+                    const broiler = getBroiler(argv);
+                    broiler.printUsers(argv.pretty).catch(onError);
+                },
+            }),
+        handler: () => {
+            /* do nothing */
+        },
+    })
+    .command({
         command: 'backup <stage>',
         describe: 'Saves contents of all tables to a local directory',
         builder: (subCmdYargs) =>

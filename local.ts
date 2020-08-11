@@ -10,6 +10,7 @@ import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
 import { generate } from './async';
 import type { BroilerConfig } from './config';
+import { DatabaseTable } from './db';
 import { escapeForShell, execute, spawn } from './exec';
 import { readFile, readStream } from './fs';
 import type { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
@@ -19,6 +20,7 @@ import { cyan, dim, green, red, yellow, underline } from './palette';
 import type { Database } from './postgres';
 import type { ApiService, ServerContext } from './server';
 import { LocalFileStorage } from './storage';
+import { users } from './users';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 
 const rawSessionEncryptionKey = {
@@ -26,6 +28,8 @@ const rawSessionEncryptionKey = {
     alg: 'A256GCM',
     k: 'oiMylNiaLGsxzrHl3yjGZlaIM4P-agX8ikIlK8pp3Eo',
 };
+
+export const userTable = new DatabaseTable(users, []);
 
 /**
  * Runs the development server, including the Webpack development server

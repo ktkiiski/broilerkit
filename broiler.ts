@@ -20,9 +20,10 @@ import { AmazonS3 } from './aws/s3';
 import { isDoesNotExistsError, formatS3KeyName } from './aws/utils';
 import type { Bucket } from './buckets';
 import { clean } from './clean';
+import { UserPool, LocalUserPool, CognitoUserPool } from './cognito';
 import { compile } from './compile';
 import type { BroilerConfig } from './config';
-import { create, DatabaseTable, scan, Table, write } from './db';
+import { create, scan, Table, write } from './db';
 import {
     ensureDirectoryExists,
     readFileBuffer,
@@ -34,7 +35,7 @@ import {
 } from './fs';
 import { HttpStatus, isResponse } from './http';
 import type { AppStageConfig } from './index';
-import { launchLocalDatabase, openLocalDatabasePsql, serve } from './local';
+import { launchLocalDatabase, openLocalDatabasePsql, serve, userTable } from './local';
 import { createTable } from './migration';
 import { forEachKey } from './objects';
 import { bold, cyan, dim, green, red, underline, yellow } from './palette';
@@ -45,7 +46,6 @@ import { retryWithBackoff } from './retry';
 import { upperFirst } from './strings';
 import { dumpTemplate, mergeTemplates, readTemplates } from './templates';
 import type { Trigger } from './triggers';
-import { users } from './users';
 import { getBackendWebpackConfig, getFrontendWebpackConfig } from './webpack';
 import { zipAll } from './zip';
 
@@ -343,6 +343,20 @@ export class Broiler {
             } catch (err) {
                 this.log(`Line ${index} ${red('×')}`);
                 this.logError(err.stack);
+            }
+        }
+    }
+
+    public async printUsers(pretty: boolean): Promise<void> {
+        const userPool = await this.getUserPool();
+        if (!userPool) {
+            // No authentication, no users
+            return;
+        }
+        for await (const items of userPool.scan()) {
+            for (const item of items) {
+                const serializedItem = userTable.resource.serialize(item);
+                this.log(JSON.stringify(serializedItem, null, pretty ? 4 : undefined));
             }
         }
     }
@@ -1130,7 +1144,7 @@ export class Broiler {
     private getLocalTables() {
         const { auth } = this.config;
         const tables = this.getTables();
-        return auth ? [...tables, new DatabaseTable(users, [])] : tables;
+        return auth ? [...tables, userTable] : tables;
     }
 
     private getTable(tableName: string) {
@@ -1164,6 +1178,23 @@ export class Broiler {
         const db = this.getDatabase();
         const connect = await this.getDatabaseConnector();
         return new DatabaseClient(db, connect);
+    }
+
+    private async getUserPool(): Promise<UserPool | null> {
+        const { auth, region } = this.config;
+        if (region === 'local') {
+            if (!auth) {
+                return null;
+            }
+            const dbClient = await this.getDatabaseClient();
+            return new LocalUserPool(dbClient);
+        }
+        const output = await this.cloudFormation.getStackOutput();
+        const userPoolId = output.UserPoolId;
+        if (!userPoolId) {
+            return null;
+        }
+        return new CognitoUserPool(userPoolId, region);
     }
 }
 

@@ -321,6 +321,10 @@ Resources:
           - Ref: UserSessionEncryptionKeySecret
 
 Outputs:
+  UserPoolId:
+    Description: "ID of the user pool"
+    Value:
+      Ref: UserPool
   UserPoolRoot:
     Description: "Root URL for the AWS Cognito user pool"
     Value:
