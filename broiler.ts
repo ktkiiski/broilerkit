@@ -183,6 +183,7 @@ export class Broiler {
     public async preview(): Promise<void> {
         await this.compile(false);
         const templateUrl = await this.prepareStackTemplate();
+        this.log(dim(`CloudFormation template available at S3 bucket: ${underline(templateUrl)}`));
         const parameters = await this.getStackParameters();
         const changeSet = await this.cloudFormation.createChangeSet(templateUrl, parameters);
         this.logChangeSet(changeSet);
