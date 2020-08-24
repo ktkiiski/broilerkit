@@ -6,6 +6,7 @@ import * as tsNode from 'ts-node';
 import * as yargs from 'yargs';
 import { Broiler } from './broiler';
 import { escapeForShell } from './exec';
+import { expandTildeInPath } from './fs';
 import type { App } from './index';
 import { red } from './palette';
 
@@ -32,7 +33,7 @@ function getBroiler(argv: CommandOptions) {
     });
     const { appConfigPath, ...options } = argv;
     const cwd = process.cwd();
-    const appPath = path.resolve(cwd, appConfigPath);
+    const appPath = path.resolve(cwd, expandTildeInPath(appConfigPath));
     const projectRootPath = path.dirname(appPath);
     // eslint-disable-next-line @typescript-eslint/no-var-requires,import/no-dynamic-require
     const appModule = require(appPath);
@@ -200,7 +201,7 @@ yargs
                         }),
                     handler: (argv: any) => {
                         const broiler = getBroiler(argv);
-                        broiler.uploadTableRows(argv.table, argv.file).catch(onError);
+                        broiler.uploadTableRows(argv.table, expandTildeInPath(argv.file)).catch(onError);
                     },
                 })
                 .command({
@@ -245,7 +246,8 @@ yargs
             }),
         handler: (argv: any) => {
             const broiler = getBroiler(argv);
-            broiler.backupDatabase(argv.path).catch(onError);
+            const dirPath = argv.path;
+            broiler.backupDatabase(dirPath && expandTildeInPath(dirPath)).catch(onError);
         },
     })
     .command({
@@ -267,7 +269,8 @@ yargs
                 }),
         handler: (argv: any) => {
             const broiler = getBroiler(argv);
-            broiler.restoreDatabase(argv.path, argv.overwrite).catch(onError);
+            const dirPath = expandTildeInPath(argv.path);
+            broiler.restoreDatabase(dirPath, argv.overwrite).catch(onError);
         },
     })
     .demandCommand(1)

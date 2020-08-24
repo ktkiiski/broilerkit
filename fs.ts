@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as fs from 'fs';
+import { homedir } from 'os';
 import * as path from 'path';
 import { createInterface } from 'readline';
 import type * as File from 'vinyl';
@@ -170,4 +171,9 @@ export function readLines(filePath: string): AsyncIterable<string> {
         });
         rl.on('line', (line) => next(line)).on('close', () => complete());
     });
+}
+
+export function expandTildeInPath(pathWithTilde: string): string {
+    const homeDirectory = homedir();
+    return homeDirectory ? pathWithTilde.replace(/^~(?=$|\/|\\)/, homeDirectory) : pathWithTilde;
 }
