@@ -1262,7 +1262,7 @@ function parseRow<S>(resource: Serializer<S>, row: Row, namespace?: string): S |
     }
 }
 
-const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|[;,()[\]])/g;
+const sqlTokenizerRegexp = /("(?:""|[^"])*"|'(?:''|[^'])*'|\s+|[;,()[\]]|:+)/g;
 
 function tokenize(sql: string): string[] {
     return sql.split(sqlTokenizerRegexp).filter((token) => !!token);
@@ -1271,7 +1271,7 @@ function tokenize(sql: string): string[] {
 export function formatSql(sql: string, params: any[] = []) {
     const tokens = tokenize(sql);
     const keywordColor = tokens.length && tokens[0] !== 'SELECT' ? cyan : magenta;
-    const colorizedTokens = tokenize(sql).map((token) => {
+    const colorizedTokens = tokens.map((token) => {
         if (dangerKeywords.includes(token)) {
             return red(token);
         }
