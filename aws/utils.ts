@@ -3,13 +3,16 @@ import * as path from 'path';
 export async function* retrievePages<D, E, T extends keyof D>(
     request: AWS.Request<D, E>,
     key: T,
-): AsyncGenerator<D[T], void> {
+): AsyncGenerator<Exclude<D[T], undefined | null>, void> {
     while (true) {
         const response = await request.promise();
         const { $response } = response;
         const { data } = $response;
         if (data) {
-            yield data[key];
+            const result = data[key];
+            if (result != null) {
+                yield result as Exclude<D[T], undefined | null>;
+            }
         }
         if (!$response.hasNextPage()) {
             break;
