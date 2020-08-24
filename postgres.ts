@@ -43,14 +43,15 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
 
     private snapshotEffects: ResourceEffect[] = [];
 
-    constructor(public readonly effects: ResourceEffect[]) {}
+    constructor(public readonly effects: ResourceEffect[], public readonly loggingEnabled: boolean) {}
 
     public async query(sql: string, params?: any[]): Promise<SqlResult> {
         if (sql === '') {
             return { rowCount: 0, rows: [] };
         }
         const { client } = this;
-        return logSql(sql, params, () => client.query(sql, params));
+        const runSql = () => client.query(sql, params);
+        return this.loggingEnabled ? logSql(sql, params, runSql) : runSql();
     }
 
     public async queryAll(queries: { sql: string; params?: any[] }[]): Promise<SqlResult[]> {
@@ -67,7 +68,7 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
             return;
         }
         const { client } = this;
-        for await (const rows of scanCursor<Row>(client, chunkSize, sql, params)) {
+        for await (const rows of scanCursor<Row>(client, chunkSize, sql, params, this.loggingEnabled)) {
             yield { rows, rowCount: rows.length, isComplete: rows.length < chunkSize };
         }
     }
@@ -126,8 +127,8 @@ abstract class BasePostgreSqlConnection<T extends ClientBase> {
 }
 
 export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> implements SqlConnection {
-    constructor(protected client: Client, effects: ResourceEffect[]) {
-        super(effects);
+    constructor(protected client: Client, effects: ResourceEffect[], loggingEnabled: boolean) {
+        super(effects, loggingEnabled);
     }
 
     public async disconnect(): Promise<void> {
@@ -136,8 +137,8 @@ export class PostgreSqlConnection extends BasePostgreSqlConnection<Client> imple
 }
 
 export class PostgreSqlPoolConnection extends BasePostgreSqlConnection<PoolClient> implements SqlConnection {
-    constructor(protected client: PoolClient, effects: ResourceEffect[]) {
-        super(effects);
+    constructor(protected client: PoolClient, effects: ResourceEffect[], loggingEnabled: boolean) {
+        super(effects, loggingEnabled);
     }
 
     public async disconnect(error?: Error): Promise<void> {

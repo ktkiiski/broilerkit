@@ -321,7 +321,7 @@ export class Broiler {
 
     public async printTableRows(tableName: string, pretty: boolean): Promise<void> {
         const table = this.getTable(tableName);
-        const dbClient = await this.getDatabaseClient();
+        const dbClient = await this.getDatabaseClient(false);
         for await (const items of dbClient.scan(scan(table.resource))) {
             for (const item of items) {
                 const serializedItem = table.resource.serialize(item);
@@ -332,7 +332,7 @@ export class Broiler {
 
     public async uploadTableRows(tableName: string, filePath: string): Promise<void> {
         const table = this.getTable(tableName);
-        const dbClient = await this.getDatabaseClient();
+        const dbClient = await this.getDatabaseClient(false);
         let index = 0;
         for await (const line of readLines(filePath)) {
             index += 1;
@@ -349,7 +349,7 @@ export class Broiler {
     }
 
     public async printUsers(pretty: boolean): Promise<void> {
-        const userPool = await this.getUserPool();
+        const userPool = await this.getUserPool(false);
         if (!userPool) {
             // No authentication, no users
             return;
@@ -364,7 +364,7 @@ export class Broiler {
 
     public async backupDatabase(dirPath?: string | null): Promise<void> {
         const basePath = dirPath || generateBackupDirPath(this.config.stageDir);
-        const dbClient = await this.getDatabaseClient();
+        const dbClient = await this.getDatabaseClient(true);
         const tables = this.getTables();
         this.log(`Backing up ${tables.length} database tables…`);
         await ensureDirectoryExists(basePath);
@@ -401,7 +401,7 @@ export class Broiler {
     }
 
     public async executeSql(sql: string, params: any[]): Promise<void> {
-        const connect = await this.getDatabaseConnector();
+        const connect = await this.getDatabaseConnector(true);
         const sqlConnection = await connect();
         try {
             const result = await sqlConnection.query(sql, params);
@@ -414,7 +414,7 @@ export class Broiler {
     }
 
     public async restoreDatabase(dirPath: string, overwrite = false): Promise<void> {
-        const dbClient = await this.getDatabaseClient();
+        const dbClient = await this.getDatabaseClient(true);
         const tables = this.getTables();
         this.log(`Restoring ${tables.length} database tables…`);
         const results = await Promise.all(
@@ -1156,13 +1156,13 @@ export class Broiler {
         return table;
     }
 
-    private async getDatabaseConnector(): Promise<() => Promise<SqlConnection>> {
+    private async getDatabaseConnector(loggingEnabled: boolean): Promise<() => Promise<SqlConnection>> {
         const { region } = this.config;
         if (region === 'local') {
             return async () => {
                 const client = new Client(`postgres://postgres@localhost:${localDbPortNumber}/postgres`);
                 await client.connect();
-                return new PostgreSqlConnection(client, []);
+                return new PostgreSqlConnection(client, [], loggingEnabled);
             };
         }
         const output = await this.cloudFormation.getStackOutput();
@@ -1175,19 +1175,19 @@ export class Broiler {
             );
     }
 
-    private async getDatabaseClient(): Promise<DatabaseClient> {
+    private async getDatabaseClient(loggingEnabled: boolean): Promise<DatabaseClient> {
         const db = this.getDatabase();
-        const connect = await this.getDatabaseConnector();
+        const connect = await this.getDatabaseConnector(loggingEnabled);
         return new DatabaseClient(db, connect);
     }
 
-    private async getUserPool(): Promise<UserPool | null> {
+    private async getUserPool(loggingEnabled: boolean): Promise<UserPool | null> {
         const { auth, region } = this.config;
         if (region === 'local') {
             if (!auth) {
                 return null;
             }
-            const dbClient = await this.getDatabaseClient();
+            const dbClient = await this.getDatabaseClient(loggingEnabled);
             return new LocalUserPool(dbClient);
         }
         const output = await this.cloudFormation.getStackOutput();

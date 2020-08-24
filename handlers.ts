@@ -39,7 +39,7 @@ export async function executeHandler<I, O, R>(
             throw new Error(`Database is not configured`);
         }
         const client = await dbConnectionPool.connect();
-        return new PostgreSqlPoolConnection(client, serverContext.effects);
+        return new PostgreSqlPoolConnection(client, serverContext.effects, true);
     });
     const users: UserPool =
         // eslint-disable-next-line no-nested-ternary

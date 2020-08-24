@@ -9,11 +9,13 @@ export async function* scanCursor<S>(
     chunkSize: number,
     sql: string,
     values?: any[],
+    loggingEnabled = false,
 ): AsyncGenerator<S[], void> {
     const cursor = client.query(new Cursor(sql, values));
     try {
         while (true) {
-            const items = await logSql(sql, values, () => readCursor<S>(cursor, chunkSize));
+            const readItems = () => readCursor<S>(cursor, chunkSize);
+            const items = await (loggingEnabled ? logSql(sql, values, readItems) : readItems());
             if (items.length) {
                 yield items;
             }
