@@ -4,7 +4,7 @@ import isNotNully from 'immuton/isNotNully';
 import isNully from 'immuton/isNully';
 import type { Key } from 'immuton/types';
 import { keys } from './objects';
-import { cyan, dim, magenta, red } from './palette';
+import { cyan, dim, magenta, red, yellow } from './palette';
 import type { Resource } from './resources';
 import type { Fields, Serializer } from './serializers';
 
@@ -1256,7 +1256,8 @@ function parseRow<S>(resource: Serializer<S>, row: Row, namespace?: string): S |
     try {
         return resource.validate(result as S);
     } catch (error) {
-        // The database entry is not valid!        console.error(`Failed to load invalid ${namespace || ''} item from the database:`, error);
+        // eslint-disable-next-line no-console
+        console.warn(yellow(`Failed to load invalid ${namespace || ''} item from the database: ${error}`));
         return null;
     }
 }
