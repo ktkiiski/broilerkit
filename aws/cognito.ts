@@ -105,24 +105,23 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
     }
 }
 
-function parsePictureUrl(picture: string): string | null {
+function parsePictureUrl(picture: string | undefined | null): string | null {
     /**
      * The picture attribute is either:
      * - picture URL already (Google)
      * - the following object (Facebook)
      * {
-     *   "id": "123124312412412",
-     *   "name": "John Smith",
-     *   "picture": {
-     *     "data": {
-     *       "height": 50,
-     *       "is_silhouette": false,
-     *       "url": "https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=123124312412412&height=50&width=50&ext=23423423&hash=asfasf",
-     *       "width": 50
-     *     }
+     *   "data": {
+     *     "height": 50,
+     *     "is_silhouette": false,
+     *     "url": "https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=123124312412412&height=50&width=50&ext=23423423&hash=asfasf",
+     *     "width": 50
      *   }
      * }
      */
+    if (!picture) {
+        return null;
+    }
     // Try to parse and get the nested value
     try {
         // eslint-disable-next-line no-param-reassign

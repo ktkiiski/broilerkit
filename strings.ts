@@ -30,10 +30,10 @@ export function repeat(str: string, count: number): string {
     return new Array(count + 1).join(str);
 }
 
-const digits = '1234567890';
-const lowerCaseAsciiLetters = 'abcdefghijklmnopqrstuvwxyz';
-const upperCaseAsciiLetters = lowerCaseAsciiLetters.toUpperCase();
-const asciiAlphanumeric = digits + lowerCaseAsciiLetters + upperCaseAsciiLetters;
+export const digits = '1234567890';
+export const lowerCaseAsciiLetters = 'abcdefghijklmnopqrstuvwxyz';
+export const upperCaseAsciiLetters = lowerCaseAsciiLetters.toUpperCase();
+export const asciiAlphanumeric = digits + lowerCaseAsciiLetters + upperCaseAsciiLetters;
 
 export function randomize(length: number, chars: string = asciiAlphanumeric): string {
     const comps: string[] = [];

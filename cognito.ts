@@ -19,25 +19,29 @@ export interface UserPool {
     batchRetrieve(identities: UserIdentity[]): Promise<(User | null)[]>;
 }
 
+function fail(): never {
+    throw new Error('User pool is not configured');
+}
+
 export class DummyUserPool implements UserPool {
     public retrieve(): never {
-        throw new Error('User pool is not configured');
+        fail();
     }
 
     public update(): never {
-        throw new Error('User pool is not configured');
+        fail();
     }
 
     public destroy(): never {
-        throw new Error('User pool is not configured');
+        fail();
     }
 
     public scan(): never {
-        throw new Error('User pool is not configured');
+        fail();
     }
 
     public batchRetrieve(): never {
-        throw new Error('User pool is not configured');
+        fail();
     }
 }
 
