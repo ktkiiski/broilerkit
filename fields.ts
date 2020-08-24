@@ -1,5 +1,7 @@
 /* eslint-disable no-bitwise */
 /* eslint-disable no-param-reassign */
+import empty from 'immuton/empty';
+import isEmpty from 'immuton/isEmpty';
 import { decodeDataUri, DecodedDataUri, encodeDataUri } from './data-uri';
 import { serializeDateTime, deserializeDateTime, serializeDate, deserializeDate } from './datetime';
 import { KeyErrorData, ValidationError } from './errors';
@@ -640,8 +642,12 @@ class ListField<I, O> implements Field<I[], O[]> {
     }
 
     private mapWith<X, Y>(items: X[], iteratee: (item: X, index: number) => Y): Y[] {
+        // NOTE: Even though this only supports arrays, let it also accept an empty OBJECT
+        // and consider it as an empty array! This is to work around an issue in postgres-node
+        // that may return an empty object instead of an empty array.
+        const array = isEmpty(items) ? empty : items;
         const errors: KeyErrorData<number>[] = [];
-        const results = items.map((item, key) => {
+        const results = array.map((item, key) => {
             try {
                 return iteratee(item, key);
             } catch (error) {
