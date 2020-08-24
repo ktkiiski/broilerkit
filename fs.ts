@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
+import { createInterface } from 'readline';
 import type * as File from 'vinyl';
 import { src as _src, SrcOptions } from 'vinyl-fs';
 import { generate } from './async';
@@ -161,14 +161,13 @@ export async function getFileStats(filePath: string): Promise<fs.Stats> {
 export function readLines(filePath: string): AsyncIterable<string> {
     return generate<string>(({ next, error, complete }) => {
         const fileStream = fs.createReadStream(filePath);
-        const rl = readline.createInterface({
+        fileStream.on('error', (err) => error(err));
+        const rl = createInterface({
             input: fileStream,
             crlfDelay: Infinity,
             // Note: we use the crlfDelay option to recognize all instances of CR LF
             // ('\r\n') in input.txt as a single line break.
         });
-        rl.on('line', (line) => next(line))
-            .on('close', () => complete())
-            .on('error', (err) => error(err));
+        rl.on('line', (line) => next(line)).on('close', () => complete());
     });
 }
