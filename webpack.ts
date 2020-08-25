@@ -7,9 +7,9 @@ import type { BroilerConfig } from './config';
 import { executeSync } from './exec';
 // Webpack plugins
 const ExtractCssChunks = require('extract-css-chunks-webpack-plugin');
+const FaviconsWebpackPlugin = require('favicons-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const WebappWebpackPlugin = require('webapp-webpack-plugin');
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 
 export interface WebpackConfigOptions extends BroilerConfig {
@@ -34,8 +34,9 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
         siteFile,
         projectRootPath,
         analyze,
+        assetsRoot,
+        serverRoot,
     } = config;
-    const { assetsRoot, serverRoot } = config;
     // Resolve modules, source, build and static paths
     const sourceDirPath = path.resolve(projectRootPath, sourceDir);
     const stageDirPath = path.resolve(projectRootPath, stageDir);
@@ -101,55 +102,61 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
      */
     if (iconFile) {
         plugins.push(
-            new WebappWebpackPlugin({
+            new FaviconsWebpackPlugin({
                 // Your source logo
                 logo: path.resolve(sourceDirPath, iconFile),
                 // The prefix for all image files (might be a folder or a name)
                 prefix: devServer ? `${assetsFilePrefix}icons/` : `${assetsFilePrefix}icons/[hash]/`,
-                // Emit all stats of the generated icons
-                emitStats: true,
-                // Generate a cache file with control hashes and
-                // don't rebuild the favicons until those hashes change
-                persistentCache: true,
                 // Inject the html into the html-webpack-plugin
                 inject: true,
                 // Locate the cache folder inside the .broiler directory
-                cache: path.resolve(stageDirPath, '.wwp-cache'),
-                // The configuration for `favicon`:
+                cache: path.resolve(stageDirPath, '.fwp-cache'),
+                // The configuration passed to `favicons`:
                 // https://github.com/itgalaxy/favicons#usage
-                favicon: {
+                // NOTE: The most of the metadata is read automatically from package.json
+                favicons: {
+                    // Your application's name. `string`
+                    appName: title,
+                    // TODO: Your application's description. `string`
+                    appDescription: null,
+                    // TODO: Your (or your developer's) name. `string`
+                    developerName: null,
+                    // TODO: Your (or your developer's) URL. `string`
+                    developerURL: null,
+                    // TODO: Your application's version string. `string`
+                    version: null,
                     // Start URL when launching the application from a device. `string`
                     start_url: serverRoot,
-                    // NOTE The most of the metadata is read automatically from package.json
-                },
-                /**
-                 * Which icons should be generated.
-                 * See: https://github.com/haydenbleasel/favicons#usage
-                 * Platform Options:
-                 * - offset - offset in percentage
-                 * - shadow - drop shadow for Android icons, available online only
-                 * - background:
-                 *   * false - use default
-                 *   * true - force use default, e.g. set background for Android icons
-                 *   * color - set background for the specified icons
-                 */
-                icons: {
-                    // Create Android homescreen icon. `boolean` or `{ offset, background, shadow }`
-                    android: !devServer && !debug,
-                    // Create Apple touch icons. `boolean` or `{ offset, background }`
-                    appleIcon: !devServer && !debug,
-                    // Create Apple startup images. `boolean` or `{ offset, background }`
-                    appleStartup: !devServer && !debug,
-                    // Create Opera Coast icon with offset 25%. `boolean` or `{ offset, background }`
-                    coast: false,
-                    // Create regular favicons. `boolean`
-                    favicons: true,
-                    // Create Firefox OS icons. `boolean` or `{ offset, background }`
-                    firefox: false,
-                    // Create Windows 8 tile icons. `boolean` or `{ background }`
-                    windows: !devServer && !debug,
-                    // Create Yandex browser icon. `boolean` or `{ background }`
-                    yandex: false,
+                    // Print logs to console? `boolean`
+                    logging: false,
+                    /**
+                     * Which icons should be generated.
+                     * Platform Options:
+                     * - offset - offset in percentage
+                     * - shadow - drop shadow for Android icons, available online only
+                     * - background:
+                     *   * false - use default
+                     *   * true - force use default, e.g. set background for Android icons
+                     *   * color - set background for the specified icons
+                     */
+                    icons: {
+                        // Create Android homescreen icon. `boolean` or `{ offset, background, shadow }`
+                        android: !devServer && !debug,
+                        // Create Apple touch icons. `boolean` or `{ offset, background }`
+                        appleIcon: !devServer && !debug,
+                        // Create Apple startup images. `boolean` or `{ offset, background }`
+                        appleStartup: !devServer && !debug,
+                        // Create Opera Coast icon with offset 25%. `boolean` or `{ offset, background }`
+                        coast: false,
+                        // Create regular favicons. `boolean`
+                        favicons: true,
+                        // Create Firefox OS icons. `boolean` or `{ offset, background }`
+                        firefox: false,
+                        // Create Windows 8 tile icons. `boolean` or `{ background }`
+                        windows: !devServer && !debug,
+                        // Create Yandex browser icon. `boolean` or `{ background }`
+                        yandex: false,
+                    },
                 },
             }),
         );
