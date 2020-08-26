@@ -64,7 +64,6 @@
     "ansi-styles": "^4.2.1",
     "aws-sdk": "^2.739.0",
     "base64url": "^3.0.1",
-    "core-js-pure": "^3.6.5",
     "css-loader": "^4.2.2",
     "eslint": "^7.7.0",
     "extract-css-chunks-webpack-plugin": "^4.7.5",
