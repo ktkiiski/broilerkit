@@ -23,9 +23,8 @@ export type AuthSubscriber = (auth: Auth | null) => void;
 export type AuthIdentityProvider = 'Facebook' | 'Google';
 
 export interface AuthClient {
-    signIn(identityProvider?: AuthIdentityProvider): Promise<Auth>;
+    signIn(identityProvider: AuthIdentityProvider): Promise<Auth>;
     signOut(): Promise<void>;
-    demandAuthentication(): Promise<Auth>;
     getAuthentication(): Auth | null;
     setAuthentication(auth: Auth | null): void;
     subscribeAuthentication(fn: (auth: Auth | null) => void): () => void;
@@ -40,10 +39,6 @@ export class DummyAuthClient implements AuthClient {
 
     public signOut(): never {
         throw new Error('Signing in not supported');
-    }
-
-    public demandAuthentication(): never {
-        throw new Error('Demanding authentication not supported');
     }
 
     public getAuthentication(): Auth | null {
@@ -85,7 +80,7 @@ export class BrowserAuthClient implements AuthClient {
      *
      * @param identityProvider Optional name of the provider to use when logging in
      */
-    public async signIn(identityProvider?: AuthIdentityProvider): Promise<never> {
+    public signIn = async (identityProvider: AuthIdentityProvider): Promise<never> => {
         const redirectUri = window.location.href;
         let signInUri = `${this.signInUri}?redirect_uri=${encodeURIComponent(redirectUri)}`;
         if (identityProvider) {
@@ -96,7 +91,7 @@ export class BrowserAuthClient implements AuthClient {
             setTimeout(resolve, 10000);
         });
         throw new Error('Redirecting to authentication URL timed out');
-    }
+    };
 
     /**
      * Starts the sign out flow by redirecting the user to the sign out page.
@@ -106,7 +101,7 @@ export class BrowserAuthClient implements AuthClient {
      * When to call this:
      * - User clicks the "Sign out" button
      */
-    public async signOut(): Promise<never> {
+    public signOut = async (): Promise<never> => {
         this.setAuthentication(null);
         const redirectUri = window.location.href;
         const signOutUri = `${this.signOutUri}?redirect_uri=${encodeURIComponent(redirectUri)}`;
@@ -115,20 +110,7 @@ export class BrowserAuthClient implements AuthClient {
             setTimeout(resolve, 10000);
         });
         throw new Error('Redirecting to sign out URL timed out');
-    }
-
-    /**
-     * Ensures that the user is signed in. If not, then they will be asked
-     * to sign in. If already signed in, then the current authentication status
-     * is resolved.
-     */
-    public async demandAuthentication(): Promise<Auth> {
-        const auth = this.getAuthentication();
-        if (auth) {
-            return auth;
-        }
-        return this.signIn();
-    }
+    };
 
     /**
      * Returns the current authentication state if the user is authenticated.

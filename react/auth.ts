@@ -1,6 +1,6 @@
 import isEqual from 'immuton/isEqual';
 import { useEffect, useState } from 'react';
-import type { Auth, AuthClient } from '../auth';
+import type { Auth, AuthClient, AuthIdentityProvider } from '../auth';
 import { useClient } from './client';
 
 export function useAuth(): Auth | null {
@@ -29,22 +29,16 @@ export function useUserId(): string | null {
     return userId;
 }
 
-export function useRequireAuth(): () => Promise<Auth> {
+export function useSignIn(): (provider: AuthIdentityProvider) => Promise<Auth> {
     const client = useClient();
     const authClient = validateAuthClient(client.authClient);
-    return () => authClient.demandAuthentication();
-}
-
-export function useSignIn(): () => Promise<Auth> {
-    const client = useClient();
-    const authClient = validateAuthClient(client.authClient);
-    return () => authClient.signIn();
+    return authClient.signIn;
 }
 
 export function useSignOut(): () => Promise<void> {
     const client = useClient();
     const authClient = validateAuthClient(client.authClient);
-    return () => authClient.signOut();
+    return authClient.signOut;
 }
 
 function validateAuthClient(authClient?: AuthClient | null): AuthClient {
