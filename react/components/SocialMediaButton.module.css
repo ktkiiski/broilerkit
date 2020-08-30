@@ -1,0 +1,52 @@
+.button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0px;
+  border-radius: 3px;
+  box-shadow: rgba(0, 0, 0, 0.5) 0px 1px 2px;
+  color: rgb(255, 255, 255);
+  cursor: pointer;
+  font-size: 19px;
+  margin: 5px;
+  width: calc(100% - 10px);
+  overflow: hidden;
+  padding: 0px 12px;
+  user-select: none;
+  height: 42px;
+  transition: background-color linear 150ms;
+}
+.button:hover {
+  outline: none;
+}
+.facebookButton {
+  composes: button;
+  background-color: rgb(59, 89, 152);
+}
+.facebookButton:hover, .facebookButton:active {
+  background-color: rgb(41, 62, 105);
+}
+.googleButton {
+  composes: button;
+  background-color: rgb(203, 63, 34);
+}
+.googleButton:hover, .googleButton:active {
+  background-color: rgb(165, 51, 28);
+}
+.icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+.iconPath {
+  fill: #ffffff;
+}
+.label {
+  text-align: left;
+  font-size: 17px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
