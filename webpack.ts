@@ -428,7 +428,16 @@ function getCommonRules(options: {
                         esModule: true,
                     },
                 },
-                'css-loader',
+                {
+                    loader: 'css-loader',
+                    options: {
+                        modules: {
+                            mode: 'local',
+                            // Auto-generated class names contain the original name on development
+                            localIdentName: debug || devServer ? '[local]--[hash:base64:5]' : '[hash:base64]',
+                        },
+                    },
+                },
             ],
         },
         // Optimize image files and bundle them as files or data URIs
