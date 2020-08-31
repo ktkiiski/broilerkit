@@ -8,9 +8,9 @@ import { URL } from 'url';
 import * as url from 'url';
 import * as webpack from 'webpack';
 import * as WebpackDevServer from 'webpack-dev-server';
-import { generate } from './async';
 import type { BroilerConfig } from './config';
 import { DatabaseTable } from './db';
+import { defer, Deferred } from './deferred';
 import { escapeForShell, execute, spawn } from './exec';
 import { readFile, readStream } from './fs';
 import type { HttpMethod, HttpRequest, HttpResponse, HttpStatus } from './http';
@@ -57,7 +57,7 @@ export async function serve(
         devServer: true,
         analyze: false,
     });
-    const devServerOptions: WebpackDevServer.Configuration = {
+    const devServerOptions = {
         inline: true,
         allowedHosts: [assetsRootUrl.hostname],
         https: assetsEnableHttps,
@@ -95,98 +95,70 @@ export async function serve(
         devServer: true,
         analyze: false,
     });
-    // WebpackDevServer.addDevServerEntrypoints(frontendConfig, devServerOptions);
-    const compiler = webpack([frontendConfig, backendConfig]);
-    const statsIterator = generate<webpack.compilation.MultiStats>(({ next, error, complete }) => {
-        compiler.hooks.done.tap('Broiler', (stats) => {
-            next(stats);
-        });
-        const devServer = new WebpackDevServer(compiler, devServerOptions);
-        const httpDevServer = devServer.listen(assetsServerPort, (err) => {
-            if (err) {
-                error(err);
-            } else {
-                // eslint-disable-next-line no-console
-                console.log(`Serving the local development website at ${underline(`${options.serverRoot}/`)}`);
-            }
-        });
-        httpDevServer.on('close', () => complete());
-        httpDevServer.on('error', (err) => error(err));
-    });
 
-    let server: http.Server | undefined;
-    try {
-        for await (const stats of statsIterator) {
-            // Check for compilation errors
-            if (stats.hasErrors()) {
-                // eslint-disable-next-line no-console
-                console.error(
-                    stats.toString({
-                        chunks: false, // Makes the build much quieter
-                        colors: true, // Shows colors in the console
-                    }),
-                );
-                continue;
-            }
-            // Successful compilation -> start the HTTP server
-            // eslint-disable-next-line no-console
-            console.log(stats.toString('minimal'));
-            const statsJson = stats.stats[1].toJson();
-            // NOTE: Webpack type definition is wrong there! Need to force re-cast!
-            const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
-            // Get compiled server-site rendering view
-            const serverAssetFiles = assetsByChunkName.server;
-            const serverRequestHandlerFileName: string =
-                serverAssetFiles && (serverAssetFiles.find((filename) => /\.js$/.test(filename)) as string);
-            const serverRequestHandlerFilePath = path.resolve(projectRootPath, buildDir, serverRequestHandlerFileName);
-            // Ensure that module will be re-loaded
-            delete require.cache[serverRequestHandlerFilePath];
-            let service: ApiService;
-            let db: Database | null;
-            try {
-                // Load the module exporting the service getter
-                const serverModule = await import(serverRequestHandlerFilePath);
-                const htmlPagePath$ = readFile(htmlPagePath);
-                service = serverModule.getApiService(htmlPagePath$, storageDir);
-                db = serverModule.getDatabase();
-            } catch (error) {
-                // eslint-disable-next-line no-console
-                console.error(red(`Failed to initialize the app: ${error.stack}`));
-                continue;
-            }
-            // Get handler for the API requests (if defined)
-            const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) =>
-                convertNodeRequest(httpRequest, serverOrigin, serverRoot),
+    const server = new LocalServer([frontendConfig, backendConfig], devServerOptions, serverPort, async (stats) => {
+        // Check for compilation errors
+        if (stats.hasErrors()) {
+            throw new Error(
+                stats.toString({
+                    chunks: false, // Makes the build much quieter
+                    colors: true, // Shows colors in the console
+                }),
             );
-            // Set up the server
-            const executeServerRequest = middleware(authenticationMiddleware(service.execute));
-            const storage = new LocalFileStorage(serverOrigin, storageDir);
-            const serverContext: ServerContext = {
-                stackName,
-                db,
-                dbConnectionPool,
-                sessionEncryptionKey,
-                storage,
-                userPoolId: null,
-                region: 'local',
-                authClientId: auth ? 'LOCAL_AUTH_CLIENT_ID' : null,
-                authClientSecret: auth ? 'LOCAL_AUTH_CLIENT_SECRET' : null,
-                authSignInUri: auth ? `${serverRoot}/_oauth2_signin` : null,
-                authSignOutUri: auth ? `${serverRoot}/_oauth2_signout` : null,
-                authTokenUri: null,
-                environment: params,
-            };
-            // Close any previously running server(s)
-            if (server) {
-                server.close();
-            }
-            server = createServer(nodeMiddleware((req) => executeServerRequest(req, serverContext)));
-            await startServer(server, serverPort);
         }
+        // Successful compilation -> start the HTTP server
+        // eslint-disable-next-line no-console
+        console.log(stats.toString('minimal'));
+        const statsJson = stats.stats[1].toJson();
+        // NOTE: Webpack type definition is wrong there! Need to force re-cast!
+        const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
+        // Get compiled server-site rendering view
+        const serverAssetFiles = assetsByChunkName.server;
+        const serverRequestHandlerFileName: string =
+            serverAssetFiles && (serverAssetFiles.find((filename) => /\.js$/.test(filename)) as string);
+        const serverRequestHandlerFilePath = path.resolve(projectRootPath, buildDir, serverRequestHandlerFileName);
+        // Ensure that module will be re-loaded
+        delete require.cache[serverRequestHandlerFilePath];
+        let service: ApiService;
+        let db: Database | null;
+        try {
+            // Load the module exporting the service getter
+            const serverModule = await import(serverRequestHandlerFilePath);
+            const htmlPagePath$ = readFile(htmlPagePath);
+            service = serverModule.getApiService(htmlPagePath$, storageDir);
+            db = serverModule.getDatabase();
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            throw new Error(red(`Failed to initialize the app: ${error.stack}`));
+        }
+        // Get handler for the API requests (if defined)
+        const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) =>
+            convertNodeRequest(httpRequest, serverOrigin, serverRoot),
+        );
+        // Set up the server
+        const executeServerRequest = middleware(authenticationMiddleware(service.execute));
+        const storage = new LocalFileStorage(serverOrigin, storageDir);
+        const serverContext: ServerContext = {
+            stackName,
+            db,
+            dbConnectionPool,
+            sessionEncryptionKey,
+            storage,
+            userPoolId: null,
+            region: 'local',
+            authClientId: auth ? 'LOCAL_AUTH_CLIENT_ID' : null,
+            authClientSecret: auth ? 'LOCAL_AUTH_CLIENT_SECRET' : null,
+            authSignInUri: auth ? `${serverRoot}/_oauth2_signin` : null,
+            authSignOutUri: auth ? `${serverRoot}/_oauth2_signout` : null,
+            authTokenUri: null,
+            environment: params,
+        };
+        return nodeMiddleware((req) => executeServerRequest(req, serverContext));
+    });
+    try {
+        await server.start();
     } finally {
-        if (server) {
-            server.close();
-        }
+        server.close();
     }
 }
 
@@ -198,19 +170,6 @@ interface LocalDatabaseLaunchOptions {
 
 function getDbDockerContainerName(name: string, stage: string) {
     return `${name}_${stage}_postgres`.replace(/-+/g, '_');
-}
-
-function startServer(server: http.Server, serverPort: number) {
-    return new Promise((resolve, reject) => {
-        server.listen(serverPort, () => {
-            resolve();
-        });
-        server.on('error', (err) => {
-            // eslint-disable-next-line no-console
-            console.error(red(`Failed to set up the server: ${err.stack}`));
-            reject(err);
-        });
-    });
 }
 
 export async function launchLocalDatabase({ name, stage, port }: LocalDatabaseLaunchOptions): Promise<void> {
@@ -231,35 +190,114 @@ export async function openLocalDatabasePsql(name: string, stage: string): Promis
     await spawn('docker', ['exec', '-it', '--user=postgres', containerName, 'psql']);
 }
 
-function createServer<P extends unknown[]>(
-    handler: (request: http.IncomingMessage, ...args: P) => Promise<HttpResponse>,
-    ...args: P
-) {
-    return http.createServer(async (httpRequest, httpResponse) => {
-        try {
-            const response = await handler(httpRequest, ...args);
-            const contentTypes = response.headers['Content-Type'];
-            const contentType = Array.isArray(contentTypes) ? contentTypes[0] : contentTypes;
-            const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
-            // eslint-disable-next-line no-nested-ternary
-            const textColor = isHtml ? cyan : httpRequest.method === 'OPTIONS' ? dim : (x: string) => x; // no color
-            // eslint-disable-next-line no-console
-            console.log(
-                textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode),
-            );
-            httpResponse.writeHead(response.statusCode, response.headers);
-            httpResponse.end(response.body);
-        } catch (error) {
-            // eslint-disable-next-line no-console
-            console.error(
-                `${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(error.stack || error)}`,
-            );
-            httpResponse.writeHead(500, {
-                'Content-Type': 'text/plain',
+type ServerHandler = (request: http.IncomingMessage) => Promise<HttpResponse>;
+
+class LocalServer {
+    private compiler: webpack.MultiCompiler;
+
+    private handlerDeferred: Deferred<ServerHandler> = defer();
+
+    private devServer: WebpackDevServer;
+
+    public readonly server: http.Server;
+
+    constructor(
+        private readonly configurations: webpack.Configuration[],
+        private readonly webpackDevServerConfiguration: WebpackDevServer.Configuration & { port: number },
+        private readonly serverPort: number,
+        private readonly buildHandler: (stats: webpack.compilation.MultiStats) => Promise<ServerHandler>,
+    ) {
+        const compiler = webpack(this.configurations);
+        compiler.hooks.watchRun.tap('Broiler', () => {
+            // Pause handling HTTP requests, leaving them pending
+            this.resetHandler();
+        });
+        compiler.hooks.done.tap('Broiler', async (stats) => {
+            try {
+                const handler = await this.buildHandler(stats);
+                this.setHandler(handler);
+            } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error(error.message);
+            }
+        });
+        this.compiler = compiler;
+        this.devServer = new WebpackDevServer(this.compiler, this.webpackDevServerConfiguration);
+        this.server = http.createServer(async (httpRequest, httpResponse) => {
+            try {
+                const handler = await this.handlerDeferred.promise;
+                const response = await handler(httpRequest);
+                const contentTypes = response.headers['Content-Type'];
+                const contentType = Array.isArray(contentTypes) ? contentTypes[0] : contentTypes;
+                const isHtml = contentType && /^text\/html(;|$)/.test(contentType);
+                // eslint-disable-next-line no-nested-ternary
+                const textColor = isHtml ? cyan : httpRequest.method === 'OPTIONS' ? dim : (x: string) => x; // no color
+                // eslint-disable-next-line no-console
+                console.log(
+                    textColor(`${httpRequest.method} ${httpRequest.url} → `) + colorizeStatusCode(response.statusCode),
+                );
+                httpResponse.writeHead(response.statusCode, response.headers);
+                httpResponse.end(response.body);
+            } catch (error) {
+                // eslint-disable-next-line no-console
+                console.error(
+                    `${httpRequest.method} ${httpRequest.url} → ${colorizeStatusCode(500)}\n${red(
+                        error.stack || error,
+                    )}`,
+                );
+                httpResponse.writeHead(500, {
+                    'Content-Type': 'text/plain',
+                });
+                httpResponse.end(`Internal server error:\n${error.stack || error}`);
+            }
+        });
+    }
+
+    public async start(): Promise<void> {
+        const webpackDevServerPort = this.webpackDevServerConfiguration.port;
+        const webpackDevServerLaunch = new Promise<never>((_, reject) => {
+            const server = this.devServer.listen(webpackDevServerPort, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    // eslint-disable-next-line no-console
+                    console.log(
+                        `Serving the local development website at ${underline(
+                            `${this.webpackDevServerConfiguration.public}/`,
+                        )}`,
+                    );
+                }
             });
-            httpResponse.end(`Internal server error:\n${error.stack || error}`);
-        }
-    });
+            server.on('error', (err) => reject(err));
+        });
+        const httpServerPort = this.serverPort;
+        const httpServerLaunch = new Promise<never>((_, reject) => {
+            this.server.listen(httpServerPort, () => {
+                // eslint-disable-next-line no-console
+                console.log(`Serving the local development server at port ${httpServerPort}`);
+            });
+            this.server.on('error', (err) => {
+                // eslint-disable-next-line no-console
+                console.error(red(`Failed to set up the server: ${err.stack}`));
+                reject(err);
+            });
+        });
+        await Promise.all([webpackDevServerLaunch, httpServerLaunch]);
+    }
+
+    public setHandler(handler: ServerHandler) {
+        this.handlerDeferred.resolve(handler);
+    }
+
+    public resetHandler() {
+        const deferred: Deferred<ServerHandler> = defer();
+        this.handlerDeferred.resolve(deferred.promise);
+        this.handlerDeferred = deferred;
+    }
+
+    public async close() {
+        await Promise.all([(async () => this.server.close())(), (async () => this.devServer.close())()]);
+    }
 }
 
 async function convertNodeRequest(
