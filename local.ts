@@ -31,6 +31,10 @@ const rawSessionEncryptionKey = {
 
 export const userTable = new DatabaseTable(users, []);
 
+interface WebpackDevServerConfiguration extends WebpackDevServer.Configuration {
+    port: number;
+}
+
 /**
  * Runs the development server, including the Webpack development server
  * and the backend server.
@@ -57,12 +61,21 @@ export async function serve(
         devServer: true,
         analyze: false,
     });
-    const devServerOptions = {
+    const devServerOptions: WebpackDevServerConfiguration = {
         inline: true,
         allowedHosts: [assetsRootUrl.hostname],
         https: assetsEnableHttps,
         stats: {
+            assets: false,
+            modules: false,
+            chunks: false,
+            children: false,
             colors: true,
+            errors: true,
+            errorDetails: true,
+            warnings: true,
+            version: false,
+            hash: false,
         },
         watchOptions: {
             poll: 1000,
@@ -96,45 +109,34 @@ export async function serve(
         analyze: false,
     });
 
-    const server = new LocalServer([frontendConfig, backendConfig], devServerOptions, serverPort, async (stats) => {
-        // Check for compilation errors
-        if (stats.hasErrors()) {
-            throw new Error(
-                stats.toString({
-                    chunks: false, // Makes the build much quieter
-                    colors: true, // Shows colors in the console
-                }),
-            );
-        }
+    // Get handler for the API requests (if defined)
+    const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) =>
+        convertNodeRequest(httpRequest, serverOrigin, serverRoot),
+    );
+    const buildHandler = async (stats: webpack.compilation.MultiStats) => {
         // Successful compilation -> start the HTTP server
         // eslint-disable-next-line no-console
-        console.log(stats.toString('minimal'));
-        const statsJson = stats.stats[1].toJson();
+        const [, backendStats] = stats.stats;
+        const statsJson = backendStats.toJson();
         // NOTE: Webpack type definition is wrong there! Need to force re-cast!
-        const assetsByChunkName = statsJson.assetsByChunkName as Record<string, string[]>;
+        const assetsByChunkName = statsJson.assetsByChunkName || {};
         // Get compiled server-site rendering view
-        const serverAssetFiles = assetsByChunkName.server;
-        const serverRequestHandlerFileName: string =
-            serverAssetFiles && (serverAssetFiles.find((filename) => /\.js$/.test(filename)) as string);
+        const serverAssetFileOrFiles = assetsByChunkName.server || [];
+        const serverAssetFiles = Array.isArray(serverAssetFileOrFiles)
+            ? serverAssetFileOrFiles
+            : [serverAssetFileOrFiles];
+        const serverRequestHandlerFileName = serverAssetFiles.find((filename) => /\.js$/.test(filename));
+        if (!serverRequestHandlerFileName) {
+            throw new Error('Failed to compile server request handler');
+        }
         const serverRequestHandlerFilePath = path.resolve(projectRootPath, buildDir, serverRequestHandlerFileName);
         // Ensure that module will be re-loaded
         delete require.cache[serverRequestHandlerFilePath];
-        let service: ApiService;
-        let db: Database | null;
-        try {
-            // Load the module exporting the service getter
-            const serverModule = await import(serverRequestHandlerFilePath);
-            const htmlPagePath$ = readFile(htmlPagePath);
-            service = serverModule.getApiService(htmlPagePath$, storageDir);
-            db = serverModule.getDatabase();
-        } catch (error) {
-            // eslint-disable-next-line no-console
-            throw new Error(red(`Failed to initialize the app: ${error.stack}`));
-        }
-        // Get handler for the API requests (if defined)
-        const nodeMiddleware = requestMiddleware(async (httpRequest: http.IncomingMessage) =>
-            convertNodeRequest(httpRequest, serverOrigin, serverRoot),
-        );
+        // Load the module exporting the service getter
+        const serverModule = await import(serverRequestHandlerFilePath);
+        const htmlPagePath$ = readFile(htmlPagePath);
+        const service: ApiService = serverModule.getApiService(htmlPagePath$, storageDir);
+        const db: Database | null = serverModule.getDatabase();
         // Set up the server
         const executeServerRequest = middleware(authenticationMiddleware(service.execute));
         const storage = new LocalFileStorage(serverOrigin, storageDir);
@@ -154,6 +156,13 @@ export async function serve(
             environment: params,
         };
         return nodeMiddleware((req) => executeServerRequest(req, serverContext));
+    };
+    const server = new LocalServer({
+        configurations: [frontendConfig, backendConfig],
+        webpackDevServer: devServerOptions,
+        serverPort,
+        serverRoot,
+        buildHandler,
     });
     try {
         await server.start();
@@ -192,6 +201,14 @@ export async function openLocalDatabasePsql(name: string, stage: string): Promis
 
 type ServerHandler = (request: http.IncomingMessage) => Promise<HttpResponse>;
 
+interface LocalServerOptions {
+    configurations: webpack.Configuration[];
+    webpackDevServer: WebpackDevServerConfiguration;
+    serverPort: number;
+    serverRoot: string;
+    buildHandler: (stats: webpack.compilation.MultiStats) => Promise<ServerHandler>;
+}
+
 class LocalServer {
     private compiler: webpack.MultiCompiler;
 
@@ -201,28 +218,35 @@ class LocalServer {
 
     public readonly server: http.Server;
 
-    constructor(
-        private readonly configurations: webpack.Configuration[],
-        private readonly webpackDevServerConfiguration: WebpackDevServer.Configuration & { port: number },
-        private readonly serverPort: number,
-        private readonly buildHandler: (stats: webpack.compilation.MultiStats) => Promise<ServerHandler>,
-    ) {
-        const compiler = webpack(this.configurations);
+    private serverPort: number;
+
+    private serverRoot: string;
+
+    private assetsPort: number;
+
+    constructor({ configurations, webpackDevServer, serverPort, serverRoot, buildHandler }: LocalServerOptions) {
+        this.serverPort = serverPort;
+        this.serverRoot = serverRoot;
+        this.assetsPort = webpackDevServer.port;
+        const compiler = webpack(configurations);
         compiler.hooks.watchRun.tap('Broiler', () => {
             // Pause handling HTTP requests, leaving them pending
             this.resetHandler();
         });
         compiler.hooks.done.tap('Broiler', async (stats) => {
             try {
-                const handler = await this.buildHandler(stats);
+                const handler = await buildHandler(stats);
                 this.setHandler(handler);
             } catch (error) {
                 // eslint-disable-next-line no-console
-                console.error(error.message);
+                console.error(red(error.stack));
+                this.setHandler(async () => {
+                    throw new Error(`Cannot serve the request due to failed compilation`);
+                });
             }
         });
         this.compiler = compiler;
-        this.devServer = new WebpackDevServer(this.compiler, this.webpackDevServerConfiguration);
+        this.devServer = new WebpackDevServer(this.compiler, webpackDevServer);
         this.server = http.createServer(async (httpRequest, httpResponse) => {
             try {
                 const handler = await this.handlerDeferred.promise;
@@ -254,18 +278,10 @@ class LocalServer {
     }
 
     public async start(): Promise<void> {
-        const webpackDevServerPort = this.webpackDevServerConfiguration.port;
         const webpackDevServerLaunch = new Promise<never>((_, reject) => {
-            const server = this.devServer.listen(webpackDevServerPort, (err) => {
+            const server = this.devServer.listen(this.assetsPort, (err) => {
                 if (err) {
                     reject(err);
-                } else {
-                    // eslint-disable-next-line no-console
-                    console.log(
-                        `Serving the local development website at ${underline(
-                            `${this.webpackDevServerConfiguration.public}/`,
-                        )}`,
-                    );
                 }
             });
             server.on('error', (err) => reject(err));
@@ -274,11 +290,11 @@ class LocalServer {
         const httpServerLaunch = new Promise<never>((_, reject) => {
             this.server.listen(httpServerPort, () => {
                 // eslint-disable-next-line no-console
-                console.log(`Serving the local development server at port ${httpServerPort}`);
+                console.log(`${dim('Your local development website is available at ')}${underline(this.serverRoot)}`);
             });
             this.server.on('error', (err) => {
                 // eslint-disable-next-line no-console
-                console.error(red(`Failed to set up the server: ${err.stack}`));
+                console.error(red(`Failed to set up the server: ${err.stack || err}`));
                 reject(err);
             });
         });
