@@ -13,7 +13,7 @@ import type { Key } from 'immuton/types';
 import { ajax, ajaxJson } from './ajax';
 import { wait } from './async';
 import type { AuthClient, DummyAuthClient } from './auth';
-import type { ResourceAddition, ResourceChange, ResourceRemoval } from './collections';
+import type { ResourceAddition, ResourceChange, ResourceRemoval } from './changes';
 import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
 import { forEachKey, keys } from './objects';
 import type { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
@@ -216,23 +216,23 @@ abstract class BaseClient implements Client {
         optimisticChanges.push(change);
         // TODO: Optimize by avoid triggered non-related listeners
         if (change.type === 'update') {
-            this.triggerResourceByName(change.resourceName);
+            this.triggerResourceByName(change.name);
         }
-        this.triggerCollectionByName(change.resourceName);
+        this.triggerCollectionByName(change.name);
         return () => {
             const index = optimisticChanges.indexOf(change);
             if (index >= 0) {
                 optimisticChanges.splice(index, 1);
             }
             if (change.type === 'update') {
-                this.triggerResourceByName(change.resourceName);
+                this.triggerResourceByName(change.name);
             }
-            this.triggerCollectionByName(change.resourceName);
+            this.triggerCollectionByName(change.name);
         };
     }
 
     public commitChange(change: ResourceChange<any, any>): void {
-        const { resourceName } = change;
+        const { name: resourceName } = change;
         const collectionsByUrl = this.collectionCache[resourceName];
         const resourcesByUrl = this.resourceCache[resourceName];
         const changedResourceUrls: string[] = [];
@@ -530,7 +530,7 @@ abstract class BaseClient implements Client {
         }
         // Apply optimistic changes
         return this.optimisticChanges
-            .filter((change) => change.resourceName === resourceName)
+            .filter((change) => change.name === resourceName)
             .reduce((result, change) => applyChangeToResource(result, change), state);
     }
 
@@ -546,7 +546,7 @@ abstract class BaseClient implements Client {
         }
         // Apply optimistic changes
         return this.optimisticChanges
-            .filter((change) => change.resourceName === resourceName)
+            .filter((change) => change.name === resourceName)
             .reduce((result, change) => applyChangeToCollection(result, change) || result, state);
     }
 
@@ -862,13 +862,13 @@ function addResourcesToCollection<T>(collection: T[], items: T[], resource: Reso
 
 function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChange<any, any>): ResourceState<T> {
     const { resource } = state;
-    if (!resource || change.type === 'removal' || !hasProperties(resource, change.resourceIdentity)) {
+    if (!resource || change.type === 'removal' || !hasProperties(resource, change.identity)) {
         return state;
     }
     const fields = keys(resource);
     return {
         ...state,
-        resource: { ...resource, ...pick(change.resource, fields) },
+        resource: { ...resource, ...pick(change.item, fields) },
     };
 }
 
@@ -884,8 +884,8 @@ function applyChangeToCollection<T>(
     state: CollectionState<T>,
     change: ResourceChange<any, any>,
 ): CollectionState<T> | null {
-    const isChangedResource = (item: any) => hasProperties(item, change.resourceIdentity, 0);
-    const isNotChangedResource = (item: any) => !hasProperties(item, change.resourceIdentity, 0);
+    const isChangedResource = (item: any) => hasProperties(item, change.identity, 0);
+    const isNotChangedResource = (item: any) => !hasProperties(item, change.identity, 0);
     if (change.type === 'removal') {
         // Filter out any matching resource from the collection
         const resources = filter(state.resources, isNotChangedResource);
@@ -893,17 +893,17 @@ function applyChangeToCollection<T>(
     }
     if (change.type === 'addition') {
         // If the item does not match the filters, then do not alter the collection
-        if (!hasProperties(change.resource, state.filters)) {
+        if (!hasProperties(change.item, state.filters)) {
             // Resource does not belong to this collection
             return state;
         }
         // Ensure that the item won't show up from the original collection
         let resources = filter(state.resources, isNotChangedResource);
         // Add a new resource to the corresponding position, according to the ordering
-        const sortedIndex = findOrderedIndex(resources, change.resource, state.ordering, state.direction);
+        const sortedIndex = findOrderedIndex(resources, change.item, state.ordering, state.direction);
         // If added at the end of the collection, then add only if complete or loading
         if (sortedIndex < resources.length || state.isComplete || state.isLoading) {
-            resources = splice(resources, sortedIndex, 0, change.resource);
+            resources = splice(resources, sortedIndex, 0, change.item);
             return set(state, 'resources', resources);
         }
     } else if (change.type === 'update') {
@@ -911,7 +911,7 @@ function applyChangeToCollection<T>(
         const { filters } = state;
         const resources = mapFilter(state.resources, (resource) => {
             if (isChangedResource(resource)) {
-                const updatedState = { ...resource, ...change.resource };
+                const updatedState = { ...resource, ...change.item };
                 if (hasProperties(updatedState, filters)) {
                     return updatedState;
                 }
@@ -929,7 +929,7 @@ function applyChangeToCollection<T>(
         // and the update indicates that the resource would start matching
         // the filters, then we need to reload the collection.
         const filterKeys = Object.keys(filters);
-        const update = change.resource;
+        const update = change.item;
         const hasMatchingFilterProp = filterKeys.some(
             (key) => typeof update[key] !== 'undefined' && isEqual(update[key], filters[key as keyof T]),
         );
@@ -995,26 +995,26 @@ function convertEffectToResourceChanges(
             if (!available) {
                 results.push({
                     type: 'removal',
-                    resourceIdentity,
-                    resourceName,
+                    identity: resourceIdentity,
+                    name: resourceName,
                 });
             } else {
                 try {
                     // Try to add the full resource
                     results.push({
                         type: 'addition',
-                        resourceIdentity,
-                        resourceName,
-                        resource: resource.decode(encodedResource),
+                        identity: resourceIdentity,
+                        name: resourceName,
+                        item: resource.decode(encodedResource),
                     });
                 } catch {
                     // Not full attributes. Assume an update
                     const updatedAttrs = resource.omit(resource.identifyBy).fullPartial().decode(encodedResource);
                     results.push({
                         type: 'update',
-                        resourceName,
-                        resourceIdentity,
-                        resource: updatedAttrs,
+                        name: resourceName,
+                        identity: resourceIdentity,
+                        item: updatedAttrs,
                     });
                 }
             }
@@ -1059,8 +1059,8 @@ function convertEffectToResourceChanges(
             if (!available) {
                 results.push({
                     type: 'removal',
-                    resourceIdentity,
-                    resourceName,
+                    identity: resourceIdentity,
+                    name: resourceName,
                 });
                 continue;
             }
@@ -1074,16 +1074,16 @@ function convertEffectToResourceChanges(
             if (attributes) {
                 results.push({
                     type: 'update',
-                    resourceIdentity,
-                    resourceName,
-                    resource: attributes,
+                    identity: resourceIdentity,
+                    name: resourceName,
+                    item: attributes,
                 });
             }
         }
     }
     // If there are any changes to properties that are used for nested resources,
     // then the resource needs to be reloaded
-    if (results.some((result) => result.type === 'update' && hasRelationReferenceChanges(result.resource, resource))) {
+    if (results.some((result) => result.type === 'update' && hasRelationReferenceChanges(result.item, resource))) {
         return null; // Means reload!
     }
     return results;

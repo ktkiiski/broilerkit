@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import pick from 'immuton/pick';
 import type { Key } from 'immuton/types';
+import type { ResourceAddition, ResourceRemoval, ResourceUpdate } from './changes';
 import type { Client } from './client';
-import type { ResourceAddition, ResourceRemoval, ResourceUpdate } from './collections';
 import { ValidationError } from './errors';
 import type { HttpMethod } from './http';
 import type {
@@ -53,13 +53,13 @@ export class CreateApi<
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
         const item = await this.request(method, url, payload);
-        const resourceIdentity = pick(item, resource.identifyBy);
+        const identity = pick(item, resource.identifyBy);
         const resourceName = resource.name;
         this.client.commitChange({
             type: 'addition',
-            resourceName,
-            resource: item,
-            resourceIdentity,
+            name: resourceName,
+            item,
+            identity,
         });
         return item;
     }
@@ -73,22 +73,22 @@ export class CreateApi<
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
         const resource$ = this.request(method, url, payload);
-        const resourceIdentity = pick(input as any, resource.identifyBy);
+        const identity = pick(input as any, resource.identifyBy);
         const resourceName = resource.name;
         const addition: ResourceAddition<S, any> = {
             type: 'addition',
-            resource: input,
-            resourceName,
-            resourceIdentity,
+            item: input,
+            name: resourceName,
+            identity,
         };
         const unregisterOptimisticAddition = client.registerOptimisticChange(addition);
         try {
             const responseResource = await resource$;
             client.commitChange({
                 type: 'addition',
-                resource: responseResource,
-                resourceName,
-                resourceIdentity,
+                item: responseResource,
+                name: resourceName,
+                identity,
             });
             return responseResource;
         } finally {
@@ -147,13 +147,13 @@ export class UpdateApi<
         const url = operation.route.compile(input);
         const payload = payloadSerializer.serialize(input);
         const idAttributes = resource.identifyBy as (keyof any)[];
-        const resourceIdentity = pick(input, idAttributes);
+        const identity = pick(input, idAttributes);
         const resourceName = resource.name;
         const update: ResourceUpdate<S, U> = {
             type: 'update',
-            resourceName,
-            resource: input,
-            resourceIdentity,
+            name: resourceName,
+            item: input,
+            identity,
         };
         const request = this.request(method, url, payload);
         const unregisterOptimisticUpdate = client.registerOptimisticChange(update);
@@ -161,9 +161,9 @@ export class UpdateApi<
             const responseResource = await request;
             client.commitChange({
                 type: 'update',
-                resourceName,
-                resource: responseResource,
-                resourceIdentity,
+                name: resourceName,
+                item: responseResource,
+                identity,
             });
             return responseResource;
         } finally {
@@ -180,12 +180,12 @@ export class DestroyApi<S, U extends Key<S>, B extends U | undefined> extends Ba
         const url = operation.route.compile(query);
         const idAttributes = resource.identifyBy as U[];
         // TODO: Is this necessary? Use `query` instead?
-        const resourceIdentity = pick(query, idAttributes) as Pick<S, U>;
+        const identity = pick(query, idAttributes) as Pick<S, U>;
         const resourceName = resource.name;
         const removal: ResourceRemoval<S, U> = {
             type: 'removal',
-            resourceName,
-            resourceIdentity,
+            name: resourceName,
+            identity,
         };
         const request = this.request(method, url);
         const unregisterOptimisticRemoval = client.registerOptimisticChange(removal);
@@ -234,13 +234,13 @@ export class UploadApi<
             formData.set(key, file);
         });
         const item = await this.request(method, url, formData);
-        const resourceIdentity = pick(item, resource.identifyBy);
+        const identity = pick(item, resource.identifyBy);
         const resourceName = resource.name;
         this.client.commitChange({
             type: 'addition',
-            resourceName,
-            resource: item,
-            resourceIdentity,
+            name: resourceName,
+            item,
+            identity,
         });
         return item;
     }
