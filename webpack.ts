@@ -55,7 +55,7 @@ export function getFrontendWebpackConfig(config: WebpackConfigOptions): webpack.
     const gitBranch = executeSync('git rev-parse --abbrev-ref HEAD');
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
-        ...getCommonPlugins({ devServer, assetsFilePrefix, tsConfigPath, sourceDirPath }),
+        ...getCommonPlugins({ frontend: true, devServer, assetsFilePrefix, tsConfigPath, sourceDirPath }),
         // Create HTML plugins for each webpage
         new HtmlWebpackPlugin({
             title,
@@ -237,7 +237,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
     // Generate the plugins
     const plugins: webpack.Plugin[] = [
         // Perform type checking for TypeScript
-        ...getCommonPlugins({ devServer, assetsFilePrefix, tsConfigPath, sourceDirPath, compilerOptions }),
+        ...getCommonPlugins({
+            frontend: false,
+            devServer,
+            assetsFilePrefix,
+            tsConfigPath,
+            sourceDirPath,
+            compilerOptions,
+        }),
         /**
          * Prevent `pg` module to import `pg-native` binding library.
          */
@@ -353,13 +360,14 @@ export function getBackendWebpackConfig(config: WebpackConfigOptions): webpack.C
 }
 
 function getCommonPlugins(options: {
+    frontend: boolean;
     devServer: boolean;
     assetsFilePrefix: string;
     tsConfigPath: string;
     sourceDirPath: string;
     compilerOptions?: unknown;
 }): webpack.Plugin[] {
-    const { devServer, assetsFilePrefix, tsConfigPath, sourceDirPath, compilerOptions } = options;
+    const { frontend, devServer, assetsFilePrefix, tsConfigPath, sourceDirPath, compilerOptions } = options;
     const cssFilePrefix = `${assetsFilePrefix}css/`;
     return [
         // https://github.com/faceyspacey/extract-css-chunks-webpack-plugin
@@ -376,9 +384,13 @@ function getCommonPlugins(options: {
                     compilerOptions,
                 },
             },
-            eslint: {
-                files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
-            },
+            // When running the dev server, the backend compilation will handle ESlinting
+            eslint:
+                frontend && devServer
+                    ? undefined
+                    : {
+                          files: path.join(sourceDirPath, '**', '*.{ts,tsx,js,jsx}'),
+                      },
         }),
         // Prevent all the MomentJS locales to be imported by default.
         new webpack.ContextReplacementPlugin(
