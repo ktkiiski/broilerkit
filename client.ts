@@ -631,7 +631,7 @@ abstract class BaseClient implements Client {
             // Start actual loading
             const token = await this.getToken(op.authType);
             const response = await this.request(url, 'GET', null, token);
-            const resource = op.responseSerializer.deserialize(response.data);
+            const resource = op.responseSerializer.deserialize(response.data?.data);
             state = { ...state, error: null, isLoaded: true, resource };
             this.setResourceState(resourceName, resourceUrl, state);
         } catch (error) {
@@ -692,7 +692,7 @@ abstract class BaseClient implements Client {
                 }
                 const token = await this.getToken(op.authType);
                 const response = await this.request(nextUrl, 'GET', null, token);
-                const { next, results } = op.responseSerializer.deserialize(response.data);
+                const { next, results } = op.responseSerializer.deserialize(response.data?.data);
                 // Add loaded results to the resources
                 loadedResources = addResourcesToCollection(loadedResources, results, resource);
                 state = {

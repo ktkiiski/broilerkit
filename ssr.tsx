@@ -242,8 +242,9 @@ async function executeRenderRequest<T>(
     });
     // Only API responses are supported on the server-side
     if ('data' in response) {
-        if (response.statusCode === HttpStatus.OK && 'data' in response && response.data) {
-            return [serializer.deserialize(response.data), null];
+        const responseData = response.data?.data;
+        if (response.statusCode === HttpStatus.OK && responseData != null) {
+            return [serializer.deserialize(responseData), null];
         }
         if (response.statusCode >= 400) {
             return [null, response];

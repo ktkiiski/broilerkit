@@ -28,7 +28,7 @@ abstract class BaseApi<O extends Operation<any, any, any, OperationType>> {
         const token = await this.getToken();
         const response = await this.client.request(url, method, payload, token);
         const { responseSerializer } = this.operation;
-        return responseSerializer ? responseSerializer.deserialize(response.data) : undefined;
+        return responseSerializer ? responseSerializer.deserialize(response.data?.data) : undefined;
     }
 
     private async getToken(): Promise<string | null> {

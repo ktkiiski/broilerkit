@@ -151,13 +151,20 @@ class ImplementedOperation implements Controller {
         authorize(operation, auth, input);
         // Handle the request
         const { data, ...response } = await executeHandler(this.handler, input, context, request);
-        if (!responseSerializer) {
-            // No response data should be available
-            return response;
-        }
+        // Wrap to the envelope
+        const responseData = !responseSerializer
+            ? {}
+            : {
+                  // Reponse data
+                  data: responseSerializer.serialize(data),
+                  // TODO: Add side effects here
+              };
         // Serialize the response data
         // TODO: Validation errors should result in 500 responses!
-        return { ...response, data: responseSerializer.serialize(data) };
+        return {
+            ...response,
+            data: responseData,
+        };
     }
 }
 
