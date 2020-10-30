@@ -14,14 +14,14 @@ import { ajax, ajaxJson } from './ajax';
 import { wait } from './async';
 import type { AuthClient, DummyAuthClient } from './auth';
 import type { ResourceAddition, ResourceChange, ResourceRemoval } from './changes';
+import type { StateEffect } from './effects';
 import { ApiResponse, HttpMethod, HttpStatus, isErrorResponse, isResponse, NotImplemented } from './http';
 import { forEachKey, keys } from './objects';
 import type { AuthenticationType, ListOperation, RetrieveOperation } from './operations';
 import type { Cursor } from './pagination';
 import type { Resource } from './resources';
-import { stripPrefix } from './strings';
 import { UploadForm, uploadSerializer } from './uploads';
-import { parseUrl, Url } from './url';
+import type { Url } from './url';
 
 export interface Retrieval<S = any, U extends Key<S> = any> {
     operation: RetrieveOperation<S, U, any, any>;
@@ -97,12 +97,6 @@ interface ResourceListener {
     op: RetrieveOperation<any, any, any, any>;
     resource: Resource<any, any, any>;
     callback: (resource: ResourceState) => void;
-}
-
-interface StateEffect {
-    resourceName: string;
-    encodedResource: { [attr: string]: string };
-    available: boolean;
 }
 
 const doNothing = () => {
@@ -755,19 +749,8 @@ export class BrowserClient extends BaseClient implements Client {
             }
             throw error;
         }
-        const stateHeader = response.headers['Resource-State'];
-        const effects: StateEffect[] = [];
-        for (const header of Array.isArray(stateHeader) ? stateHeader : (stateHeader && [stateHeader]) || []) {
-            for (const state of header.split(/,\s+/g)) {
-                const removal = stripPrefix(state, '!');
-                const parsedHeader = parseUrl(removal || state);
-                effects.push({
-                    available: !removal,
-                    resourceName: parsedHeader.path,
-                    encodedResource: parsedHeader.queryParams,
-                });
-            }
-        }
+        const changes = response.data?.changes;
+        const effects: StateEffect[] = Array.isArray(changes) ? changes : [];
         this.applyStateEffects(effects);
         return response;
     }
@@ -986,12 +969,12 @@ function convertEffectToResourceChanges(
     resource: Resource<any, any, any>,
 ): ResourceChange<any, any>[] | null {
     const resourceName = resource.name;
-    const { encodedResource, available } = effect;
+    const { item: serializedItem, exists: available } = effect;
     const results: ResourceChange<any, any>[] = [];
     // Try to apply the effect to the non-joined resource
-    if (effect.resourceName === resourceName) {
+    if (effect.name === resourceName) {
         try {
-            const resourceIdentity = resource.identifier.decode(encodedResource);
+            const resourceIdentity = resource.identifier.deserialize(serializedItem);
             if (!available) {
                 results.push({
                     type: 'removal',
@@ -1005,11 +988,11 @@ function convertEffectToResourceChanges(
                         type: 'addition',
                         identity: resourceIdentity,
                         name: resourceName,
-                        item: resource.decode(encodedResource),
+                        item: resource.deserialize(serializedItem),
                     });
                 } catch {
                     // Not full attributes. Assume an update
-                    const updatedAttrs = resource.omit(resource.identifyBy).fullPartial().decode(encodedResource);
+                    const updatedAttrs = resource.omit(resource.identifyBy).fullPartial().deserialize(serializedItem);
                     results.push({
                         type: 'update',
                         name: resourceName,
@@ -1020,7 +1003,7 @@ function convertEffectToResourceChanges(
             }
         } catch (error) {
             // eslint-disable-next-line no-console
-            console.warn(`Failed to decode resource "${resourceName}" state for a side-effect`, error);
+            console.warn(`Failed to deserialize resource "${resourceName}" state for a side-effect`, error);
         }
     }
     // Try to apply the effect to joined resources
@@ -1035,10 +1018,10 @@ function convertEffectToResourceChanges(
                     optional: difference(joinResourceKeys, join.resource.identifyBy),
                     defaults: {},
                 });
-                joinResourceProperties = joinResourceSerializer.decode(encodedResource);
+                joinResourceProperties = joinResourceSerializer.deserialize(serializedItem);
             } catch {
                 // eslint-disable-next-line no-console
-                console.warn(`Failed to decode resource "${resourceName}" joined state for a side-effect`);
+                console.warn(`Failed to deserialize resource "${resourceName}" joined state for a side-effect`);
                 continue;
             }
             const resourceIdentity: any = {};

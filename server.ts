@@ -6,7 +6,7 @@ import type { ExcludedKeys, FilteredKeys } from 'immuton/types';
 import type { JWK } from 'node-jose';
 import type { Pool } from 'pg';
 import { list, retrieve } from './db';
-import { getEffectHeaders, ResourceEffect } from './effects';
+import { ResourceEffect, getStateEffects } from './effects';
 import { executeHandler, Handler, HandlerContext, HandlerServerContext } from './handlers';
 import {
     HttpMethod,
@@ -14,7 +14,6 @@ import {
     HttpStatus,
     isResponse,
     MethodNotAllowed,
-    NoContent,
     NotFound,
     NotImplemented,
     SuccesfulResponse,
@@ -199,10 +198,10 @@ function implement<I, O, R>(operation: Operation<I, O, R>, implementation: Handl
         case 'destroy':
             return new ImplementedOperation(
                 operation,
-                async (input: I, request): Promise<NoContent> => {
+                async (input: I, request): Promise<OK<null>> => {
                     // TODO: Avoid force-typecasting of request!
                     await implementation(input, (request as unknown) as R & HandlerContext);
-                    return new NoContent();
+                    return new OK(null);
                 },
             );
         default:
@@ -279,7 +278,7 @@ export class ApiService {
             try {
                 // Return response directly returned by the implementation
                 const response = await implementation.execute(request, requestContext);
-                return applyEffectHeaders(response, request.auth, effects, operations);
+                return applyResponseEffects(response, request.auth, effects, operations);
             } catch (error) {
                 // Thrown 405 or 501 response errors will have a special meaning
                 if (isResponse(error)) {
@@ -296,7 +295,7 @@ export class ApiService {
                         continue;
                     } else {
                         // Raise through but with side-effect headers
-                        throw applyEffectHeaders(error, request.auth, effects, operations);
+                        throw applyResponseEffects(error, request.auth, effects, operations);
                     }
                 }
                 // Raise through
@@ -349,17 +348,21 @@ function parseRequest<I>(operation: Operation<I, any, any>, request: HttpRequest
     return { ...urlParameters, ...payload };
 }
 
-function applyEffectHeaders<R extends HttpResponse | ApiResponse>(
-    response: R,
+function applyResponseEffects(
+    response: HttpResponse | ApiResponse,
     auth: UserSession | null,
     effects: ResourceEffect[],
     operations: Operation<any, any, any>[],
-): R {
+): HttpResponse | ApiResponse {
+    if (!('data' in response)) {
+        return response;
+    }
+    const changes = getStateEffects(effects, operations, auth);
     return {
         ...response,
-        headers: {
-            ...response.headers,
-            'Resource-State': getEffectHeaders(effects, operations, auth),
+        data: {
+            changes,
+            ...response.data,
         },
     };
 }

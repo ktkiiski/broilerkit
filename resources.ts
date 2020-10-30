@@ -6,6 +6,7 @@ import type { FilteredKeys, Key } from 'immuton/types';
 import union from 'immuton/union';
 import { Field, nullable } from './fields';
 import { Fields, FieldSerializer, nested, Serializer } from './serializers';
+import { buildQuery } from './url';
 
 type JoinCondition = string | { value: any };
 
@@ -24,7 +25,7 @@ interface LeftJoin extends BaseJoin {
     defaults: { [key: string]: any };
 }
 
-type Join = InnerJoin | LeftJoin;
+export type Join = InnerJoin | LeftJoin;
 
 interface Nesting<R = any, PK extends Key<R> = any, T = any> {
     resource: Resource<R, PK, any>;
@@ -72,6 +73,8 @@ export interface Resource<T, PK extends Key<T>, W extends Key<T>> extends FieldS
         resource: Resource<S2, PK2 & Key<S2>, any>,
         on: { [P in PK2 & Key<S2>]: string & FilteredKeys<T, S2[P]> },
     ): Resource<T & Record<K, S2 | null>, PK, W>;
+
+    getUniqueId(item: Pick<T, PK>): string;
 }
 
 type PrimaryKey<R> = R extends Resource<any, infer PK, any> ? PK : never;
@@ -176,6 +179,11 @@ class FieldResource<T, PK extends Key<T>, W extends Key<T>> extends FieldSeriali
             nestings,
             this.joins,
         );
+    }
+
+    public getUniqueId(item: Pick<T, PK>): string {
+        const identity = this.identifier.encode(item);
+        return `${this.name}?${buildQuery(identity)}`;
     }
 }
 

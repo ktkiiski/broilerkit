@@ -213,6 +213,50 @@ export function initiate<S, PK extends Key<S>, W extends Key<S>>(
 }
 
 /**
+ * Returns a database operation that inserts an item with the given ID
+ * to the database table if it does not exist yet. If it already exists,
+ * then returns the existing record without failing.
+ *
+ * The given item must contain all resource attributes, including
+ * the identifying attributes and the version attribute.
+ */
+export function ensure<S, PK extends Key<S>, W extends Key<S>>(
+    resource: Resource<S, PK, W>,
+    item: Pick<S, W | PK>,
+): SqlOperation<S> {
+    const identity = resource.identifier.validate(item);
+    const insertedValues = {
+        ...resource.writer.validate(item),
+        ...identity,
+    } as Pick<S, W | PK>;
+    return async (connection, db) => {
+        const query1 = selectQuery(resource, db.defaultsByTable, identity, 1);
+        const result = await connection.transaction(async () => {
+            const [existingItem] = await executeQuery(connection, query1);
+            // Row already exists
+            if (existingItem) {
+                return existingItem;
+            }
+            // Row does not exist. Create a new one
+            const query2 = insertQuery(resource, db.defaultsByTable, insertedValues);
+            const insertion = await executeQuery(connection, query2);
+            if (!insertion) {
+                // Row already exists after all? This means a conflict.
+                // Rollback and retry the transaction
+                throw new Conflict(`Insert conflict on upsert`);
+            }
+            // Register the insertion
+            addEffect(connection, resource, insertion, null);
+            // Update aggregations
+            const insertAggregationQueries = db.getAggregationQueries(resource, insertion, null);
+            await executeAll(connection, db, insertAggregationQueries);
+            return insertion;
+        });
+        return result;
+    };
+}
+
+/**
  * Returns a database operation that replaces an existing item in the
  * database table, identified by the given identity object. The given
  * item object must contain all model attributes, including the identifying
