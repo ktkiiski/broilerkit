@@ -42,6 +42,27 @@ export function addEffect<T, PK extends Key<T>>(
     context.effects.push({ resource, identity, newState, oldState });
 }
 
+function compressEffects(inputEffects: ResourceEffect[]): ResourceEffect[] {
+    return inputEffects.reduce<ResourceEffect[]>((effects, effect) => {
+        // Is there already an effect for this item?
+        const { name } = effect.resource;
+        const index = effects.findIndex(
+            (other) => other.resource.name === name && isEqual(other.identity, effect.identity),
+        );
+        if (index < 0) {
+            effects.push(effect);
+        } else {
+            // Merge with existing state
+            const other = effects[index];
+            effects.splice(index, 1, {
+                ...other,
+                newState: effect.newState,
+            });
+        }
+        return effects;
+    }, []);
+}
+
 export function getStateEffects(
     effects: ResourceEffect[],
     operations: Operation<any, any, any>[],
@@ -49,7 +70,7 @@ export function getStateEffects(
 ): StateEffect[] {
     const states: Map<string, { item: Properties; resource: Resource<any, any, any> }> = new Map();
     const removals: Map<string, { item: Properties; resource: Resource<any, any, any> }> = new Map();
-    for (const effect of effects) {
+    for (const effect of compressEffects(effects)) {
         const { newState, oldState } = effect;
         if (newState && isEqual(newState, oldState)) {
             // No actual changes -> skip

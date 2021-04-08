@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import pick from 'immuton/pick';
 import type { Key } from 'immuton/types';
-import type { ResourceAddition, ResourceRemoval, ResourceUpdate } from './changes';
+import { makeAdditionChange, makeUpdateChange, makeDeletionChange } from './changes';
 import type { Client } from './client';
 import { ValidationError } from './errors';
 import type { HttpMethod } from './http';
@@ -52,15 +51,9 @@ export class CreateApi<
         const { resource } = this.operation.endpoint;
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
-        const item = await this.request(method, url, payload);
-        const identity = pick(item, resource.identifyBy);
-        const resourceName = resource.name;
-        this.client.commitChange({
-            type: 'addition',
-            name: resourceName,
-            item,
-            identity,
-        });
+        const item: S = await this.request(method, url, payload);
+        const change = makeAdditionChange(resource, item);
+        this.client.commitChange(change);
         return item;
     }
 
@@ -73,24 +66,13 @@ export class CreateApi<
         const url = route.compile(input);
         const payload = payloadSerializer.serialize(input);
         const resource$ = this.request(method, url, payload);
-        const identity = pick(input as any, resource.identifyBy);
-        const resourceName = resource.name;
-        const addition: ResourceAddition<S, any> = {
-            type: 'addition',
-            item: input,
-            name: resourceName,
-            identity,
-        };
+        const addition = makeAdditionChange(resource, input);
         const unregisterOptimisticAddition = client.registerOptimisticChange(addition);
         try {
-            const responseResource = await resource$;
-            client.commitChange({
-                type: 'addition',
-                item: responseResource,
-                name: resourceName,
-                identity,
-            });
-            return responseResource;
+            const item = await resource$;
+            const change = makeAdditionChange(resource, item);
+            client.commitChange(change);
+            return item;
         } finally {
             unregisterOptimisticAddition();
         }
@@ -146,28 +128,18 @@ export class UpdateApi<
         const payloadSerializer = method === 'PATCH' ? operation.updateSerializer : operation.replaceSerializer;
         const url = operation.route.compile(input);
         const payload = payloadSerializer.serialize(input);
-        const idAttributes = resource.identifyBy as (keyof any)[];
-        const identity = pick(input, idAttributes);
-        const resourceName = resource.name;
-        const update: ResourceUpdate<S, U> = {
-            type: 'update',
-            name: resourceName,
-            item: input,
-            identity,
-        };
+        const update = makeUpdateChange(resource, input);
         const request = this.request(method, url, payload);
-        const unregisterOptimisticUpdate = client.registerOptimisticChange(update);
+        const unregisterOptimisticUpdate = update && client.registerOptimisticChange(update);
         try {
             const responseResource = await request;
-            client.commitChange({
-                type: 'update',
-                name: resourceName,
-                item: responseResource,
-                identity,
-            });
+            const finalUpdate = makeUpdateChange(resource, responseResource);
+            if (finalUpdate) {
+                client.commitChange(finalUpdate);
+            }
             return responseResource;
         } finally {
-            unregisterOptimisticUpdate();
+            unregisterOptimisticUpdate?.();
         }
     }
 }
@@ -178,15 +150,7 @@ export class DestroyApi<S, U extends Key<S>, B extends U | undefined> extends Ba
         const { resource } = operation.endpoint;
         const method = 'DELETE';
         const url = operation.route.compile(query);
-        const idAttributes = resource.identifyBy as U[];
-        // TODO: Is this necessary? Use `query` instead?
-        const identity = pick(query, idAttributes) as Pick<S, U>;
-        const resourceName = resource.name;
-        const removal: ResourceRemoval<S, U> = {
-            type: 'removal',
-            name: resourceName,
-            identity,
-        };
+        const removal = makeDeletionChange(resource, query);
         const request = this.request(method, url);
         const unregisterOptimisticRemoval = client.registerOptimisticChange(removal);
         try {
@@ -234,14 +198,8 @@ export class UploadApi<
             formData.set(key, file);
         });
         const item = await this.request(method, url, formData);
-        const identity = pick(item, resource.identifyBy);
-        const resourceName = resource.name;
-        this.client.commitChange({
-            type: 'addition',
-            name: resourceName,
-            item,
-            identity,
-        });
+        const addition = makeAdditionChange(resource, item);
+        this.client.commitChange(addition);
         return item;
     }
 
