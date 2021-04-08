@@ -72,7 +72,7 @@
     "fork-ts-checker-webpack-plugin": "^5.1.0",
     "html-webpack-plugin": "^4.4.1",
     "image-webpack-loader": "^6.0.0",
-    "immuton": "^1.1.1",
+    "immuton": "^1.2.0",
     "jsonwebtoken": "^8.5.1",
     "jszip": "^3.5.0",
     "mime": "^2.4.6",
