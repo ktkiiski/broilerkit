@@ -78,7 +78,8 @@ export function list<S>(resource: Resource<S, any, any>, query: Query<S>): SqlOp
             if (cursor) {
                 return {
                     results: cursor.results,
-                    next: { ...query, since: cursor.since as any },
+                    // TODO: Fix typing and remove casting as any
+                    next: { ...query, since: cursor.since as any } as any,
                 };
             }
         }

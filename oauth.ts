@@ -1,7 +1,6 @@
 /* eslint-disable camelcase */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import base64url from 'base64url';
-import * as jwt from 'jsonwebtoken';
 import {
     ApiResponse,
     BadRequest,
@@ -12,6 +11,7 @@ import {
     NotImplemented,
     parseCookies,
 } from './http';
+import { parseJwt } from './jwt';
 import { request } from './request';
 import type { Controller, ServerContext } from './server';
 import { decryptSession, encryptSession, UserSession } from './sessions';
@@ -386,7 +386,7 @@ async function requestTokens(
 }
 
 function parseUserSession(tokens: TokenResponse, sessionId: string, expiresIn: number): UserSession {
-    const idTokenPayload = jwt.decode(tokens.id_token);
+    const idTokenPayload = parseJwt(tokens.id_token);
     if (!idTokenPayload || typeof idTokenPayload !== 'object') {
         throw new Error('AWS token endpoint responded with invalid ID token');
     }

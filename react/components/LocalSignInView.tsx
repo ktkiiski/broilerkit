@@ -1,9 +1,9 @@
 /* eslint-disable no-underscore-dangle */
-import { sign } from 'jsonwebtoken';
 import * as React from 'react';
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as api from '../../auth-local-api';
+import { signJwt } from '../../jwt';
 import { randomize } from '../../strings';
 import { buildQuery, parseQuery } from '../../url';
 import type { User } from '../../users';
@@ -48,7 +48,7 @@ function LocalSignInView(): JSX.Element {
             idTokenPayload.picture = user.picture;
         }
         // Create the JWT token
-        const idToken = sign(idTokenPayload, 'LOCAL_SECRET');
+        const idToken = signJwt(idTokenPayload, 'LOCAL_SECRET');
         const code = buildQuery({ id_token: idToken });
         const redirectQuery = buildQuery({ code, state: query.state });
         window.location.href = `${query.redirect_uri}?${redirectQuery}`;
