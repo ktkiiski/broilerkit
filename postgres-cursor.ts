@@ -24,7 +24,7 @@ export async function* scanCursor<S>(
             }
         }
     } finally {
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
             cursor.close((error: any) => {
                 if (error) {
                     reject(error);

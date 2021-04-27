@@ -184,7 +184,7 @@ export async function* generate<T>(
     const pendingTokens: Token[] = [];
     let nextResolve!: (value: Token) => void;
     let nextReject!: (error: unknown) => void;
-    let nextPromise!: Promise<unknown>;
+    let nextPromise!: Promise<void>;
     function iterateNext() {
         nextPromise = new Promise((resolve, reject) => {
             nextResolve = (token: Token) => {

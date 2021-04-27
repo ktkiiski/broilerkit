@@ -66,7 +66,7 @@ export function list<S>(resource: Resource<S, any, any>, query: Query<S>): SqlOp
     const results: S[] = [];
     const { ordering, direction, since, ...filters } = query;
     const chunkSize = 100;
-    return async (connection, db) => {
+    return async (connection, db): Promise<PageResponse<S>> => {
         const qr = selectQuery(resource, db.defaultsByTable, filters, undefined, ordering, direction, since);
         for await (const chunk of connection.scan(chunkSize, qr.sql, qr.params)) {
             const items = qr.deserialize(chunk);
