@@ -1,8 +1,10 @@
 import hasOwnProperty from 'immuton/hasOwnProperty';
 import objectDifference from 'immuton/objectDifference';
-import type { Key } from 'immuton/types';
+import propertyless from 'immuton/propertyless';
+import type { Key, Require } from 'immuton/types';
 import { ValidationError } from './errors';
 import type { Resource } from './resources';
+import type { Serialization } from './serializers';
 
 interface ResourceChangeBase<T, K extends keyof T> {
     name: string;
@@ -78,6 +80,19 @@ export function getNewState<T, PK extends keyof T>(change: ResourceChange<T, PK>
         return { ...change.identity, ...change.oldProperties, ...change.updates } as T;
     }
     return { ...change.identity, ...change.properties } as T;
+}
+
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceUpdate<T, PK>): Require<T, PK>;
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceRemoval<T, PK>): null;
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceDeletion<T, PK>): null;
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceReplace<T, PK>): T;
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceAddition<T, PK>): T;
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceChange<T, PK>): Require<T, PK> | null;
+export function getChangeProperties<T, PK extends keyof T>(change: ResourceChange<T, PK>): Require<T, PK> | null {
+    if (change.type === 'update') {
+        return { ...change.identity, ...change.updates } as Require<T, PK>;
+    }
+    return getNewState(change) as Require<T, PK> | null;
 }
 
 export function getChangeDelta<T, PK extends keyof T>(change: ResourceRemoval<T, PK> | ResourceDeletion<T, PK>): null;
@@ -158,11 +173,13 @@ export function makeReplaceChange<T, PK extends Key<T>, W extends Key<T>>(
 
 export function makeUpdateChange<T, PK extends Key<T>, W extends Key<T>>(
     resource: Resource<T, PK, W>,
-    item: Pick<T, PK> & Partial<Omit<T, PK>>,
+    item: Require<T, PK>,
+    oldItem: Partial<T> = propertyless,
 ): ResourceUpdate<T, PK> | null {
     const { name, identifier, identifyBy } = resource;
     const updateSerializer = resource.omit(identifyBy).fullPartial();
-    const updates = updateSerializer.validate(item);
+    const properties = updateSerializer.validate(item);
+    const updates = objectDifference(oldItem, properties, Number.POSITIVE_INFINITY) as Partial<Omit<T, PK>>;
     if (!Object.keys(updates).length) {
         return null;
     }
@@ -191,8 +208,8 @@ export function determineChange<T, PK extends Key<T>, W extends Key<T>>(
 ): null;
 export function determineChange<T, PK extends Key<T>, W extends Key<T>>(
     resource: Resource<T, PK, W>,
-    oldState: T,
-    newState: T,
+    oldState: T | null,
+    newState: T | null,
 ): ExplicitResourceChange<T, PK> | null;
 export function determineChange<T, PK extends Key<T>, W extends Key<T>>(
     resource: Resource<T, PK, W>,
@@ -250,4 +267,29 @@ export function deserializeResourceChange<T, PK extends Key<T>, W extends Key<T>
         return { name, type, identity, updates, oldProperties };
     }
     throw new ValidationError(`Invalid change type ${JSON.stringify(name)}`);
+}
+
+export function serializeResourceChange<T, PK extends Key<T>, W extends Key<T>>(
+    change: ResourceChange<T, PK>,
+    resource: Resource<T, PK, W>,
+): Serialization {
+    const { identifier, identifyBy } = resource;
+    const propertySerializer = resource.omit(identifyBy);
+    const serialization: Serialization = {
+        type: change.type,
+        name: change.name,
+    };
+    if (hasOwnProperty(change, 'identity')) {
+        serialization.identity = identifier.serialize(change.identity);
+    }
+    if (hasOwnProperty(change, 'properties')) {
+        serialization.properties = propertySerializer.serialize(change.properties);
+    }
+    if (hasOwnProperty(change, 'oldProperties')) {
+        serialization.properties = propertySerializer.serialize(change.oldProperties);
+    }
+    if (hasOwnProperty(change, 'updates')) {
+        serialization.properties = propertySerializer.fullPartial().serialize(change.updates);
+    }
+    return serialization;
 }

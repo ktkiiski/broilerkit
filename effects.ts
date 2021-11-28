@@ -2,7 +2,16 @@
 import isEqual from 'immuton/isEqual';
 import omit from 'immuton/omit';
 import transform from 'immuton/transform';
-import type { Key } from 'immuton/types';
+import type { Key, Require } from 'immuton/types';
+import {
+    ResourceChange,
+    serializeResourceChange,
+    makeAdditionChange,
+    makeUpdateChange,
+    makeDeletionChange,
+    getChangeProperties,
+    getOldState,
+} from './changes';
 import { keys } from './objects';
 import type { Operation } from './operations';
 import { authorize } from './permissions';
@@ -15,12 +24,6 @@ export interface ResourceEffect<T = any, PK extends Key<T> = any> {
     identity: Pick<T, PK>;
     newState: T | null;
     oldState: T | null;
-}
-
-export interface StateEffect {
-    name: string;
-    item: Serialization;
-    exists: boolean;
 }
 
 export interface EffectContext {
@@ -38,7 +41,6 @@ export function addEffect<T, PK extends Key<T>>(
         return;
     }
     const identity = resource.identifier.validate(state);
-    // TODO: Compress changes to the same resource instance
     context.effects.push({ resource, identity, newState, oldState });
 }
 
@@ -63,13 +65,12 @@ function compressEffects(inputEffects: ResourceEffect[]): ResourceEffect[] {
     }, []);
 }
 
-export function getStateEffects(
+export function getSerializedStateEffectChanges(
     effects: ResourceEffect[],
     operations: Operation<any, any, any>[],
     auth: UserSession | null,
-): StateEffect[] {
-    const states: Map<string, { item: Properties; resource: Resource<any, any, any> }> = new Map();
-    const removals: Map<string, { item: Properties; resource: Resource<any, any, any> }> = new Map();
+): Serialization[] {
+    const changeSerializations: Serialization[] = [];
     for (const effect of compressEffects(effects)) {
         const { newState, oldState } = effect;
         if (newState && isEqual(newState, oldState)) {
@@ -77,96 +78,77 @@ export function getStateEffects(
             continue;
         }
         const { name } = effect.resource;
-        const item = newState || oldState;
-        const exists = !!newState;
         for (const operation of operations) {
             const { resource } = operation.endpoint;
-            for (const [result, resultExists] of applyResourceStateToBase(resource, name, item, exists)) {
+            for (const change of applyResourceStateToBase(resource, name, newState, oldState)) {
+                const itemProperties = getChangeProperties(change);
                 // Check that the user has the permission to see this change
                 try {
-                    authorize(operation, auth, result);
+                    authorize(operation, auth, itemProperties);
                 } catch {
                     // User is not authorized to this endpoint, with this resource instance
                     continue;
                 }
-                let id: string;
-                try {
-                    id = resource.getUniqueId(result);
-                } catch {
-                    // Item may not have identity properties
-                    continue;
-                }
-                if (resultExists) {
-                    const stateEffect = states.get(id);
-                    states.set(id, {
-                        resource,
-                        item: {
-                            ...stateEffect?.item,
-                            ...result,
-                        },
-                    });
-                } else {
-                    removals.set(id, { resource, item: result });
-                }
+                const changeSerialization = serializeResourceChange(resource, change);
+                changeSerializations.push(changeSerialization);
             }
         }
     }
-    const stateEffects: StateEffect[] = [];
-    for (const { item, resource } of states.values()) {
-        const serializer = resource.optional({
-            required: resource.identifyBy,
-            optional: keys(omit(resource.fields, resource.identifyBy)),
-            defaults: {},
-        });
-        try {
-            stateEffects.push({
-                exists: true,
-                name: resource.name,
-                item: serializer.serialize(item),
-            });
-        } catch {
-            // Item did not have all the required properties
-        }
-    }
-    for (const { item, resource } of removals.values()) {
-        try {
-            stateEffects.push({
-                exists: false,
-                name: resource.name,
-                item: resource.identifier.serialize(item),
-            });
-        } catch {
-            // Item did not have all the required properties
-        }
-    }
-    return stateEffects;
+    return changeSerializations;
 }
 
 type Properties = { [key: string]: unknown };
 
-function* applyResourceStateToBase(
-    baseResource: Resource<any, any, any>,
+function* applyResourceStateToBase<T, PK extends Key<T>, W extends Key<T>>(
+    baseResource: Resource<T, PK, W>,
     resourceName: string,
-    item: Properties,
-    exists: boolean,
-): Iterable<[Properties, boolean]> {
+    newItem: Require<T, PK> | null,
+    oldItem: Require<T, PK> | null,
+): Iterable<ResourceChange<T, PK>> {
     if (baseResource.name === resourceName) {
-        const nonRelationResource = baseResource.omit(keys(baseResource.nestings)).fullPartial();
+        const nonRelationKeys = keys(baseResource.nestings) as Key<T>[];
         try {
-            yield [nonRelationResource.validate(item), exists];
+            if (newItem && oldItem) {
+                const change = makeUpdateChange(
+                    baseResource,
+                    omit(newItem, nonRelationKeys) as Require<T, PK>,
+                    oldItem,
+                );
+                if (change) {
+                    yield change;
+                }
+            } else if (newItem && !oldItem) {
+                yield makeAdditionChange(baseResource, newItem as T);
+            } else if (!newItem && oldItem) {
+                yield makeDeletionChange(baseResource, oldItem);
+            }
         } catch (error) {
             // eslint-disable-next-line no-console
             console.error(`Failed to validate resource ${resourceName} state`, error);
         }
     }
     for (const join of baseResource.joins) {
-        for (const [subResult] of applyResourceStateToBase(join.resource, resourceName, item, exists)) {
-            const result = transformJoin(join, subResult);
+        for (const subChange of applyResourceStateToBase(join.resource, resourceName, newItem, oldItem)) {
+            const subItemNewProperties = getChangeProperties(subChange);
+            const subItemOldProperties = getOldState(subChange);
+            const subItemProperties = subItemNewProperties || subItemOldProperties;
+            const exists = subItemNewProperties != null;
+            const result = subItemProperties && transformJoin(join, subItemProperties);
             if (result != null) {
-                if (exists || join.type === 'inner') {
-                    yield [result, exists];
-                } else if (join.type === 'left') {
-                    yield [{ ...result, ...join.defaults }, true];
+                let change;
+                try {
+                    if (exists || join.type === 'inner') {
+                        change = makeUpdateChange(baseResource, result as Require<T, PK>);
+                    } else if (join.type === 'left') {
+                        // Left removed related item
+                        change = makeUpdateChange(baseResource, { ...result, ...join.defaults } as Require<T, PK>);
+                    }
+                } catch {
+                    // Likely missing identifying properties on joins
+                    continue;
+                }
+                if (change) {
+                    yield change;
                 }
             }
         }
@@ -175,33 +157,44 @@ function* applyResourceStateToBase(
         const nesting = baseResource.nestings[nestingName];
         if (nesting.resource.name === resourceName) {
             // The nested resource must have all the properties
-            let subResult;
-            try {
-                subResult = nesting.resource.validate(item);
-            } catch {
-                // Partial (or invalid) nested item
-                continue;
+            let newSubResult = null;
+            if (newItem != null) {
+                try {
+                    newSubResult = nesting.resource.validate(newItem);
+                } catch {
+                    // Partial (or invalid) nested item
+                    continue;
+                }
             }
-            const result = {
-                [nestingName]: exists ? subResult : null,
-            };
+            let oldSubResult = null;
+            if (oldItem != null) {
+                try {
+                    oldSubResult = nesting.resource.validate(oldItem);
+                } catch {
+                    // Partial (or invalid) nested item
+                    continue;
+                }
+            }
+            const newResult = { [nestingName]: newSubResult };
+            const oldResult = { [nestingName]: oldSubResult };
             for (const sourceProp of keys(nesting.on)) {
                 const targetProp = nesting.on[sourceProp];
-                result[targetProp] = subResult[sourceProp];
+                newResult[targetProp] = newSubResult[sourceProp];
+                oldResult[targetProp] = oldSubResult[sourceProp];
             }
-            yield [result, true];
+            yield [newResult, oldResult];
         }
     }
 }
 
-function transformJoin(join: Join, item: Properties) {
+function transformJoin(join: Join, item: Properties): Properties | null {
     const result = transform(join.fields, (sourceProp) => item[sourceProp]);
-    for (const sourceProp of keys(join.on)) {
-        const targetProp = join.on[sourceProp];
-        const value = item[sourceProp];
-        if (typeof targetProp === 'string') {
-            result[targetProp] = value;
-        } else if (!isEqual(targetProp.value, value)) {
+    for (const sourcePropName of keys(join.on)) {
+        const targetPropCond = join.on[sourcePropName];
+        const value = item[sourcePropName];
+        if (typeof targetPropCond === 'string') {
+            result[targetPropCond] = value;
+        } else if (!isEqual(targetPropCond.value, value)) {
             return null;
         }
     }

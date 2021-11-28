@@ -6,7 +6,7 @@ import type { ExcludedKeys, FilteredKeys } from 'immuton/types';
 import type { JWK } from 'node-jose';
 import type { Pool } from 'pg';
 import { list, retrieve } from './db';
-import { ResourceEffect, getStateEffects } from './effects';
+import { ResourceEffect, getSerializedStateEffectChanges } from './effects';
 import { executeHandler, Handler, HandlerContext, HandlerServerContext } from './handlers';
 import {
     HttpMethod,
@@ -357,7 +357,7 @@ function applyResponseEffects(
     if (!('data' in response)) {
         return response;
     }
-    const changes = getStateEffects(effects, operations, auth);
+    const changes = getSerializedStateEffectChanges(effects, operations, auth);
     return {
         ...response,
         data: {
