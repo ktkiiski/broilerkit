@@ -116,18 +116,6 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
 
-  # Allow Lambda function to access the database credentials
-  LambdaExecutionIamRolePolicy:
-    Properties:
-      PolicyDocument:
-        Statement:
-        # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
-        - Effect: Allow
-          Resource:
-            - Ref: DatabaseMasterSecret
-          Action:
-            - secretsmanager:GetSecretValue
-
   # Aurora Serverless Database Cluster
   DatabaseDBCluster:
     Type: AWS::RDS::DBCluster
@@ -248,6 +236,7 @@ Resources:
       PolicyDocument:
         Statement:
         # Allow access to the database credentials for connecting the database
+        # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_actionsconditions.html
         - Effect: Allow
           Action:
           - secretsmanager:GetSecretValue

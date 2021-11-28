@@ -572,6 +572,7 @@ abstract class BaseClient implements Client {
     private async loadCollectionByUrl(url: string): Promise<void> {
         const listeners = this.collectionListeners[url];
         if (listeners) {
+            // eslint-disable-next-line no-unreachable-loop
             for (const listener of listeners) {
                 await this.loadCollection(listener.url, listener.op, listener.input);
                 break;
@@ -704,7 +705,7 @@ abstract class BaseClient implements Client {
             while (nextUrl) {
                 // Ensure that there are listeners
                 const listeners = this.collectionListeners[collectionUrl];
-                // eslint-disable-next-line no-loop-func
+                // eslint-disable-next-line @typescript-eslint/no-loop-func
                 if (!listeners || listeners.every(({ minCount }) => minCount <= state.count)) {
                     // No one is interested (any more)
                     break;
@@ -884,10 +885,12 @@ function applyChangeToResource<T>(state: ResourceState<T>, change: ResourceChang
     };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function applyChangeToCollection<T, PK extends Key<T>>(
     state: CollectionState<T>,
     change: ResourceAddition<any, any> | ResourceRemoval<any, any>,
 ): CollectionState<T>;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function applyChangeToCollection<T, PK extends Key<T>>(
     state: CollectionState<T>,
     change: ResourceChange<any, any>,

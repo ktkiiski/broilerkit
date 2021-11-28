@@ -35,12 +35,12 @@ function getBroiler(argv: CommandOptions) {
     const cwd = process.cwd();
     const appPath = path.resolve(cwd, expandTildeInPath(appConfigPath));
     const projectRootPath = path.dirname(appPath);
-    // eslint-disable-next-line @typescript-eslint/no-var-requires,import/no-dynamic-require
+    // eslint-disable-next-line import/no-dynamic-require,global-require
     const appModule = require(appPath);
     const app: App = appModule.default; // App should be the default export
     return new Broiler(app.configure({ ...options, projectRootPath }));
 }
-// eslint-disable-next-line no-unused-expressions
+// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 yargs
     // Read the app configuration
     .describe('appConfigPath', 'Path to the app configuration')

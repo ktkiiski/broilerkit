@@ -24,6 +24,7 @@ export class AmazonCognitoIdentity<S = Record<never, never>> {
 
     public async getUserById(id: string, notFoundError?: Error): Promise<CognitoUser & S> {
         for await (const users of this.listUsers({ limit: 1, filterKey: 'sub', filterValue: id })) {
+            // eslint-disable-next-line no-unreachable-loop
             for (const user of users) {
                 return user;
             }

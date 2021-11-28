@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention */
 /* eslint-disable no-underscore-dangle */
 import { endpoint } from './endpoints';
 import { creatable, listable } from './operations';

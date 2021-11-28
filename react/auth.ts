@@ -7,11 +7,13 @@ export function useAuth(): Auth | null {
     const client = useClient();
     const authClient = validateAuthClient(client.authClient);
     const [auth, setAuth] = useState<Auth | null>(authClient.getAuthentication());
-    useEffect(() => {
-        return authClient.subscribeAuthentication((newAuth) => {
-            setAuth((prevAuth) => (isEqual(newAuth, prevAuth, 1) ? prevAuth : newAuth));
-        });
-    }, [authClient]);
+    useEffect(
+        () =>
+            authClient.subscribeAuthentication((newAuth) => {
+                setAuth((prevAuth) => (isEqual(newAuth, prevAuth, 1) ? prevAuth : newAuth));
+            }),
+        [authClient],
+    );
     return auth;
 }
 
@@ -20,12 +22,14 @@ export function useUserId(): string | null {
     const authClient = validateAuthClient(client.authClient);
     const initAuth = authClient.getAuthentication();
     const [userId, setUserId] = useState<string | null>(initAuth && initAuth.id);
-    useEffect(() => {
-        return authClient.subscribeAuthentication((auth) => {
-            const newUserId = auth && auth.id;
-            setUserId(newUserId);
-        });
-    }, [authClient]);
+    useEffect(
+        () =>
+            authClient.subscribeAuthentication((auth) => {
+                const newUserId = auth && auth.id;
+                setUserId(newUserId);
+            }),
+        [authClient],
+    );
     return userId;
 }
 

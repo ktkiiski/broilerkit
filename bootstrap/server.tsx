@@ -131,6 +131,7 @@ export async function request(event: LambdaHttpRequest | LambdaEvent): Promise<v
 function getApiService() {
     let apiModule;
     try {
+        // eslint-disable-next-line global-require
         apiModule = require('_service');
     } catch {
         // No API available
@@ -141,6 +142,7 @@ function getApiService() {
 
 function getTriggers(): { [name: string]: Trigger } {
     try {
+        // eslint-disable-next-line global-require
         return require('_triggers');
     } catch {
         // No triggers
@@ -151,6 +153,7 @@ function getTriggers(): { [name: string]: Trigger } {
 function getDatabase() {
     let dbModule;
     try {
+        // eslint-disable-next-line global-require
         dbModule = require('_db');
     } catch {
         // No API available

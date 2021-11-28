@@ -66,14 +66,16 @@ abstract class BaseOperation<S, U extends Key<S>, A extends AuthenticationType, 
 }
 
 export class ListOperation<
-    S,
-    U extends Key<S>,
-    O extends Key<S>,
-    F extends Key<S>,
-    A extends AuthenticationType,
-    B extends U | undefined
-> extends BaseOperation<S, U, A, B>
-    implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'> {
+        S,
+        U extends Key<S>,
+        O extends Key<S>,
+        F extends Key<S>,
+        A extends AuthenticationType,
+        B extends U | undefined,
+    >
+    extends BaseOperation<S, U, A, B>
+    implements Operation<Cursor<S, U, O, F>, PageResponse<S>, AuthRequestMapping[A], 'list'>
+{
     public readonly type = 'list';
 
     public readonly methods: HttpMethod[] = ['GET'];
@@ -113,7 +115,8 @@ export class ListOperation<
 
 export class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
     extends BaseOperation<S, U, A, B>
-    implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'> {
+    implements Operation<Pick<S, U>, S, AuthRequestMapping[A], 'retrieve'>
+{
     public readonly type = 'retrieve';
 
     public readonly methods: HttpMethod[] = ['GET'];
@@ -135,17 +138,19 @@ export class RetrieveOperation<S, U extends Key<S>, A extends AuthenticationType
 }
 
 export class CreateOperation<
-    S,
-    U extends Key<S>,
-    R extends Key<S>,
-    O extends Key<S>,
-    D extends Key<S>,
-    A extends AuthenticationType,
-    B extends U | undefined
-> extends BaseOperation<S, U, A, B>
+        S,
+        U extends Key<S>,
+        R extends Key<S>,
+        O extends Key<S>,
+        D extends Key<S>,
+        A extends AuthenticationType,
+        B extends U | undefined,
+    >
+    extends BaseOperation<S, U, A, B>
     implements
         Bindable<CreateApi<S, U, R, O, D, B>>,
-        Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'create'> {
+        Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'create'>
+{
     public readonly type = 'create';
 
     public readonly methods: HttpMethod[] = ['POST'];
@@ -184,17 +189,19 @@ export class CreateOperation<
 }
 
 export class UpdateOperation<
-    S,
-    U extends Key<S>,
-    R extends Key<S>,
-    O extends Key<S>,
-    D extends Key<S>,
-    A extends AuthenticationType,
-    B extends U | undefined
-> extends BaseOperation<S, U, A, B>
+        S,
+        U extends Key<S>,
+        R extends Key<S>,
+        O extends Key<S>,
+        D extends Key<S>,
+        A extends AuthenticationType,
+        B extends U | undefined,
+    >
+    extends BaseOperation<S, U, A, B>
     implements
         Bindable<UpdateApi<S, U, R, O, D, B>>,
-        Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'update'> {
+        Operation<OptionalOutput<S, R | U, O, D>, SuccesfulResponse<S>, AuthRequestMapping[A], 'update'>
+{
     public readonly type = 'update';
 
     public readonly methods: HttpMethod[] = ['PUT', 'PATCH'];
@@ -238,7 +245,8 @@ export class UpdateOperation<
 
 export class DestroyOperation<S, U extends Key<S>, A extends AuthenticationType, B extends U | undefined>
     extends BaseOperation<S, U, A, B>
-    implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'> {
+    implements Bindable<DestroyApi<S, U, B>>, Operation<Pick<S, U>, void, AuthRequestMapping[A], 'destroy'>
+{
     public readonly type = 'destroy';
 
     public readonly methods: HttpMethod[] = ['DELETE'];
@@ -266,15 +274,16 @@ export interface UploadOptions<S, F extends string, R extends keyof S, O extends
 }
 
 export class UploadOperation<
-    S,
-    F extends string,
-    U extends Key<S>,
-    R extends Key<S>,
-    O extends Key<S>,
-    D extends Key<S>,
-    A extends AuthenticationType,
-    B extends U | undefined
-> extends BaseOperation<S, U, A, B>
+        S,
+        F extends string,
+        U extends Key<S>,
+        R extends Key<S>,
+        O extends Key<S>,
+        D extends Key<S>,
+        A extends AuthenticationType,
+        B extends U | undefined,
+    >
+    extends BaseOperation<S, U, A, B>
     implements
         Bindable<UploadApi<S, F, U, R, O, D, B>>,
         Operation<
@@ -282,7 +291,8 @@ export class UploadOperation<
             SuccesfulResponse<S>,
             AuthRequestMapping[A],
             'upload'
-        > {
+        >
+{
     public readonly type = 'upload';
 
     public readonly methods: HttpMethod[] = ['POST'];
@@ -330,7 +340,7 @@ export function listable<
     O extends Key<S>,
     F extends Key<S> = never,
     A extends AuthenticationType = 'none',
-    B extends U | undefined = undefined
+    B extends U | undefined = undefined,
 >(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & { orderingKeys: O[]; filteringKeys?: F[] },
@@ -351,7 +361,7 @@ export function creatable<
     O extends Key<S>,
     D extends Key<S>,
     A extends AuthenticationType = 'none',
-    B extends U | undefined = undefined
+    B extends U | undefined = undefined,
 >(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
@@ -364,7 +374,7 @@ export function retrievable<
     S,
     U extends Key<S>,
     A extends AuthenticationType = 'none',
-    B extends U | undefined = undefined
+    B extends U | undefined = undefined,
 >(endpoint: Endpoint<S, any, U>, options?: CommonEndpointOptions<A, B>): RetrieveOperation<S, U, A, B> {
     const { auth = 'none' as A } = options || {};
     return new RetrieveOperation(endpoint, auth, (options && options.ownership) as B);
@@ -377,7 +387,7 @@ export function updateable<
     O extends Key<S>,
     D extends Key<S>,
     A extends AuthenticationType = 'none',
-    B extends U | undefined = undefined
+    B extends U | undefined = undefined,
 >(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & OptionalOptions<S, R, O, D>,
@@ -390,7 +400,7 @@ export function destroyable<
     S,
     U extends Key<S>,
     A extends AuthenticationType = 'none',
-    B extends U | undefined = undefined
+    B extends U | undefined = undefined,
 >(endpoint: Endpoint<S, any, U>, options?: CommonEndpointOptions<A, B>): DestroyOperation<S, U, A, B> {
     const { auth = 'none' as A } = options || {};
     return new DestroyOperation(endpoint, auth, (options && options.ownership) as B);
@@ -404,7 +414,7 @@ export function uploadable<
     O extends Key<S>,
     D extends Key<S>,
     A extends AuthenticationType = 'none',
-    B extends U | undefined = undefined
+    B extends U | undefined = undefined,
 >(
     endpoint: Endpoint<S, any, U>,
     options: CommonEndpointOptions<A, B> & UploadOptions<S, F, R, O, D>,

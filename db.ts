@@ -27,8 +27,7 @@ import {
 
 export type Filters<T> = { [P in keyof T]?: T[P] | T[P][] };
 export type Query<T> = (OrderedQuery<T, Key<T>> & Filters<T>) | OrderedQuery<T, Key<T>>;
-export type IndexQuery<T, Q extends keyof T, O extends keyof T> = { [P in Q]: T[P] | T[P][] } &
-    OrderedQuery<T, O> &
+export type IndexQuery<T, Q extends keyof T, O extends keyof T> = { [P in Q]: T[P] | T[P][] } & OrderedQuery<T, O> &
     Filters<T>;
 
 export interface Table<S = any, PK extends Key<S> = any> {
@@ -321,6 +320,7 @@ export function update<S, PK extends W, W extends Key<S>>(
         const [result] = await connection.transaction(async () => {
             const query = updateQuery(resource, filters, values, db.defaultsByTable);
             const updates = await executeQuery(connection, query);
+            // eslint-disable-next-line no-unreachable-loop
             for (const [newItem, oldItem] of updates) {
                 // Row was actually updated
                 // Register the update
@@ -371,6 +371,7 @@ export function upsert<S, PK extends Key<S>, W extends Key<S>>(
         connection.transaction(async () => {
             const query1 = updateQuery(resource, filters, updateValues, db.defaultsByTable);
             const updates = await executeQuery(connection, query1);
+            // eslint-disable-next-line no-unreachable-loop
             for (const [newItem, oldItem] of updates) {
                 // Row exists
                 if (!isEqual(newItem, oldItem, 1)) {

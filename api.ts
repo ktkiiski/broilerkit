@@ -42,7 +42,7 @@ export class CreateApi<
     R extends Key<S>,
     O extends Key<S>,
     D extends Key<S>,
-    B extends U | undefined
+    B extends U | undefined,
 > extends BaseApi<CreateOperation<S, U, R, O, D, any, B>> {
     public async post(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         const method = 'POST';
@@ -94,7 +94,7 @@ export class UpdateApi<
     R extends Key<S>,
     O extends Key<S>,
     D extends Key<S>,
-    B extends U | undefined
+    B extends U | undefined,
 > extends BaseApi<UpdateOperation<S, U, R, O, D, any, B>> {
     public put(input: OptionalInput<S, U | R, O, D>): Promise<S> {
         return this.update('PUT', input);
@@ -169,7 +169,7 @@ export class UploadApi<
     R extends Key<S>,
     O extends Key<S>,
     D extends Key<S>,
-    B extends U | undefined
+    B extends U | undefined,
 > extends BaseApi<UploadOperation<S, F, U, R, O, D, any, B>> {
     public async post(input: OptionalInput<S, U | R, O, D> & Record<F, File>): Promise<S> {
         const { operation } = this;

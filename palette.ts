@@ -19,9 +19,9 @@ function stylize(modifier: { open: string; close: string }) {
 }
 
 try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line global-require
     const styles: typeof Styles = require('ansi-styles');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line global-require
     const { stdout, stderr }: typeof Support = require('supports-color');
     const isSupported = stdout && stdout.has256 && stderr && stderr.has256 && !process.env.AWS_LAMBDA_LOG_GROUP_NAME;
     if (isSupported) {

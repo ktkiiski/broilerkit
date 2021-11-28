@@ -17,13 +17,11 @@ import { countBytes, findAllMatches } from './strings';
 
 type Response = HttpResponse | ApiResponse;
 
-const compatibilityMiddleware = requestMiddleware(async (request: HttpRequest) => {
-    return {
-        ...request,
-        // Convert headers to capitalized format, e.g. `content-type` => `Content-Type`
-        headers: normalizeHeaders(request.headers),
-    };
-});
+const compatibilityMiddleware = requestMiddleware(async (request: HttpRequest) => ({
+    ...request,
+    // Convert headers to capitalized format, e.g. `content-type` => `Content-Type`
+    headers: normalizeHeaders(request.headers),
+}));
 
 const queryMethodSupportMiddleware = requestMiddleware(async (request: HttpRequest) => {
     const httpMethod = request.method;
@@ -38,38 +36,36 @@ const queryMethodSupportMiddleware = requestMiddleware(async (request: HttpReque
     throw new BadRequest(`Cannot perform ${httpMethod} as ${method} request`);
 });
 
-const apiMiddleware = responseMiddleware(
-    async (response: Response, request: HttpRequest): Promise<HttpResponse> => {
-        if ('body' in response) {
-            // Already a response with encoded body
-            return response;
-        }
-        const { statusCode, headers, data } = response;
-        // If requesting a HTML page, then render as a HTML page
-        if (acceptsContentType(request, 'text/html')) {
-            // TODO: Improved page!
-            const statusCodeHtml = escapeHtml(String(statusCode));
-            const jsonHtml = (data && encodeSafeJSON(data, null, 4)) || '';
-            return {
-                ...response,
-                headers: {
-                    ...headers,
-                    'Content-Type': 'text/html; charset=utf-8',
-                },
-                body: `<div>${statusCodeHtml}</div><pre>${jsonHtml}</pre>`,
-            };
-        }
-        // Convert to JSON
+const apiMiddleware = responseMiddleware(async (response: Response, request: HttpRequest): Promise<HttpResponse> => {
+    if ('body' in response) {
+        // Already a response with encoded body
+        return response;
+    }
+    const { statusCode, headers, data } = response;
+    // If requesting a HTML page, then render as a HTML page
+    if (acceptsContentType(request, 'text/html')) {
+        // TODO: Improved page!
+        const statusCodeHtml = escapeHtml(String(statusCode));
+        const jsonHtml = (data && encodeSafeJSON(data, null, 4)) || '';
         return {
             ...response,
-            body: data == null ? '' : JSON.stringify(data),
             headers: {
                 ...headers,
-                'Content-Type': 'application/json',
+                'Content-Type': 'text/html; charset=utf-8',
             },
+            body: `<div>${statusCodeHtml}</div><pre>${jsonHtml}</pre>`,
         };
-    },
-);
+    }
+    // Convert to JSON
+    return {
+        ...response,
+        body: data == null ? '' : JSON.stringify(data),
+        headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+        },
+    };
+});
 
 const finalizerMiddleware = responseMiddleware(async (response: HttpResponse, request: HttpRequest) => {
     const { statusCode, body, headers } = response;
@@ -132,23 +128,19 @@ export function middleware<P extends any[]>(
 }
 
 export function requestMiddleware<I, O>(handleRequest: (request: I) => Promise<O>) {
-    return <P extends any[], R>(handler: (request: O, ...params: P) => Promise<R>) => async (
-        request: I,
-        ...params: P
-    ): Promise<R> => {
-        const newRequest = await handleRequest(request);
-        return handler(newRequest, ...params);
-    };
+    return <P extends any[], R>(handler: (request: O, ...params: P) => Promise<R>) =>
+        async (request: I, ...params: P): Promise<R> => {
+            const newRequest = await handleRequest(request);
+            return handler(newRequest, ...params);
+        };
 }
 
 export function responseMiddleware<I, O, R>(handleResponse: (response: I, request: R) => Promise<O>) {
-    return <P extends any[]>(handler: (request: R, ...params: P) => Promise<I>) => async (
-        request: R,
-        ...params: P
-    ): Promise<O> => {
-        const response = await handler(request, ...params);
-        return handleResponse(response, request);
-    };
+    return <P extends any[]>(handler: (request: R, ...params: P) => Promise<I>) =>
+        async (request: R, ...params: P): Promise<O> => {
+            const response = await handler(request, ...params);
+            return handleResponse(response, request);
+        };
 }
 
 export function errorMiddleware<R, P extends any[]>(

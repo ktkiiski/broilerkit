@@ -34,16 +34,14 @@ export type ResponseHandler<I, O, R = HttpRequest> = Handler<I, SuccesfulRespons
 
 type Implementables<I, O, R, T extends Record<string, OperationType>> = {
     [P in keyof I]: Operation<I[P], any, any, any>;
-} &
-    { [P in keyof O]: Operation<any, O[P], any, any> } &
-    { [P in keyof R]: Operation<any, any, R[P], any> } &
-    { [P in keyof T]: Operation<any, any, any, T[P]> };
+} & { [P in keyof O]: Operation<any, O[P], any, any> } & { [P in keyof R]: Operation<any, any, R[P], any> } & {
+    [P in keyof T]: Operation<any, any, any, T[P]>;
+};
 type OperationImplementors<I, O, R, T> = {
     [P in keyof I & keyof O & keyof R & ExcludedKeys<T, 'retrieve' | 'list'>]: Handler<I[P], O[P], R[P]>;
-} &
-    {
-        [P in keyof I & keyof O & keyof R & FilteredKeys<T, 'retrieve' | 'list'>]?: Handler<I[P], O[P], R[P]>;
-    };
+} & {
+    [P in keyof I & keyof O & keyof R & FilteredKeys<T, 'retrieve' | 'list'>]?: Handler<I[P], O[P], R[P]>;
+};
 
 /**
  * Essentials the server that remain the same
@@ -170,40 +168,33 @@ class ImplementedOperation implements Controller {
 function implement<I, O, R>(operation: Operation<I, O, R>, implementation: Handler<I, O, R>): Controller {
     switch (operation.type) {
         case 'list':
-            return new ImplementedOperation(
-                operation,
-                async (input: I, request): Promise<OK<Page<O, any>>> => {
-                    // TODO: Avoid force-typecasting of request!
-                    const page: Page<any, any> = (await implementation(
-                        input,
-                        (request as unknown) as R & HandlerContext,
-                    )) as any;
-                    if (!page.next) {
-                        return new OK(page);
-                    }
-                    const url = operation.route.compile(page.next);
-                    const next = `${request.serverOrigin}${url}`;
-                    const headers = { Link: `${next}; rel="next"` };
-                    return new OK(page, headers);
-                },
-            );
+            return new ImplementedOperation(operation, async (input: I, request): Promise<OK<Page<O, any>>> => {
+                // TODO: Avoid force-typecasting of request!
+                const page: Page<any, any> = (await implementation(
+                    input,
+                    request as unknown as R & HandlerContext,
+                )) as any;
+                if (!page.next) {
+                    return new OK(page);
+                }
+                const url = operation.route.compile(page.next);
+                const next = `${request.serverOrigin}${url}`;
+                const headers = { Link: `${next}; rel="next"` };
+                return new OK(page, headers);
+            });
         case 'retrieve':
             return new ImplementedOperation(
                 operation,
-                async (input: I, request): Promise<OK<O>> => {
+                async (input: I, request): Promise<OK<O>> =>
                     // TODO: Avoid force-typecasting of request!
-                    return new OK(await implementation(input, (request as unknown) as R & HandlerContext));
-                },
+                    new OK(await implementation(input, request as unknown as R & HandlerContext)),
             );
         case 'destroy':
-            return new ImplementedOperation(
-                operation,
-                async (input: I, request): Promise<OK<null>> => {
-                    // TODO: Avoid force-typecasting of request!
-                    await implementation(input, (request as unknown) as R & HandlerContext);
-                    return new OK(null);
-                },
-            );
+            return new ImplementedOperation(operation, async (input: I, request): Promise<OK<null>> => {
+                // TODO: Avoid force-typecasting of request!
+                await implementation(input, request as unknown as R & HandlerContext);
+                return new OK(null);
+            });
         default:
             // With other methods, use implementation as-is
             return new ImplementedOperation(operation, implementation as any);
@@ -295,6 +286,7 @@ export class ApiService {
                         continue;
                     } else {
                         // Raise through but with side-effect headers
+                        // eslint-disable-next-line @typescript-eslint/no-throw-literal
                         throw applyResponseEffects(error, request.auth, effects, operations);
                     }
                 }

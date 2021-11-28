@@ -74,13 +74,14 @@ describe('flatMapAsyncParallel', () => {
         const d4 = deferred<string>();
         const results: string[] = [];
         async function startTest() {
-            for await (const result of flatMapAsyncParallel(2, toAsync([d0, d1, d2, d3, d4]), async function* (
-                item,
-                index,
-            ) {
-                calls.push(index);
-                yield await item.promise;
-            })) {
+            for await (const result of flatMapAsyncParallel(
+                2,
+                toAsync([d0, d1, d2, d3, d4]),
+                async function* (item, index) {
+                    calls.push(index);
+                    yield await item.promise;
+                },
+            )) {
                 results.push(result);
             }
         }

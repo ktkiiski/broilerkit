@@ -127,7 +127,7 @@ export function useCollections<
     U extends Key<S>,
     O extends Key<S>,
     F extends Key<S>,
-    I extends Cursor<S, U, O, F>[] = Cursor<S, U, O, F>[]
+    I extends Cursor<S, U, O, F>[] = Cursor<S, U, O, F>[],
 >(op: ListOperation<S, U, O, F, any, any>, inputs: I, filters?: Partial<S> | null): { [P in keyof I]: Collection<S> } {
     const client = useClient();
     const [states, setState] = useState(inputs.map((input) => inquiryCollection(client, op, input, filters)));

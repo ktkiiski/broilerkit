@@ -165,7 +165,8 @@ export type OptionalOutput<S, R extends keyof S, O extends keyof S, D extends ke
 
 export class OptionalSerializer<S, R extends keyof S, O extends keyof S, D extends keyof S>
     extends BaseSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>>
-    implements ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>> {
+    implements ExtendableSerializer<OptionalInput<S, R, O, D>, OptionalOutput<S, R, O, D>>
+{
     private readonly requiredFields: R[];
 
     private readonly optionalFields: (O | D)[];
@@ -241,7 +242,7 @@ export class DefaultsSerializer<S, D extends keyof S> extends BaseSerializer<
 class NestedSerializerField<I> implements Field<I, Serialization> {
     public readonly type: string = 'jsonb';
 
-    // eslint-disable-next-line no-shadow
+    // eslint-disable-next-line @typescript-eslint/no-shadow
     constructor(private serializer: Serializer<I, any>) {}
 
     public validate(value: I): I {

@@ -1,0 +1,8 @@
+node_modules/
+package.json
+package-lock.json
+*.yml
+*.md
+*.js
+*.html
+.vscode/

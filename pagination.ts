@@ -39,7 +39,8 @@ export type Cursor<T, U extends keyof T, O extends keyof T, F extends keyof T> =
     OrderedQuery<T, O>;
 
 export class CursorSerializer<T, U extends Key<T>, O extends Key<T>, F extends Key<T>>
-    implements Serializer<Cursor<T, U, O, F>> {
+    implements Serializer<Cursor<T, U, O, F>>
+{
     private serializer = this.resource
         .optional({
             required: this.urlKeywords,

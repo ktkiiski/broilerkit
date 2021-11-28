@@ -43,7 +43,7 @@ export class UrlPattern<T extends string = string> {
 
     private readonly regexp: RegExp;
 
-    // eslint-disable-next-line no-shadow
+    // eslint-disable-next-line @typescript-eslint/no-shadow
     constructor(public readonly pattern: string) {
         const pathKeywords: T[] = [];
         const regexpComponents = pattern.split('/').map((component) => {

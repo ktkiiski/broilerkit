@@ -1080,9 +1080,7 @@ function filterSql(tableName: string, field: string, value: any, params: any[], 
         const condition = filterSql(tableName, field, nonNullValues, params, undefined);
         return `(${condition} OR ${colRef} IS NULL)`;
     }
-    const placeholders = value.map((item) => {
-        return param(params, item);
-    });
+    const placeholders = value.map((item) => param(params, item));
     return `${colRef} IN (${placeholders.join(',')})`;
 }
 

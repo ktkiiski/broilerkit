@@ -46,9 +46,9 @@ export class DummyUserPool implements UserPool {
 }
 
 export class CognitoUserPool implements UserPool {
-    private updateSerializer = users.omit(['id', 'email', 'updatedAt', 'createdAt']).fullPartial() as Serializer<
-        UserPartialUpdate
-    >;
+    private updateSerializer = users
+        .omit(['id', 'email', 'updatedAt', 'createdAt'])
+        .fullPartial() as Serializer<UserPartialUpdate>;
 
     private identitySerializer = users.pick(['id']);
 

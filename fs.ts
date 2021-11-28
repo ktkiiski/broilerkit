@@ -146,13 +146,15 @@ export async function ensureDirectoryExists(dirPath: string) {
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {
-    return new Promise((resolve) => fs.exists(filePath, resolve));
+    return new Promise((resolve) => {
+        fs.exists(filePath, resolve);
+    });
 }
 
 export async function getFileStats(filePath: string): Promise<fs.Stats> {
-    return new Promise((resolve, reject) =>
-        fs.lstat(filePath, (error, stats) => (error ? reject(error) : resolve(stats))),
-    );
+    return new Promise((resolve, reject) => {
+        fs.lstat(filePath, (error, stats) => (error ? reject(error) : resolve(stats)));
+    });
 }
 
 /**

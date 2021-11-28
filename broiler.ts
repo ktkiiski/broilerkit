@@ -1110,7 +1110,7 @@ export class Broiler {
     private importModule(dir: string): any {
         const { projectRootPath, sourceDir } = this.config;
         const modulePath = path.resolve(projectRootPath, sourceDir, dir);
-        // eslint-disable-next-line import/no-dynamic-require
+        // eslint-disable-next-line import/no-dynamic-require,global-require
         return require(modulePath);
     }
 

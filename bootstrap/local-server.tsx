@@ -25,6 +25,7 @@ import { LOCAL_UPLOAD_ENDPOINT_NAME, LocalUploadController } from '../storage';
 export function getApiService(pageHtml$: Promise<string>, uploadDirPath: string): ApiService {
     let module;
     try {
+        // eslint-disable-next-line global-require
         module = require('_service');
     } catch {
         // No API available
@@ -47,7 +48,7 @@ export function getApiService(pageHtml$: Promise<string>, uploadDirPath: string)
 
 export function getDatabase(): Database | null {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // eslint-disable-next-line global-require
         return require('_db').default;
     } catch {
         return null;

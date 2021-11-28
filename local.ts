@@ -359,8 +359,8 @@ function colorizeStatusCode(statusCode: HttpStatus): string {
     return codeStr;
 }
 
-function flattenParameters<K extends string>(
-    params: { [P in K]: string | string[] | undefined },
-): { [P in K]: string } {
+function flattenParameters<K extends string>(params: { [P in K]: string | string[] | undefined }): {
+    [P in K]: string;
+} {
     return transform(params || {}, (values) => (Array.isArray(values) ? values[0] : String(values || '')));
 }

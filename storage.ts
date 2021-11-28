@@ -171,7 +171,7 @@ export class LocalUploadController implements Controller {
 
 async function triggerUploadEvent(context: HandlerServerContext, bucketName: string, key: string, size: number) {
     const fakeBucketName = `${context.stackName}-storage-${bucketName}`;
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line global-require
     const triggers: Trigger[] = Object.values(require('_triggers'));
     await triggerEvent(
         triggers,

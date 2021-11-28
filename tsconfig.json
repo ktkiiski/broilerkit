@@ -4,12 +4,7 @@
         "importHelpers": true,
         "importsNotUsedAsValues": "error",
         "jsx": "react",
-        "lib": [
-            "dom",
-            "dom.iterable",
-            "es2015",
-            "esnext.asynciterable",
-        ],
+        "lib": ["dom", "dom.iterable", "es2015", "esnext.asynciterable"],
         "module": "commonjs",
         "moduleResolution": "node",
         "noUnusedLocals": true,
@@ -19,13 +14,6 @@
         "strict": true,
         "target": "ES2017"
     },
-    "include": [
-        "./types/modules.d.ts",
-        "./**/*.tsx",
-        "./**/*.ts"
-    ],
-    "exclude": [
-        "./node_modules/**",
-        "./types/constants.d.ts"
-    ]
+    "include": ["./types/modules.d.ts", "./**/*.tsx", "./**/*.ts"],
+    "exclude": ["./node_modules/**"]
 }

@@ -73,6 +73,7 @@ export async function retryRequestWithBackoff<T>(
             const { statusCode } = error;
             if (statusCodes.indexOf(statusCode as HttpErrorStatus) < 0) {
                 // Not a retryable status code
+                // eslint-disable-next-line @typescript-eslint/no-throw-literal
                 throw error;
             }
             // Retry

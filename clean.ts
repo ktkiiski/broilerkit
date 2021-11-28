@@ -38,13 +38,17 @@ export async function* clean(dirPath: string): AsyncIterableIterator<string> {
 }
 
 function unlinkFile(filePath: string): Promise<void> {
-    return new Promise((resolve, reject) => fs.unlink(filePath, (error) => (error ? reject(error) : resolve())));
+    return new Promise((resolve, reject) => {
+        fs.unlink(filePath, (error) => (error ? reject(error) : resolve()));
+    });
 }
 function removeDirectory(dirPath: string): Promise<void> {
-    return new Promise((resolve, reject) => fs.rmdir(dirPath, (error) => (error ? reject(error) : resolve())));
+    return new Promise((resolve, reject) => {
+        fs.rmdir(dirPath, (error) => (error ? reject(error) : resolve()));
+    });
 }
 function readDirectory(dirPath: string): Promise<string[]> {
-    return new Promise((resolve, reject) =>
-        fs.readdir(dirPath, (error, fileNames) => (error ? reject(error) : resolve(fileNames))),
-    );
+    return new Promise((resolve, reject) => {
+        fs.readdir(dirPath, (error, fileNames) => (error ? reject(error) : resolve(fileNames)));
+    });
 }

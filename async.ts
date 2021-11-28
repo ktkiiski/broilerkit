@@ -7,7 +7,7 @@ export function wait(ms?: number): Promise<void> {
     });
 }
 
-export function asap<T = void>(callback?: () => void): Promise<void>;
+export function asap(callback?: () => void): Promise<void>;
 export function asap<T = void>(callback?: () => T): Promise<T> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const promise = Promise.resolve() as Promise<any>;
